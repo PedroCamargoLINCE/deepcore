@@ -249,7 +249,9 @@
   // name; the caller slices to the 9-col name field either way.
   function itemLabel(id) {
     const it = D.ITEMS[id] || {};
-    if (typeof it.short === 'string' && it.short.length) return it.short;
+    // a `short` wider than the field would be cut mid-word — that is the bug
+    // being fixed, so fall through to the table instead of trusting it
+    if (typeof it.short === 'string' && it.short.length && it.short.length <= 9) return it.short;
     try {
       if (DC.Sim && typeof DC.Sim.itemShort === 'function') return String(DC.Sim.itemShort(id));
     } catch (e) { /* sim in flux */ }
