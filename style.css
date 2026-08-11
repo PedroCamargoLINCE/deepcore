@@ -1,0 +1,39 @@
+/* DEEPCORE — the page is a terminal, nothing more. */
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #060605;
+  height: 100%;
+  overflow: hidden;
+}
+body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#frame {
+  position: relative;
+  line-height: 0;
+  max-width: 100vw;
+  max-height: 100vh;
+}
+#screen {
+  display: block;
+  background: #0a0a08;
+  max-width: 100vw;
+  max-height: 100vh;
+  image-rendering: auto;
+}
+/* subtle CRT scanlines + vignette overlay */
+#scanlines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at center, rgba(0,0,0,0) 62%, rgba(0,0,0,0.32) 100%),
+    repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 2px, rgba(0,0,0,0.10) 3px);
+}
+noscript pre {
+  color: #e8b45a;
+  font-family: monospace;
+}
