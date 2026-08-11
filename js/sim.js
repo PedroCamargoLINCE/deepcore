@@ -735,8 +735,8 @@
   // ---------------- tooltip (§5.9) ----------------
   // M-POLISH/CX-04: the SCAN panel is 29 columns of content and render clips
   // hard, so EVERY line describeTile can emit must already fit in 29 chars —
-  // no mid-word truncation. SCAN_W mirrors render.js SCW; the probe in
-  // test/ (and the audit below) keeps them honest.
+  // no mid-word truncation. SCAN_W mirrors render.js SCW; it is exported so a
+  // suite can re-audit the combinations if these strings are ever edited.
   const SCAN_W = 29;
 
   // Short item labels for tight panels. Prefers data.js's `short:` field
@@ -769,7 +769,7 @@
     return 'in: ' + keys.length + ' kinds';   // pathological names: still whole words
   }
 
-  function fuelLine(run, m) {
+  function fuelLine(m) {
     const coal = m.input.coal || 0;
     const tail = coal > 0 ? ' (+' + coal + ' coal)' : '';
     // CX-09: same field, different units — say which. Smelter fuel counts
@@ -806,7 +806,7 @@
         L.push({ text: 'click: cycle recipe', color: D.COLORS.amberDim });
       }
       if (m.type === 'smelter' || m.type === 'damper')
-        L.push({ text: fuelLine(run, m), color: D.COLORS.orange });
+        L.push({ text: fuelLine(m), color: D.COLORS.orange });
       if (m.type === 'extractor') {
         const ot = tileAt(run, m.x, m.y);
         if (ot && ot.ore)
