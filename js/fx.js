@@ -61,6 +61,9 @@
       tail: [],                          // {x, y, f} belts laid in a gesture
       crystals: [],                      // revealed crystal tile indices
       glint: null,                       // {i, until}
+      lastQuakeEv: -1,                   // newest peeked quake event's totalT
+      lastShake: 0,                      // newest ui.shakeUntil seen
+      debrisT: -1,                       // totalT of the last debris burst
       sparks: [],                        // {x, y, t} magma contact flashes
       spit: Object.create(null),         // machine id -> {x, y, t}
       prog: Object.create(null),         // machine id -> last seen progress
@@ -160,20 +163,61 @@
     mem.first = false;
   }
 
+  // ------------------------------------------------------------- particles
+  // Screen-space, cell-quantized, capped. Every particle carries the screen
+  // it belongs to, so a moment left running when the screen changes simply
+  // stops drawing and ages out.
+  const parts = [];
+  const PART_CAP = 96;
+
+  function spawn(p) { if (parts.length < PART_CAP) parts.push(p); }
+  function stepParts() {
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const p = parts[i];
+      p.x += p.vx; p.y += p.vy;
+      if (--p.life <= 0) parts.splice(i, 1);
+    }
+  }
+  function drawParts(surf, screen) {
+    for (let i = 0; i < parts.length; i++) {
+      const p = parts[i];
+      if (p.screen !== screen) continue;
+      const c = Math.round(p.x), r = Math.round(p.y);
+      const k = p.clip;
+      if (k && (c < k.x || c >= k.x + k.w || r < k.y || r >= k.y + k.h)) continue;
+      if (p.behind && surf.ch(c, r) !== ' ') continue;   // drift behind the art
+      surf.put(c, r, p.ch, p.col);
+    }
+  }
+  // The map box: layout.map is its interior, the frame sits one cell around it.
+  function mapBox(surf) {
+    const L = surf && surf.layout && surf.layout.map;
+    if (!L) return null;
+    return { x: L.x, y: L.y, w: L.w, h: L.h, xo: L.xo || 0 };
+  }
+
   // --------------------------------------------------------------- begin()
   // Called by render.js at the top of every frame, on every screen.
+  let lastScreen = null;
+  let crack = null;                      // {x, y, f} the breach crack pattern
+
   function begin(state, surf) {
     F++;
+    stepParts();
     const run = state && state.run;
     const ui = (state && state.ui) || null;
+    const screen = (state && state.screen) || '';
+    screenEdge(screen, run, surf);
     if (!run || !run.grid) { mem = null; return; }
     if (!mem || mem.grid !== run.grid) mem = freshMem(run);
     mem.ui = ui;
     mem.accent = stratumOf(run.depth).accent || C.amber;
     const L = surf && surf.layout && surf.layout.map;
     mem.xo = L ? (L.xo || 0) : 0;
+    if (screen !== 'run') return;        // the map rows only animate in-run
 
     scan(run, ui);
+    quakeEdge(run, ui, surf);
 
     // drill state (A1 hub rows), computed once per frame the same way the
     // sidebar's feed readout does: gears first, then charges.
@@ -191,6 +235,85 @@
 
     machineEdges(run);
     worldEdges(run);
+  }
+
+  // --- A2: the quake ------------------------------------------------------
+  // Detecting a quake render-side, without consuming anything: the engine
+  // drains run.events every tick, so the durable signal is ui.shakeUntil
+  // rising. run.events is ALSO peeked (never spliced) so a constructed state
+  // that still holds its queue fires too. Both paths dedupe on run.totalT, so
+  // one quake is one burst of debris however it was seen.
+  function quakeEdge(run, ui, surf) {
+    let hit = false;
+    const evs = run.events;
+    if (evs) {
+      for (let i = evs.length - 1; i >= 0; i--) {
+        const e = evs[i];
+        if (e && e.type === 'quake' && e.t > mem.lastQuakeEv) { mem.lastQuakeEv = e.t; hit = true; }
+      }
+    }
+    const su = (ui && ui.shakeUntil) || 0;
+    if (su > mem.lastShake) { mem.lastShake = su; hit = true; }
+    if (!hit || run.totalT === mem.debrisT) return;
+    mem.debrisT = run.totalT;
+    debrisRain(run, surf);
+  }
+
+  // ~12 grains of ceiling fall through the map box over 3 ticks
+  const DEBRIS_CH = ['.', "'"];
+  function debrisRain(run, surf) {
+    const B = mapBox(surf);
+    if (!B) return;
+    const fall = 3 * (FPS / HZ);               // 3 ticks of falling
+    for (let i = 0; i < 12; i++) {
+      spawn({
+        screen: 'run',
+        x: B.x + B.xo + ((rand() * B.w) | 0),
+        y: B.y - 1 + (rand() * 2),
+        vx: 0, vy: B.h / fall,
+        ch: DEBRIS_CH[(rand() * 2) | 0],
+        col: rand() < 0.5 ? C.gray : C.darkgray,
+        life: Math.round(fall),
+        clip: { x: B.x, y: B.y, w: B.w, h: B.h },
+      });
+    }
+  }
+
+  // --- A2: the breach crack -----------------------------------------------
+  // 'D' pressed hands the run straight to the descend screen, so the crack
+  // is drawn on that screen's first 6 ticks, radiating from where the hub
+  // was standing — then the descent animation takes over.
+  const RAYS = [
+    { dx: 0, dy: -1, ch: '│' }, { dx: 1, dy: -1, ch: '/' },
+    { dx: 1, dy: 0, ch: '─' }, { dx: 1, dy: 1, ch: '\\' },
+    { dx: 0, dy: 1, ch: '│' }, { dx: -1, dy: 1, ch: '/' },
+    { dx: -1, dy: 0, ch: '─' }, { dx: -1, dy: -1, ch: '\\' },
+  ];
+  function screenEdge(screen, run, surf) {
+    if (screen === lastScreen) return;
+    const prev = lastScreen;
+    lastScreen = screen;
+    if (screen === 'descend' && prev === 'run' && run && run.hub) {
+      const B = mapBox(surf);
+      crack = B
+        ? { x: B.x + run.hub.x + 1, y: B.y + run.hub.y + 1, f: F }
+        : { x: (D.COLS / 2) | 0, y: (D.ROWS / 2) | 0, f: F };
+    }
+  }
+  function drawCrack(surf) {
+    if (!crack) return;
+    const age = F - crack.f;
+    const span = 6 * (FPS / HZ);               // 6 ticks of white glass
+    if (age > span) { crack = null; return; }
+    const reach = 1 + Math.floor((age / span) * 9);
+    for (let i = 0; i < RAYS.length; i++) {
+      const R = RAYS[i];
+      for (let d = 1; d <= reach; d++) {
+        const c = crack.x + R.dx * d, r = crack.y + R.dy * d;
+        if (c < 0 || c >= D.COLS || r < 0 || r >= D.ROWS) break;
+        surf.put(c, r, R.ch, d === reach ? C.white : mixOf(C.white, C.amber, 0.5));
+      }
+    }
   }
 
   // Machine-level edges: the extractor "spit", assembler recipe switches.
@@ -477,11 +600,54 @@
   // screen has finished — nothing else paints over it.
   function frame(state, surf) {
     if (!surf) return;
+    const screen = (state && state.screen) || '';
     const run = state && state.run;
-    if (run && mem && mem.grid === run.grid && state.screen === 'run') {
+    if (run && mem && mem.grid === run.grid && screen === 'run') {
       drawSmears(run, surf);
+      drawDread(run, surf);
+      drawBorder(run, surf);
       drawEmber(run, surf);
     }
+    if (screen === 'descend') drawCrack(surf);
+    drawParts(surf, screen);
+  }
+
+  // --- A2: the lights flicker before the hit -------------------------------
+  // At terminal instability the map dims one step for the 2 ticks before each
+  // scheduled collapse quake. Read straight off run.quakeAt — the sim already
+  // knows when the next one lands, so dread costs nothing but a shade.
+  function drawDread(run, surf) {
+    if ((run.instability || 0) < 99) return;
+    const dt = (run.quakeAt || 0) - run.t;
+    if (!run.quakeAt || dt < 0 || dt > 2) return;
+    const B = mapBox(surf);
+    if (!B) return;
+    for (let r = B.y; r < B.y + B.h; r++) {
+      for (let c = B.x; c < B.x + B.w; c++) {
+        const f = surf.fg(c, r);
+        if (f) surf.put(c, r, surf.ch(c, r), shadeOf(f, 0.55));
+      }
+    }
+  }
+
+  // --- A2: the map border breathes red at high instability -----------------
+  function drawBorder(run, surf) {
+    const inst = run.instability || 0;
+    if (inst < 80) return;
+    const B = mapBox(surf);
+    if (!B) return;
+    const x0 = B.x - 1, y0 = B.y - 1, w = B.w + 2, h = B.h + 2;
+    const k = 0.35 + 0.5 * breathe(2 * FPS);           // ~2s period
+    for (let c = x0; c < x0 + w; c++) {
+      tintCell(surf, c, y0, k); tintCell(surf, c, y0 + h - 1, k);
+    }
+    for (let r = y0 + 1; r < y0 + h - 1; r++) {
+      tintCell(surf, x0, r, k); tintCell(surf, x0 + w - 1, r, k);
+    }
+  }
+  function tintCell(surf, c, r, k) {
+    const f = surf.fg(c, r);
+    if (f) surf.put(c, r, surf.ch(c, r), mixOf(f, C.red, k));
   }
 
   // --- A1: GRIT's cigarette ------------------------------------------------
