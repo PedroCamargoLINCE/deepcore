@@ -64,6 +64,14 @@ clock + a small particle list; render calls `DC.FX.frame(state)` overlays last.
 Two dispatches: **M-ANIM-1** (machines & world, table A1) and **M-ANIM-2**
 (screen moments & particles, table A2).
 
+> **Dispatch note — this section IS the M-ANIM brief.** There is deliberately
+> no `### M-ANIM` heading down in §B: the tables below, plus the contracts
+> paragraph that closes this section, are the whole specification. A worker
+> assigned M-ANIM-1 or M-ANIM-2 should read **§A end to end** and treat each
+> table row as an acceptance criterion. Rows are independent — ship them one
+> at a time, committing as each lands, rather than building all of `fx.js`
+> before the first thing moves on screen.
+
 ### A1 — Machines & world (element / when (true state) / choreography)
 
 | Element | When | Choreography |
