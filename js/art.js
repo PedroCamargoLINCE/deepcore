@@ -5,6 +5,7 @@
   const root = typeof window !== 'undefined' ? window : globalThis;
   const DC = root.DC = root.DC || {};
   const A = DC.Art = {};
+  const D = DC.DATA;   // data.js loads first; the field manual is composed from it
 
   const sp = function (n) { return ' '.repeat(n); };
   const rep = function (c, n) { return c.repeat(n); };
@@ -46,6 +47,8 @@
   A.title.push(seg(DTEX, 5, 63));
 
   // ---------------- strata banner (generic 3-line flash frame) ----------------
+  // RESERVED for M-ANIM-2 (SPEC3 §A2): the descend interstitial frame that the
+  // stratum name typewriters into. Unreferenced today — do not garbage-collect.
   A.strataBanner = [
     '╔' + rep('═', 10) + '▓▒░' + rep('═', 18) + '░▒▓' + rep('═', 10) + '╗',
     '║' + sp(44) + '║',
@@ -155,18 +158,55 @@
     A.victory = lines;
   })();
 
-  // ---------------- help: field manual (74 x 25) ----------------
+  // ---------------- help: field manual (74 x 30) ----------------
+  // CX-02/CX-03: every number and key binding in here is COMPOSED from
+  // DC.DATA (and cross-checked against engine.js's handlers) so the manual
+  // can never drift from the sim again. If you retune data.js, the manual
+  // retunes with it. Don't reintroduce literals.
   (function () {
-    const padTo = function (s, n) { return s.length >= n ? s : s + sp(n - s.length); };
+    // pad-or-clip: a retuned constant can never break the box frame, and
+    // test/barks_test.js asserts nothing is actually being clipped.
+    const padTo = function (s, n) {
+      return s.length >= n ? s.slice(0, n) : s + sp(n - s.length);
+    };
+    const n = function (v) { return String(Math.round(v * 10) / 10); };
+    const secs = function (ticks) { return n(ticks / D.TICK_HZ); };
+
+    // --- values pulled from the balance source of truth ---
+    const digRock   = secs(D.DIG_ROCK);
+    const digRubble = secs(D.DIG_RUBBLE);
+    const odMult    = n(D.OVERDRIVE.drillMult);
+    const quakeInst = n(D.QUAKE.startInst);
+    const damper    = D.BUILDINGS.damper;
+    const calmPct   = n(damper.calm * 100);
+    const damperMax = n(D.DAMPER_MAX);
+    const repairPl  = n(D.REPAIR_COST);
+    const fuelPer   = n(D.FUEL_PER);
+    const gearIn    = D.RECIPES.gear.in.ironPlate;
+    const chgIn     = D.RECIPES.charge.in;
+    // instability vented on descent. Lives as a literal in sim.js startStratum
+    // today; DESCEND_VENT is the DATA key it should move to (see README /
+    // integrator note). Fallback keeps the manual honest until it lands.
+    const vent      = n(D.DESCEND_VENT != null ? D.DESCEND_VENT : 45);
+    // first stratum whose breach needs core charges = when charges matter
+    let chargeStratum = D.STRATA.length;
+    for (let i = 0; i < D.STRATA.length; i++) {
+      if (D.STRATA[i].breach.charge > 0) { chargeStratum = i + 1; break; }
+    }
+    // build hotkeys, straight off BUILD_ORDER (engine maps '1'..'5' by index)
+    const tools = D.BUILD_ORDER.map(function (k, i) {
+      return (i + 1) + ' ' + D.BUILDINGS[k].name;
+    });
+
     const L = [
       'CONTROLS',
-      '1..5   build tools:',
-      '       1 belt      2 extractor',
-      '       3 smelter   4 assembler',
-      '       5 damper',
-      'X      demolish · dig rock (4s)',
+      '1..' + tools.length + '   build tools:',
+      '       ' + padTo(tools[0], 12) + tools[1],
+      '       ' + padTo(tools[2], 12) + tools[3],
+      '       ' + tools[4],
+      'X      demolish · dig rock (' + digRock + 's)',
       'R      rotate output side',
-      'C      overdrive: 2x drill, +inst',
+      'C      overdrive: ' + odMult + 'x drill, +inst',
       'D      descend when BREACH READY',
       'SPACE  pause   ESC menu   H manual',
       rep('─', 34),
@@ -180,30 +220,33 @@
     ];
     const R = [
       'TERRAIN & HAZARDS',
-      '▓ rock      dig with X, 4s',
+      '▓ rock      dig with X, ' + digRock + 's',
       '█ obsidian  never yields',
       '░ chasm     impassable void',
       '≈ magma     spreads · melts all',
-      '☼ rubble    clear with X, 2s',
+      '☼ rubble    clear with X, ' + digRubble + 's',
       rep('─', 29),
-      'instability always climbs; past',
-      '22, quakes break machines and',
-      'bleed hull integrity. V dampers',
-      'slow it 25% each (max 3, coal).',
-      'descending vents 40 instability.',
+      'instability always climbs. past',
+      'inst ' + quakeInst + ', quakes break machines',
+      'and bleed hull integrity. dampers',
+      'V slow it ' + calmPct + '% each (max ' + damperMax + ', coal).',
+      'descending vents ' + vent + ' instability.',
       'integrity 0 = the rig is lost.',
       rep('─', 29),
       'ENTER/click on: hub = overdrive,',
       'assembler = recipe, damaged',
-      'machine = repair (2▬ · m_fix 1).',
+      'machine = repair (' + repairPl + '▬ · m_fix 1).',
       'GRIT is on the intercom. ignore.',
     ];
     const chain = [
       'PRODUCTION CHAIN ── belts into any rig tile deliver their cargo',
-      '≡ ore ──▶ [E]xtractor ──▶ ▶▶▶ belt ──▶ [S]melter ──▶ ▬ plate  (♠ 1/3)',
-      '▬▬ 2 iron plates ──▶ [A]ssembler ──▶ ¤ gear ──▶ belt into [D]rill rig',
-      '♦ crystal + ▬ copper + ♠♠ coal ──▶ [A] ──▶ ‡ core charge  (stratum 5+)',
-      'descend: goods carry on, machines are lost, instability vents −40',
+      '≡ ore ──▶ [E]xtractor ──▶ ▶▶▶ belt ──▶ [S]melter ──▶ ▬ plate  (♠ 1/' +
+        fuelPer + ')',
+      rep('▬', gearIn) + ' ' + gearIn + ' iron plates ──▶ [A]ssembler ──▶ ¤ gear' +
+        ' ──▶ belt into [D]rill rig',
+      '♦ crystal + ▬ copper + ' + rep('♠', chgIn.coal) + ' coal ──▶ [A] ──▶ ' +
+        '‡ core charge  (stratum ' + chargeStratum + '+)',
+      'descend: goods carry on, machines are lost, instability vents −' + vent,
     ];
     const tips = [
       'TIPS ▪ run two smelters — a lone smelter starves the assembler line',

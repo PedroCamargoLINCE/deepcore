@@ -6,6 +6,13 @@
    lines); a scripted drive fires ≥6 distinct triggers with no line reuse;
    foreman set/expiry; priority cut-in + cooldown; pool-exhaust reuse;
    cause-aware epitaphs; victory toast; log mirroring.
+   M-POLISH adds three lints over the shipped content:
+     CX-07  no duplicate punchlines anywhere in the 168-line corpus
+     CX-10  GRIT's voice guardrails as a machine check (non-consent framing,
+            explicit anatomy, demographic targeting — all OUT; profanity,
+            gallows humor, rig innuendo and Company-hating stay IN)
+     CX-02/03  the field manual (art.js) carries no number or key binding that
+            contradicts data.js / engine.js
    Scaffold mutations (marked "scaffold:") force ambient conditions the
    drive cannot cheaply reach; all bark behavior runs through the API. */
 'use strict';
@@ -291,7 +298,183 @@ SECTION = 'toast';
   assert(B.TOASTS.indexOf(t) >= 0, 'toast comes from the victory toast pool');
 }
 
+// ------------------------------------------- CX-07: no duplicate punchlines
+// Same joke twice is worse than one fewer joke. Exact repeats are banned
+// outright; near-repeats are caught by content-word overlap (Jaccard over
+// non-stopword stems), which is what flagged the original
+// "the deep keeps her/the deposit" pair across the death pool and the
+// abandon epitaph. Current corpus tops out at 0.25 (shared vocabulary,
+// genuinely different jokes), so 0.30 is a real ceiling with headroom.
+SECTION = 'duplicates';
+const DUP_MAX = 0.30;
+const STOP = new Set(('a an the and or but so of to in on at it its is was are ' +
+  'be been for with that this these those you your youre we us our my me i he ' +
+  'she her him they them not no dont doesnt aint just like as if then than too ' +
+  'very there here down up out off from about kid one two now got get gets go ' +
+  'goes do does did has have had').split(' '));
+function contentWords(s) {
+  return s.toLowerCase().replace(/[^a-z0-9' ]/g, ' ').split(/\s+/)
+    .map(w => w.replace(/'/g, ''))
+    .filter(w => w.length > 2 && !STOP.has(w));
+}
+{
+  const byText = new Map();
+  for (const [tag, l] of allLines) {
+    if (byText.has(l)) fail('exact duplicate line in ' + byText.get(l) +
+      ' and ' + tag + ': ' + l);
+    byText.set(l, tag);
+  }
+  const sets = allLines.map(([, l]) => new Set(contentWords(l)));
+  let worst = 0, worstPair = null;
+  for (let i = 0; i < allLines.length; i++) {
+    for (let j = i + 1; j < allLines.length; j++) {
+      const a = sets[i], b = sets[j];
+      if (!a.size || !b.size) continue;
+      let inter = 0;
+      for (const w of a) if (b.has(w)) inter++;
+      const jac = inter / (a.size + b.size - inter);
+      if (jac > worst) { worst = jac; worstPair = [allLines[i], allLines[j]]; }
+    }
+  }
+  assert(worst < DUP_MAX, 'no near-duplicate punchlines (overlap ' +
+    worst.toFixed(2) + ' >= ' + DUP_MAX + '):\n  ' +
+    worstPair[0][0] + ': ' + worstPair[0][1] + '\n  ' +
+    worstPair[1][0] + ': ' + worstPair[1][1]);
+  var DUP_WORST = worst;  // reported in the PASS line
+}
+
+// ---------------------------------------------- CX-10: voice guardrail lint
+// SPEC3 rule 5: profanity, gallows humor, drilling innuendo and Company-hating
+// are IN BOUNDS by design. Slurs, hate, explicit anatomy and non-consent
+// framing are OUT — the joke is the rig and the job, never an unwilling party.
+// Demographic nouns are the proxy for the slur/hate class: GRIT talks about
+// the Company, the planet, the rig and himself, so any protected-group noun
+// appearing at all is a signal worth a human look.
+SECTION = 'guardrails';
+{
+  const BANNED = [
+    // non-consent framing (the CX-10 class)
+    [/\bconsent(s|ed|ing|ual)?\b/i, 'non-consent framing'],
+    [/\bunwilling\b/i, 'non-consent framing'],
+    [/\bagainst (her|his|its|their) will\b/i, 'non-consent framing'],
+    [/\b(didn'?t|does ?n'?t|won'?t) want (it|to|this)\b/i, 'non-consent framing'],
+    [/\bforc(e|es|ed|ing) (her|him|them|it) (to|into)\b/i, 'non-consent framing'],
+    [/\b(rape|molest\w*|violat(e|ed|ing) her)\b/i, 'non-consent framing'],
+    // explicit anatomy
+    [/\b(cock|dick|pussy|tits?|nipples?|genitals?|penis|vagina|boobs?)\b/i,
+      'explicit anatomy'],
+    // demographic targeting (slur/hate proxy)
+    // (plural forms only for color words: "the black rocks" is coal, not people)
+    [/\b(jews?|muslims?|christians?|blacks|whites|asians?|arabs?|gays?|lesbians?|trannies|immigrants?|foreigners?|retard\w*|cripples?)\b/i,
+      'demographic targeting'],
+  ];
+  for (const [tag, l] of allLines) {
+    for (const [re, why] of BANNED) {
+      if (re && re.test(l)) fail('guardrail (' + why + ') in ' + tag + ': ' + l);
+    }
+  }
+  // the specific line CX-10 named must be gone, and its replacement present
+  const flat1 = allLines.map(x => x[1]);
+  assert(flat1.indexOf("First extractor down. The vein didn't consent, but here we are.") < 0,
+    'the CX-10 non-consent line is gone');
+  assert(B.POOLS.firstExtractor.some(l => /she bites, the rock gives/i.test(l)),
+    'the CX-10 replacement line shipped');
+  // CX-07: neither half of the duplicated "deposit" gag survives twice
+  const deposits = flat1.filter(l => /deep keeps/i.test(l));
+  assertEq(deposits.length, 1, 'the "the deep keeps the deposit" gag is told once');
+}
+
+// ------------------------- CX-02 / CX-03: field manual vs data.js & engine.js
+// art.js composes the manual from DC.DATA at load. This lint proves it: every
+// integer printed in the manual must be derivable from the balance data (or
+// from an engine binding), so retuning data.js can never leave a lie on the
+// help screen again.
+SECTION = 'manual';
+{
+  const fs = require('fs');
+  const path = require('path');
+  const help = DC.Art.help;
+  assert(Array.isArray(help) && help.length > 10, 'A.help is a line array');
+  const widths = new Set(help.map(l => l.length));
+  assertEq(widths.size, 1, 'every manual row is the same width (box is intact)');
+  assert(help[0].length <= 74, 'manual is <= 74 columns (got ' + help[0].length + ')');
+  assert(help.length <= D.ROWS - 2, 'manual fits the 33-row screen with a footer');
+
+  // the vent constant still lives as a literal in sim.js startStratum; read it
+  // from DATA when the integrator promotes it, else from the sim source.
+  let vent = D.DESCEND_VENT;
+  if (vent == null) {
+    const simSrc = fs.readFileSync(path.join(__dirname, '../js/sim.js'), 'utf8');
+    const m = simSrc.match(/run\.instability\s*=\s*Math\.max\(0,\s*run\.instability\s*-\s*(\d+)\)/);
+    assert(m, 'found the descend vent literal in sim.js startStratum');
+    vent = Number(m[1]);
+  }
+
+  const allowed = new Map();  // number -> what authorizes it
+  const allow = (v, why) => allowed.set(Number(v), why);
+  for (let i = 1; i <= D.BUILD_ORDER.length; i++) allow(i, 'build hotkey');
+  allow(D.DIG_ROCK / D.TICK_HZ, 'DIG_ROCK seconds');
+  allow(D.DIG_RUBBLE / D.TICK_HZ, 'DIG_RUBBLE seconds');
+  allow(D.OVERDRIVE.drillMult, 'OVERDRIVE.drillMult');
+  allow(D.QUAKE.startInst, 'QUAKE.startInst');
+  allow(D.BUILDINGS.damper.calm * 100, 'damper.calm %');
+  allow(D.DAMPER_MAX, 'DAMPER_MAX');
+  allow(D.REPAIR_COST, 'REPAIR_COST');
+  allow(1, 'REPAIR_COST with m_fix');
+  allow(D.FUEL_PER, 'FUEL_PER');
+  allow(D.RECIPES.gear.in.ironPlate, 'gear recipe input');
+  allow(D.RECIPES.charge.in.coal, 'charge recipe coal');
+  allow(5, 'engine.js SHIFT cursor jump');
+  allow(0, 'the death threshold (integrity 0)');
+  let chargeStratum = D.STRATA.length;
+  for (let i = 0; i < D.STRATA.length; i++)
+    if (D.STRATA[i].breach.charge > 0) { chargeStratum = i + 1; break; }
+  allow(chargeStratum, 'first stratum needing core charges');
+  allow(vent, 'descend instability vent');
+
+  const printed = new Set();
+  for (const row of help) {
+    const nums = row.match(/\d+(?:\.\d+)?/g) || [];
+    for (const t of nums) {
+      const v = Number(t);
+      printed.add(v);
+      assert(allowed.has(v), 'manual prints ' + t + ' which no data.js value ' +
+        'authorizes — the manual has drifted from the sim: ' + row.trim());
+    }
+  }
+  // the three CX-02/CX-03 numbers must actually be on the page
+  assert(printed.has(Number(D.QUAKE.startInst)),
+    'manual states the real quake onset (' + D.QUAKE.startInst + ')');
+  assert(printed.has(Number(vent)), 'manual states the real descend vent (' + vent + ')');
+  const joined = help.join('\n');
+  assertEq((joined.match(new RegExp('\\b' + vent + '\\b', 'g')) || []).length, 2,
+    'both vent mentions (hazard column + chain footer) agree');
+
+  // key bindings: arrows only, WASD is deliberately unbound
+  const engSrc = fs.readFileSync(path.join(__dirname, '../js/engine.js'), 'utf8');
+  assert(/ArrowUp/.test(engSrc) && /ArrowLeft/.test(engSrc), 'engine binds arrow keys');
+  assert(!/\bKeyW\b/.test(engSrc) && !/\bw:\s*0\b/.test(engSrc),
+    'engine leaves WASD unbound (SPEC3 M-MANUAL)');
+  assert(!/WASD/i.test(joined), 'manual does not promise WASD');
+  assert(/↑↓←→/.test(joined), 'manual documents the arrow-key cursor');
+  for (const k of ['x', 'r', 'c', 'd', 'h']) {
+    assert(new RegExp("case '" + k + "':").test(engSrc),
+      'manual key ' + k.toUpperCase() + ' is really bound in engine.runKey');
+  }
+  assert(/if \(k === ' '\) \{ ui\.paused = true/.test(engSrc), 'SPACE pauses');
+  assert(/if \(k === 'Enter'\) \{ contextAction/.test(engSrc), 'ENTER is the context action');
+  assert(/e\.shiftKey \? 5 : 1/.test(engSrc), 'SHIFT jumps the cursor 5 tiles');
+  // build tool names/order come straight from data.js
+  for (let i = 0; i < D.BUILD_ORDER.length; i++) {
+    const nm = D.BUILDINGS[D.BUILD_ORDER[i]].name;
+    assert(new RegExp((i + 1) + ' ' + nm).test(joined),
+      'manual lists hotkey ' + (i + 1) + ' as ' + nm);
+  }
+}
+
 console.log('PASS barks | categories ' + CATALOG.length +
   ' | lines ' + allLines.length +
   ' | drive triggers ' + trigs.size + ' (' + Array.from(trigs).sort().join(',') + ')' +
-  ' | barks in drive ' + d1.lines.length);
+  ' | barks in drive ' + d1.lines.length +
+  ' | worst line overlap ' + DUP_WORST.toFixed(2) + '/' + DUP_MAX.toFixed(2) +
+  ' | manual ' + DC.Art.help[0].length + 'x' + DC.Art.help.length + ' data-composed');

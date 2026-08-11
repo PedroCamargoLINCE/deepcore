@@ -41,7 +41,7 @@
     ],
     firstExtractor: [
       "Extractor's biting. Listen to her chew. That's money noise.",
-      "First extractor down. The vein didn't consent, but here we are.",
+      "First extractor down. She bites, the rock gives. Match made in hell.",
       "That's it, kid — point the teeth at the shiny stuff.",
       "Extractor set. Now the rock works for US. Feels good, don't it?",
     ],
@@ -127,7 +127,7 @@
     demolish: [
       "Torn down. Scrap's half price back. Company math, don't ask.",
       "Demolished. I love the smell of buyer's remorse in the deep.",
-      "Scrapped it. Half the plates back, all of the shame.",
+      "Scrapped it. She gave three whole minutes of service. Ingrate.",
       "Down she comes. Build, wreck, rebuild — it's called a career.",
     ],
     brokeAttempt: [
@@ -149,8 +149,8 @@
       "Upgrade's welded. Try to scratch it up real good down there.",
     ],
     death: [
-      "Good news, kid: you're a permanent part of the geology now.",
-      "Rig's gone. The deep keeps her deposit. Always does.",
+      "Good news, kid: no more commute. Bad news: no more anything.",
+      "Rig's gone. Twenty years I knew her. Rock took ten seconds.",
       "That's the shift, kid. Punch out. The planet punched first.",
       "We're done. Tell my pension I never believed in it either.",
     ],

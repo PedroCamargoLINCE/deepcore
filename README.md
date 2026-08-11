@@ -17,7 +17,7 @@ stay: quakes, rubble, magma. This is not a game about surviving. Get through.
 ## Play
 
 Open `index.html` in any modern browser (double-click works — no server, no
-build, no dependencies). Or the single-file build: `dist/deepcore.html`.
+build step). Or the single-file build: `dist/deepcore.html`.
 
 - A run to the Core takes roughly 15–25 minutes. Death is permanent; progress
   isn't — cores banked from every run buy permanent Foundry upgrades.
@@ -26,19 +26,40 @@ build, no dependencies). Or the single-file build: `dist/deepcore.html`.
 
 ## Controls
 
+The mouse is optional: every action has a keyboard route through the map cursor.
+
+**In a run**
+
 | Key | |
 |---|---|
-| `1–5` | select building (belt, extractor, smelter, assembler, damper) |
+| `1`–`5` | select building (belt, extractor, smelter, assembler, damper) |
 | click / drag | place — drag belts to lay runs, corners turn automatically |
-| `R` | rotate facing |
+| `↑` `↓` `←` `→` | move the map cursor (hold `Shift` to jump 5 tiles) |
+| `Enter` | at the cursor: place / interact / repair — with no tool selected, it's a click |
+| `Enter` (belt tool) | arm lay-mode: moving the cursor lays belts and turns corners; `Enter`, `Esc` or switching tools disarms |
+| `R` | rotate facing (output side of the next machine) |
 | `X` | demolish / excavate rock |
 | `C` | overdrive the drill (faster breach, faster instability) |
 | `D` | descend when the breach is ready |
-| `Esc` | cancel tool / pause menu |
+| `Space` | pause |
+| `Esc` | disarm lay-mode → cancel tool → pause menu |
 | `H` | manual |
 
-Click a damaged machine to repair it, an assembler to switch recipe, the rig to
-toggle overdrive.
+Clicking (or `Enter` with no tool) a damaged machine repairs it, an assembler
+switches recipe, the rig toggles overdrive.
+
+**Everywhere else**
+
+| Key | |
+|---|---|
+| `Enter` | title: start a run · schematic/foundry/help/end screens: continue or back |
+| `F` | title: the Foundry |
+| `H` | title or pause menu: manual |
+| `1`–`4` | descent screen: take that schematic |
+| `A`–`I` | Foundry: forge that upgrade |
+| `A` | pause menu: abandon the run (banks your cores) |
+| `C` | victory screen: continue into the Mantle |
+| `Esc` | back / resume |
 
 ## The chain
 
@@ -54,12 +75,26 @@ can be spent or drilled. The factory *is* the timer.
 
 ## Development
 
-- `SPEC.md` — full design & module contracts (`SPEC2.md` juice layer,
-  `SPEC3.md` creative addendum + dispatch briefs)
-- `node test/headless.js` — headless sim test (no browser)
+Specs, in reading order:
+
+- `SPEC.md` — full design & module contracts (the source of truth for systems)
+- `SPEC2.md` — the juice layer (GRIT, rig portrait, schematic cards, events)
+- `SPEC3.md` — creative addendum + the dispatch briefs still on the board
+- `docs/DISPATCH.md` — how briefs are handed out (file ownership per worker)
+- `docs/ROADMAP.md` — superseded by SPEC3; kept as a map of the old module ids
+
+Everything runs on plain `node` — no test runner, no install:
+
+- `node test/headless.js` — headless sim: mapgen, machines, belts, hazards
+- `node test/integration.js` — engine + sim end-to-end, bot policies, screens
+- `node test/barks_test.js` — GRIT's line corpus, voice lint, field-manual
+  consistency against `data.js`
+- `node test/rig_test.js` — rig portrait composition (art.js overlays)
+- `node test/balance.js` — multi-seed balance sweep against the SPEC §12 targets
 - `node tools/build.js` — bundle into `dist/deepcore.html`
-- `docs/ROADMAP.md` — dispatchable follow-up modules (sound, tier-2 logistics,
-  events, daily seed)
+
+`js/data.js` is the balance source of truth; the in-game field manual composes
+its numbers from it at load, so tuning a constant retunes the manual too.
 
 Plain JS on one canvas, characters only — the ASCII is the identity and it
 stays. Dependencies are welcome when they genuinely sharpen the experience
