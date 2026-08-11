@@ -1510,11 +1510,22 @@ function engineBarksSection(seed) {
 // the right cell. The sim is only ever driven through its public API — FX
 // itself must never write to run/ui, which the guards below also check.
 // =========================================================================
+// The SPEC3 §A rows that have landed, in table order. Every row named here
+// must still fire under a constructed state or the section fails with its
+// name — this is the regression net for the whole animation layer.
+const FX_ROWS_A1 = [
+  'extractor.mining', 'extractor.depleted', 'smelter.fire', 'smelter.cold',
+  'assembler.spin', 'damper.breathe', 'belt.march', 'belt.jam', 'belt.smear',
+];
+const FX_ROWS_A2 = [];
+
 function fxSection(seed) {
   SECTION = 'fx seed=' + seed;
   require('../js/fx.js');
   require('../js/render.js');
   const FX = DC.FX, R = DC.Render;
+  const covered = {};
+  function row(id) { covered[id] = 1; }
   assert(FX && FX.begin && FX.tile && FX.frame, 'DC.FX exposes begin/tile/frame');
   assert(typeof R.cellAt === 'function', 'render exports the cellAt test surface');
 
@@ -1537,6 +1548,16 @@ function fxSection(seed) {
   st.ui.cursor = { x: hx + 1, y: hy + 1 };
 
   function frames(n) { for (let i = 0; i < n; i++) R.frame(st); }
+  // first placeable footprint near the hub — the 7x7 clearing is guaranteed
+  // floor but procgen decides what else is free, so nothing is hardcoded
+  function spot(type) {
+    for (let y = hy - 5; y <= hy + 6; y++) {
+      for (let x = hx - 5; x <= hx + 6; x++) {
+        if (S.canPlace(run, type, x, y, 1).ok) return { x: x, y: y };
+      }
+    }
+    return null;
+  }
   function cell(x, y) { return R.cellAt(D.MAP_X + x, D.MAP_Y + y); }
   // distinct fg colors a cell takes across n frames (no sim ticks)
   function palette(x, y, n) {
@@ -1547,6 +1568,14 @@ function fxSection(seed) {
   function glyphs(x, y, n) {
     const seen = {};
     for (let i = 0; i < n; i++) { frames(1); seen[cell(x, y).ch] = 1; }
+    return Object.keys(seen);
+  }
+  // Same, but ticking the sim once per frame the way the engine loop does.
+  // render's own '!' status blink is phased on run.t (not on the frame
+  // clock), so a frames-only sample can sit inside one blink half forever.
+  function glyphsLive(x, y, n) {
+    const seen = {};
+    for (let i = 0; i < n; i++) { S.tick(run); frames(1); seen[cell(x, y).ch] = 1; }
     return Object.keys(seen);
   }
 
@@ -1563,6 +1592,7 @@ function fxSection(seed) {
   assert(Object.keys(beltShades).length >= 3,
     'empty belt arrow pulses through its 3-step brightness ramp (got ' +
     Object.keys(beltShades).length + ')');
+  row('belt.march');
 
   // ---- A1: belt item jammed > 2s shivers ---------------------------------
   // a belt aimed into the hub's own wall of rock: nothing can accept the item
@@ -1576,6 +1606,7 @@ function fxSection(seed) {
   assert(run.grid[jy][jx].belt.item === 'ironPlate', 'the jammed item really is stuck');
   const held1 = Object.keys(palette(jx, jy, 20));
   assertEq(held1.length, 2, 'a jam over 2s shivers between its color and dim');
+  row('belt.jam');
 
   // ---- A1: belt item on move tick leaves a one-frame bright smear --------
   const sx = hx - 2, sy = hy - 2;
@@ -1591,6 +1622,133 @@ function fxSection(seed) {
   assert(smear.fg !== D.ITEMS.gear.color, 'the smear is brighter than the item');
   frames(1);
   assertEq(cell(sx, sy).ch, D.ARROWS[1], 'the smear lasts exactly one frame');
+  row('belt.smear');
+
+  // ---- A1: extractor — the piston stroke, the spit, the dead pump --------
+  let ore = null;
+  for (let y = hy - 6; y <= hy + 6 && !ore; y++) {
+    for (let x = hx - 6; x <= hx + 6 && !ore; x++) {
+      const t = run.grid[y] && run.grid[y][x];
+      if (t && t.revealed && t.ore && t.oreAmt > 0 && t.machine === null && !t.belt &&
+          t.t === 'floor') ore = { x: x, y: y };
+    }
+  }
+  assert(ore, 'scaffold: a revealed ore tile near the hub');
+  run.inv.ironPlate += 40;                    // scaffold: pay for the test rig
+  assert(S.place(run, 'extractor', ore.x, ore.y, 1), 'scaffold: extractor on the vein');
+  S.tick(run);
+  const exM = run.machines[run.grid[ore.y][ore.x].machine];
+  assertEq(exM.status, 'ok', 'the extractor is actively mining');
+  const pump = glyphs(ore.x, ore.y, 40);
+  assert(pump.indexOf('E') >= 0 && pump.indexOf('╪') >= 0 && pump.indexOf('╫') >= 0,
+    'a mining extractor cycles E ╪ E ╫ (got ' + pump.join('') + ')');
+  row('extractor.mining');
+
+  // the spit: a belt on the output tile shows the fresh ore bright-white
+  const ot = { x: ore.x + 1, y: ore.y };
+  if (run.grid[ot.y][ot.x].t === 'floor' && run.grid[ot.y][ot.x].machine === null) {
+    assert(S.place(run, 'belt', ot.x, ot.y, 1), 'scaffold: belt on the output tile');
+    let spat = false;
+    for (let i = 0; i < 6 * HZ && !spat; i++) {
+      S.tick(run); frames(1);
+      const c = cell(ot.x, ot.y);
+      if (c.ch === D.ORE_GLYPHS[run.grid[ore.y][ore.x].ore].glyph || c.ch === '•') {
+        if (c.fg === D.COLORS.white) spat = true;
+      }
+    }
+    assert(spat, 'each ore produced renders bright-white on the output tile');
+  }
+
+  run.grid[ore.y][ore.x].oreAmt = 0;          // scaffold: work the vein out
+  S.tick(run);
+  assertEq(exM.status, 'depleted', 'the vein is depleted');
+  // a 1x1's status '!' lands on the anchor itself, so this cell alternates
+  // between render's marker and the decaying pump — both must be present
+  const dead = glyphsLive(ore.x, ore.y, 40);
+  assert(dead.indexOf('×') >= 0, 'a depleted extractor shows × on alternate phases (got ' +
+    dead.join('') + ')');
+  assert(dead.indexOf('!') >= 0, "the depleted '!' marker still gets its half of the blink");
+  frames(1);
+  assert(cell(ore.x, ore.y).fg !== D.COLORS.amber, 'the dead pump decays out of amber');
+  row('extractor.depleted');
+
+  // ---- A1: smelter — the furnace breathes fire, goes cold without coal ----
+  const smSpot = spot('smelter');
+  assert(smSpot, 'scaffold: a free 2x2 for the smelter');
+  const smx = smSpot.x, smy = smSpot.y;
+  assert(S.place(run, 'smelter', smx, smy, 1), 'scaffold: smelter placed');
+  const sm = run.machines[run.grid[smy][smx].machine];
+  sm.input.ironOre = 4; sm.input.coal = 2;    // scaffold: feed it by hand
+  S.tick(run);
+  assert(sm.job, 'the smelter is crafting');
+  const fire = glyphs(smx, smy + 1, 30);
+  assert(fire.indexOf('▓') >= 0 && fire.indexOf('▒') >= 0 && fire.indexOf('░') >= 0,
+    'a fueled smelter breathes ▓▒░ (got ' + fire.join('') + ')');
+  const emberCols = palette(smx, smy + 1, 30);
+  assert(emberCols.indexOf(D.COLORS.magma) >= 0 && emberCols.indexOf(D.COLORS.orange) >= 0 &&
+    emberCols.indexOf(D.COLORS.amber) >= 0, 'the fire rolls magma -> orange -> amber');
+  frames(1);
+  assert(cell(smx, smy).ch === D.BUILDINGS.smelter.letter, 'the S anchor stays steady');
+  assert(cell(smx + 1, smy).ch !== cell(smx, smy + 1).ch ||
+    cell(smx + 1, smy).fg !== cell(smx, smy + 1).fg,
+    'fire cells are phase-offset from each other');
+  row('smelter.fire');
+
+  sm.job = null; sm.progress = 0;             // scaffold: starve it of coal
+  sm.input.coal = 0; sm.fuel = 0; sm.input.ironOre = 2;
+  S.tick(run);
+  assertEq(sm.status, 'nofuel', 'the smelter is out of coal');
+  frames(1);
+  assertEq(cell(smx, smy + 1).ch, '░', 'a cold smelter shows ░');
+  assertEq(cell(smx, smy + 1).fg, D.COLORS.darkgray, 'a cold smelter is darkgray');
+  const bang = glyphsLive(smx + 1, smy, 20);
+  assert(bang.indexOf('!') >= 0, "the existing '!' blink stays on top of the cold fire");
+  row('smelter.cold');
+
+  // ---- A1: assembler — meshed gears, and a spin on the recipe switch ------
+  const asSpot = spot('assembler');
+  assert(asSpot, 'scaffold: a free 2x2 for the assembler');
+  const ax = asSpot.x, ay = asSpot.y;
+  assert(S.place(run, 'assembler', ax, ay, 1), 'scaffold: assembler placed');
+  const asm = run.machines[run.grid[ay][ax].machine];
+  asm.input.ironPlate = 4;                    // scaffold: feed it by hand
+  S.tick(run);
+  assert(asm.job, 'the assembler is crafting');
+  const gears = glyphs(ax + 1, ay, 30);
+  assert(gears.indexOf('¤') >= 0 && gears.indexOf('☼') >= 0,
+    'a crafting assembler spins ¤ ☼ (got ' + gears.join('') + ')');
+  const r0 = asm.recipe;
+  S.clickTile(run, ax, ay);
+  assert(asm.recipe !== r0, 'scaffold: the recipe switched');
+  frames(1);
+  assertEq(cell(ax + 1, ay).fg, D.COLORS.white,
+    'a recipe switch acknowledges with one bright full-speed spin');
+  frames(FX.FPS);
+  assert(cell(ax + 1, ay).fg !== D.COLORS.white, 'the acknowledgment spin ends');
+  row('assembler.spin');
+
+  // ---- A1: damper — a calm green heartbeat, flat when unfueled ------------
+  run.inv.copperPlate = (run.inv.copperPlate || 0) + 4;   // scaffold: afford it
+  const dSpot = spot('damper');
+  assert(dSpot, 'scaffold: a free tile for the damper');
+  const dx2 = dSpot.x, dy2 = dSpot.y;
+  assert(S.place(run, 'damper', dx2, dy2, 1), 'scaffold: damper placed');
+  const dmp = run.machines[run.grid[dy2][dx2].machine];
+  S.tick(run);
+  assertEq(dmp.status, 'nofuel', 'an unfed damper reads nofuel');
+  const flat = {};
+  for (let i = 0; i < 40; i++) {
+    S.tick(run); frames(1);                   // tick: render's '!' is run.t-phased
+    const c = cell(dx2, dy2);
+    if (c.ch !== '!') flat[c.fg] = 1;
+  }
+  assertEq(Object.keys(flat).length, 1, 'an unfueled damper sits at one flat dim color');
+  dmp.input.coal = 2;                         // scaffold: hand it a lump of coal
+  S.tick(run);
+  assert(dmp.fuel > 0, 'the damper is burning');
+  assert(palette(dx2, dy2, 90).length >= 5,
+    'a fueled damper breathes green on a slow sine');
+  row('damper.breathe');
 
   // ---- the hard constraint: FX never writes back into the sim ------------
   const before = JSON.stringify({
@@ -1604,7 +1762,11 @@ function fxSection(seed) {
   }), before, 'advancing 120 FX frames changed nothing in the run');
   assert(FX.clock() > 0, 'the FX frame clock advanced');
 
-  return { glyphs: glyphs, frames: frames, cell: cell, palette: palette, run: run, st: st };
+  const all = FX_ROWS_A1.concat(FX_ROWS_A2);
+  const missing = all.filter(function (id) { return !covered[id]; });
+  assert(missing.length === 0, 'SPEC3 §A rows with no frame-advance proof: ' +
+    missing.join(', '));
+  return all.length;
 }
 
 // -------------------------------------------------------------------- main
@@ -1622,8 +1784,9 @@ try {
   chargeSection(SEED + 19);
   endgameSection(SEED + 23);
   engineBarksSection(SEED + 29);
-  fxSection(SEED + 31);
+  const fxRows = fxSection(SEED + 31);
   console.log('PASS integration seed=' + SEED + ' | ' + drivenSummary +
+    ' | fx rows ' + fxRows +
     ' | cadence 16/12/10 | overdrive x2 | damper ok | charge+bronze ok | mantle ok' +
     ' | engine+barks ok | ' + (Date.now() - t0) + 'ms');
   process.exit(0);

@@ -195,6 +195,7 @@
 
   // Machine-level edges: the extractor "spit", assembler recipe switches.
   function machineEdges(run) {
+    for (const id in mem.spit) if (run.t - mem.spit[id].t >= 2) delete mem.spit[id];
     const ms = run.machines;
     for (const id in ms) {
       const m = ms[id];
@@ -264,8 +265,64 @@
     if (ch === '!') return null;
 
     let r = null;
-    if (t.belt && t.machine === null) r = beltCell(run, t, x, y, ch, fg);
+    if (t.machine !== null && t.machine !== undefined && t.machine !== 0) {
+      r = machineCell(run, t, x, y, ch, fg);
+    } else if (t.belt && t.machine === null) {
+      r = beltCell(run, t, x, y, ch, fg);
+    }
     return r;
+  }
+
+  // --- A1: machines --------------------------------------------------------
+  // The incoming fg already carries render's own tells (the chromed schematic
+  // letter, the damaged-machine red blink), so a row that only changes the
+  // GLYPH passes fg straight back through and both tells survive.
+  const FIRE_CH = ['▓', '▒', '░'];
+  const FIRE_COL = [C.magma, C.orange, C.amber];   // magma -> orange -> amber
+  const GEAR_CH = ['¤', '☼', '¤', '☼'];
+  const PUMP_CH = ['E', '╪', 'E', '╫'];            // piston stroke, 4 fps
+
+  function machineCell(run, t, x, y, ch, fg) {
+    const m = run.machines[t.machine];
+    if (!m) return null;
+    const anchor = x === m.x && y === m.y;
+    const k = (x - m.x) + (y - m.y) * m.w;         // index within the footprint
+    const p4 = (F / (FPS / 4)) | 0;                // 4 fps phase
+    const p8 = (F / (FPS / 8)) | 0;                // 8 fps phase
+    if (m.type === 'extractor') {
+      if (m.status === 'depleted') {
+        // a dead pump: dim gray, and every other phase shows the cross
+        return out((p4 & 1) ? '×' : ch, shadeOf(C.gray, 0.8));
+      }
+      if (m.status === 'ok') return out(PUMP_CH[p4 & 3], fg);
+      return null;
+    }
+    if (m.type === 'smelter') {
+      if (anchor) return null;                     // the S anchor stays steady
+      if (m.job) {
+        const i = (p8 + k) % 3;                    // phase-offset: the furnace rolls
+        return out(FIRE_CH[i], FIRE_COL[i]);
+      }
+      if (m.status === 'nofuel') return out('░', C.darkgray);   // gone cold
+      return null;
+    }
+    if (m.type === 'assembler') {
+      if (anchor) return null;
+      const sw = mem.spin[m.id];
+      if (sw && F - sw < FPS / 2) {                // recipe switch acknowledgment
+        return out(GEAR_CH[((F >> 1) + k) & 3], C.white);
+      }
+      if (m.job) return out(GEAR_CH[(p8 + k) & 3], fg);
+      return null;
+    }
+    if (m.type === 'damper') {
+      // fueled: a calm ~2s heartbeat. unfueled: flat dim (render's '!' blink
+      // is left alone by the guard at the top of tile()).
+      const g = D.BUILDINGS.damper.color;
+      if (m.fuel > 0) return out(ch, mixOf(shadeOf(g, 0.35), g, breathe(2 * FPS)));
+      return out(ch, shadeOf(g, 0.4));
+    }
+    return null;
   }
 
   // --- A1: belts -----------------------------------------------------------
@@ -280,6 +337,13 @@
     const b = t.belt;
     const i = y * W + x;
     if (b.item) {
+      // "the spit": for 2 ticks after an extractor produces, the ore sitting
+      // on its output tile renders bright white — you see the machine WORK.
+      const sp = mem.spit;
+      for (const id in sp) {
+        const s = sp[id];
+        if (s.x === x && s.y === y && run.t - s.t < 2) return out(ch, C.white);
+      }
       // jam tell: an item that has not moved in 2s shivers between its color
       // and dim — pressure you can see before the machine reports 'blocked'.
       const held = run.t - mem.itemT[i];
@@ -323,6 +387,7 @@
   // ---------------------------------------------------------------- shared
   let SURF = null;                        // set by render on first begin()
   function shadeOf(hex, f) { return SURF ? SURF.shade(hex, f) : hex; }
+  function mixOf(a, b, t) { return SURF ? SURF.mix(a, b, t) : a; }
 
   DC.FX = {
     FPS: FPS,
