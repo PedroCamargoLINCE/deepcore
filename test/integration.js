@@ -1520,7 +1520,9 @@ const FX_ROWS_A1 = [
   'magma.spark', 'crystal.glint', 'chasm.shimmer', 'rubble.jitter', 'dig.wipe',
   'reveal.front', 'cursor.laytail', 'grit.ember',
 ];
-const FX_ROWS_A2 = [];
+const FX_ROWS_A2 = [
+  'quake.debris', 'collapse.dread', 'instability.border', 'breach.crack',
+];
 
 function fxSection(seed) {
   SECTION = 'fx seed=' + seed;
@@ -1968,6 +1970,77 @@ function fxSection(seed) {
   frames(1);
   assert(R.cellAt(6, 31).ch !== '°', 'the ember goes out when the bar clears');
   row('grit.ember');
+
+  // ---- A2: the quake — debris rains through the map box ------------------
+  function countCh(chars, x0, y0, w, h) {
+    let n = 0;
+    for (let r = y0; r < y0 + h; r++) {
+      for (let c = x0; c < x0 + w; c++) {
+        const cc = R.cellAt(c, r);
+        if (cc && chars.indexOf(cc.ch) >= 0) n++;
+      }
+    }
+    return n;
+  }
+  // the engine drains run.events before render ever sees them, so the signal
+  // that survives is ui.shakeUntil rising — drive it exactly as afterTick does
+  st.ui.shakeUntil = run.t + 4;
+  frames(1);
+  let debris = 0;
+  for (let i = 0; i < 3 * (FX.FPS / HZ); i++) {
+    frames(1);
+    debris = Math.max(debris, countCh(".'", D.MAP_X, D.MAP_Y, D.MAP_W, D.MAP_H) );
+  }
+  assert(debris >= 6, 'a quake rains debris through the map box (peak ' + debris + ')');
+  frames(3 * (FX.FPS / HZ) + 4);
+  st.ui.shakeUntil = 0;
+  row('quake.debris');
+
+  // the same moment seen only through a peeked (never drained) event queue
+  S.tick(run);                                // a fresh tick to dedupe against
+  const evLen = run.events.length;
+  run.events.push({ type: 'quake', t: run.totalT, data: { dmg: 5 } });
+  frames(2);
+  assert(countCh(".'", D.MAP_X, D.MAP_Y, D.MAP_W, D.MAP_H) >= 6,
+    'a quake event in the queue rains debris too');
+  assertEq(run.events.length, evLen + 1,
+    'FX peeked run.events and left every entry for the engine to drain');
+  frames(3 * (FX.FPS / HZ) + 4);
+
+  // ---- A2: pre-collapse dread — the lights flicker before the hit --------
+  const inst0 = run.instability, qa0 = run.quakeAt;
+  run.instability = 99.5;                     // scaffold: terminal instability
+  run.quakeAt = run.t + 6;                    // scaffold: a scheduled collapse
+  frames(1);
+  const bright = cell(hx, hy + 4).fg;
+  run.quakeAt = run.t + 1;                    // scaffold: 1 tick out
+  frames(1);
+  const dimmed = cell(hx, hy + 4).fg;
+  assert(bright !== dimmed, 'the map dims one step in the 2 ticks before a collapse');
+  row('collapse.dread');
+
+  // ---- A2: the map border breathes red over 80 instability ---------------
+  run.quakeAt = qa0;
+  run.instability = 85;                       // scaffold
+  const borderCols = {};
+  for (let i = 0; i < 90; i++) { frames(1); borderCols[R.cellAt(24, 2).fg] = 1; }
+  assert(Object.keys(borderCols).length >= 4,
+    'the map border breathes red at high instability');
+  run.instability = inst0;
+  frames(1);
+  row('instability.border');
+
+  // ---- A2: the breach crack radiates from the hub ------------------------
+  st.screen = 'descend';
+  st.ui.descendAnim = 0;
+  frames(2);
+  const cracked = countCh('/\\─│', hx - 6 + D.MAP_X, hy - 6 + D.MAP_Y, 13, 13);
+  assert(cracked >= 8, 'pressing D cracks white glass out from the hub (' + cracked + ')');
+  frames(6 * (FX.FPS / HZ) + 2);
+  assert(countCh('/\\', 0, 0, D.COLS, D.ROWS) === 0, 'the crack clears into the descent');
+  st.screen = 'run';
+  frames(1);
+  row('breach.crack');
 
   // ---- the hard constraint: FX never writes back into the sim ------------
   const before = JSON.stringify({
