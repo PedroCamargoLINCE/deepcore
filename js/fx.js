@@ -293,6 +293,9 @@
     if (screen === lastScreen) return;
     const prev = lastScreen;
     lastScreen = screen;
+    // Entering a screen restarts its typewriters: arriving at victory with
+    // the toast GRIT happened to use last time must still type it out.
+    for (const k in typers) delete typers[k];
     if (screen === 'descend' && prev === 'run' && run && run.hub) {
       const B = mapBox(surf);
       const x = B ? B.x + run.hub.x + 1 : (D.COLS / 2) | 0;

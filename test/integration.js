@@ -1637,15 +1637,17 @@ function fxSection(seed) {
   row('belt.smear');
 
   // ---- A1: extractor — the piston stroke, the spit, the dead pump --------
+  // any revealed vein on the map — how far the procgen put it from the hub is
+  // not this test's business
   let ore = null;
-  for (let y = hy - 6; y <= hy + 6 && !ore; y++) {
-    for (let x = hx - 6; x <= hx + 6 && !ore; x++) {
-      const t = run.grid[y] && run.grid[y][x];
-      if (t && t.revealed && t.ore && t.oreAmt > 0 && t.machine === null && !t.belt &&
+  for (let y = 1; y < D.MAP_H - 1 && !ore; y++) {
+    for (let x = 1; x < D.MAP_W - 1 && !ore; x++) {
+      const t = run.grid[y][x];
+      if (t.revealed && t.ore && t.oreAmt > 0 && t.machine === null && !t.belt &&
           t.t === 'floor') ore = { x: x, y: y };
     }
   }
-  assert(ore, 'scaffold: a revealed ore tile near the hub');
+  assert(ore, 'scaffold: a revealed ore tile to mine');
   run.inv.ironPlate += 40;                    // scaffold: pay for the test rig
   assert(S.place(run, 'extractor', ore.x, ore.y, 1), 'scaffold: extractor on the vein');
   S.tick(run);
@@ -2200,6 +2202,19 @@ function fxSection(seed) {
   row('pause.smoke');
 
   // ---- the hard constraint: FX never writes back into the sim ------------
+  st.screen = 'run';
+  st.ui.paused = false;
+  frames(1);
+  // determinism: the animation layer owns a private PRNG, so a frame must
+  // never draw a number out of run.rng (that would make what the player sees
+  // change what the run does)
+  const realRng = run.rng;
+  let rngCalls = 0;
+  run.rng = function () { rngCalls++; return realRng(); };
+  frames(90);
+  run.rng = realRng;
+  assertEq(rngCalls, 0, 'FX drew ' + rngCalls + ' numbers from run.rng (must be 0)');
+
   const before = JSON.stringify({
     t: run.t, totalT: run.totalT, inst: run.instability, integ: run.integrity,
     quakeAt: run.quakeAt, status: run.status, ev: run.events.length,

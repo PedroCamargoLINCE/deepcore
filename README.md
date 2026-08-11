@@ -86,7 +86,8 @@ Specs, in reading order:
 Everything runs on plain `node` — no test runner, no install:
 
 - `node test/headless.js` — headless sim: mapgen, machines, belts, hazards
-- `node test/integration.js` — engine + sim end-to-end, bot policies, screens
+- `node test/integration.js` — engine + sim end-to-end, bot policies, screens,
+  and a stub-canvas frame advance proving every SPEC3 §A animation row fires
 - `node test/barks_test.js` — GRIT's line corpus, voice lint, field-manual
   consistency against `data.js`
 - `node test/rig_test.js` — rig portrait composition (art.js overlays)
@@ -99,6 +100,11 @@ Everything runs on plain `node` — no test runner, no install:
 
 `js/data.js` is the balance source of truth; the in-game field manual composes
 its numbers from it at load, so tuning a constant retunes the manual too.
+
+`js/fx.js` (`DC.FX`) is the animation layer: a render-side frame clock, a small
+particle list, and the per-tile choreography of SPEC3 §A. It makes no sim edits
+and reads no randomness from `run.rng` — everything it shows is derived from
+state the sim already keeps, so what you see can never change what happens.
 
 Plain JS on one canvas, characters only — the ASCII is the identity and it
 stays. Dependencies are welcome when they genuinely sharpen the experience
