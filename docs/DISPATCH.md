@@ -46,7 +46,7 @@ with `git add -A`).
 | Wave | Session A | Session B | Session C |
 |---|---|---|---|
 | 1 | ~~M-POLISH (alone, on master)~~ ✅ **merged 2026-08-11** | — | — |
-| 2 | M-ANIM-1 + M-ANIM-2 | M-RECAP | M-MANUAL |
+| 2 | ~~M-ANIM-1 + M-ANIM-2~~ ✅ **merged 2026-08-11** | M-RECAP | M-MANUAL |
 | 2.5 | **M-HIRES** (alone — see below) | — | — |
 | 3 | M-CORELORE + M-GRITPLUS | M-WONDERS | — |
 | 4 | M-EVENTS (big) | — | — |
@@ -617,7 +617,12 @@ old text or `SPEC.md` (which can itself lag `data.js`). Its prompt says so in
 capitals. Same shape of hazard whenever a later brief rewrites a file an
 earlier one patched: **the fix must survive the rewrite, not just the review.**
 
-**Merge-order note for Wave 2:** land M-RECAP and M-MANUAL before M-ANIM. Both
-add a self-contained screen; M-ANIM threads through render's shared tile and
-screen draw paths, so it is far easier to replay animation hooks onto new
-screens than to re-apply a screen rewrite through animated draw code.
+**Merge-order note for Wave 2 — superseded by events, and the lesson generalizes.**
+The plan was to land M-RECAP and M-MANUAL *before* M-ANIM, on the theory that
+replaying animation hooks onto new screens beats re-applying a screen rewrite
+through animated draw code. Then M-ANIM finished first, alone, and the better
+move was the opposite: merge it immediately and let the other two branch from a
+master that already has animation. A conflict you never create beats one you
+merge well. **Generally: when the shared-hot-file brief finishes first, merge it
+before dispatching the rest of its wave** — that converts a three-way render.js
+conflict into two sequential no-conflict merges.
