@@ -54,7 +54,8 @@ can be spent or drilled. The factory *is* the timer.
 
 ## Development
 
-- `SPEC.md` — full design & module contracts
+- `SPEC.md` — full design & module contracts (`SPEC2.md` juice layer,
+  `SPEC3.md` creative addendum + dispatch briefs)
 - `node test/headless.js` — headless sim test (no browser)
 - `node tools/build.js` — bundle into `dist/deepcore.html`
 - `docs/ROADMAP.md` — dispatchable follow-up modules (sound, tier-2 logistics,
