@@ -535,6 +535,161 @@ binding cross-check vs engine; contrast assertions on every palette pair used.
 
 ---
 
+### M-HIRES — Fill the Screen, Then Sharpen It (P0-adjacent — dispatch anytime)
+
+> Director's note (2026-08-11): *"make the definition of ascii better: Canvas
+> renderer + Braille/block-character support. also make it full res. it is a
+> square to this moment."*
+
+That note names **two different problems**, and they have very different risk
+profiles. Do them in the order below; each ships independently.
+
+#### The verified starting state
+
+Measured in the repo at `bf875e6`, not assumed — re-verify before you build:
+
+- `render.js` draws an **80 × 33** grid of **10 × 19 px** cells → a **800 × 627**
+  logical canvas.
+- `init()` sets `canvas.style.width/height` to those pixel values **once, on
+  load**. `style.css` then caps it with `max-width:100vw; max-height:100vh`,
+  which can only ever *shrink* it. **There is no resize handler anywhere in the
+  codebase** — `init()` is called once from `Engine.start()` on `load`.
+- Result on any monitor wider than 800px: a fixed island of terminal in a field
+  of black. That is the "it is a square" complaint, exactly.
+- The renderer *already* handles devicePixelRatio for crispness (backing store
+  at `COLS*CW*dpr`), and `pxToCell()` already maps clicks through
+  `getBoundingClientRect()` — so it is **resolution-independent already**.
+  Scaling will not break input. This is a much smaller job than it looks.
+- `flush()` batches same-color spans into one `fillText` under
+  `ctx.scale(CW / adv, 1)`, where `adv` is the measured advance of `█`.
+
+#### ⚠ The finding that reshapes this brief: the font has no braille
+
+`fc-match` against the shipped font stack, per codepoint:
+
+| Codepoint | Resolves to |
+|---|---|
+| U+2580 `▀`, U+2588 `█`, U+2591 `░` | **DejaVu Sans Mono** ✅ |
+| U+2596 `▖`, U+259A `▚` (quadrants) | **DejaVu Sans Mono** ✅ |
+| U+2581 `▁`, U+258F `▏` (eighth blocks) | **DejaVu Sans Mono** ✅ |
+| U+2800 `⠀` … U+28FF `⣿` (**braille**) | **DejaVu Sans** — the *proportional* face ❌ |
+
+**Braille is not in DejaVu Sans Mono.** A naive braille implementation does not
+merely look wrong, it corrupts the grid: `flush()` batches a whole run of cells
+into one `fillText` scaled by `CW / adv`, where `adv` was measured from `█`. A
+proportional fallback glyph has a different advance, so **every character after
+it in that run slides out of its cell** — one braille dot smears an entire row.
+Assume nothing here; probe at runtime (below).
+
+#### Phase 1 — Make it fill the screen (do this first; it is the whole complaint)
+
+Biggest visible payoff, zero dependencies, near-zero risk.
+
+Canvas text is **re-rendered, not upscaled** — so drawing the same grid at a
+larger cell size produces genuinely more pixels of glyph, not a blurry stretch.
+That is the entire trick.
+
+- Compute a scale from the viewport preserving the 80 × 33 aspect, then set
+  cell metrics to `CW*s`, `CH*s`, font size to `16*s`, backing store to
+  `COLS*CW*s*dpr`. Re-measure `adv` on every resize — it is cached from a
+  `measureText` and *will* be stale otherwise.
+- Add the missing `resize` listener (debounced ~100ms), and re-run it on
+  `devicePixelRatio` change (monitor drag between displays).
+- Prefer **fractional** scale filling the viewport over integer-only steps;
+  glyphs are vector, so there is no nearest-neighbour argument for integers
+  here. Do clamp to a sane maximum so a 4K display does not render 40px text.
+- `pxToCell()` needs no change if it keeps using `getBoundingClientRect()`.
+  **Verify this with a test rather than by reading it.**
+- `#scanlines` in `style.css` is a fixed 3px repeating gradient. At 2× scale it
+  reads twice as dense and muddies the art — scale its period with the cell
+  size (a CSS custom property set from JS is fine).
+- Keep a minimum: below ~800px wide (phones), letterbox rather than shrink text
+  into illegibility.
+
+**Acceptance:** a stub-canvas test asserting that at three viewport sizes the
+grid still maps clicks to the right cells (round-trip `pxToCell` against known
+cell centres), the aspect never distorts, and `adv` is re-measured after resize.
+
+#### Phase 2 — Sub-cell resolution with block elements (no dependency)
+
+Block elements are **already in the font**, today, with no vendoring:
+
+| Family | Glyphs | Sub-cell grid | Effective resolution |
+|---|---|---|---|
+| Quadrants | `▘▝▖▗▚▞▀▄▌▐█` | 2 × 2 | 160 × 66 |
+| Eighth blocks (vert) | `▁▂▃▄▅▆▇█` | 1 × 8 | 80 × 264 |
+| Eighth blocks (horiz) | `▏▎▍▌▋▊▉█` | 8 × 1 | 640 × 33 |
+| Shades | `░▒▓` | anti-aliasing | — |
+
+Build `DC.Art.raster` — a **pure, DOM-free** helper that takes a boolean/level
+bitmap and returns grid rows of block glyphs. Quadrants for 2D shapes, eighth
+blocks for bars and gauges (a smelter fuel bar in 1/8ths instead of whole cells
+is an instant readability win), shades for soft edges.
+
+Cell aspect matters and is worth stating: cells are 10 × 19, so a **quadrant
+sub-pixel is 5 × 9.5 — very tall**. Circles drawn naively on a quadrant grid
+come out as eggs. Correct for it in the rasterizer, do not eyeball it.
+
+#### Phase 3 — Braille, only if it earns its dependency (2 × 4 = 160 × 132)
+
+Braille's appeal is real: a 2 × 4 dot grid makes a sub-pixel **5 × 4.75 — very
+nearly square**, which is exactly what quadrants fail at. But it costs a font.
+
+Under rule 7 a dependency is permitted when it demonstrably improves play, so
+this is allowed — but it must be done properly:
+
+1. **Vendor a monospace face with verified U+2800–28FF coverage** (candidates:
+   GNU Unifont — full BMP and a bitmap look that suits the game; Iosevka;
+   Cascadia Code). Subset it to only the codepoints the game actually uses and
+   embed as base64 woff2. `tools/build.js` must inline it — **no CDN links,
+   `file://` must keep working.**
+2. **Probe coverage at runtime before using it.** Measure a braille glyph's
+   advance against `█`'s; if they differ beyond a small epsilon, the font did
+   not load and braille must **fall back to the Phase 2 block path**. Ship the
+   probe even with the vendored font — users' browsers block webfonts, and the
+   failure mode is a corrupted row, not a missing dot.
+3. Report the bundle size delta. `dist/deepcore.html` is 167 KiB today; a
+   subset braille face should cost single-digit KiB, and if it costs 300 KiB
+   the subsetting is wrong.
+
+#### Where sub-cell resolution belongs — and where it must never go
+
+**Do not sub-cell the map tiles.** The map is *interactive*: `pxToCell()` maps a
+click to a cell, and every tile is a semantic, clickable, one-glyph object —
+that legibility is the game. Doubling map resolution would decouple what the
+player sees from what they can click, and would flatly contradict SPEC3 §0's
+law that chunky beats smooth.
+
+Sub-cell resolution belongs on the **non-interactive display surfaces**, where
+it is pure gain:
+
+- the **rig portrait** (title + Foundry) — the single biggest beneficiary; the
+  bolt-on upgrade parts get real shape instead of suggestion
+- the **victory core sphere** — near-square braille pixels make it a *sphere*
+- **gauges and bars** — integrity, breach %, instability, smelter fuel, in
+  eighths instead of whole cells
+- **M-RECAP's charts**, if that brief has landed (guard it: absent = no-op)
+- title-screen ember particles and the `DEEPCORE` logo
+
+#### Contracts
+
+`render.js` (scaling, metrics, resize), `style.css` (scanline period),
+`art.js` (`DC.Art.raster`, portrait/sphere at higher fidelity), `engine.js`
+(resize wiring only), optionally `vendor/` + `tools/build.js` for Phase 3.
+`art.js` stays **DOM-free and pure** — the rasterizer must be testable in bare
+node with no canvas. `js/data.js` **additive only**. No sim changes whatsoever.
+
+**Acceptance:** click round-trip correct at three viewport sizes; `adv`
+re-measured on resize; rasterizer unit-tested against known bitmaps (including
+the aspect correction); a font-coverage probe test proving the block fallback
+engages when braille is unavailable; all five suites green; `tools/build.js`
+parses and reports its size delta.
+
+**Size:** ~150 lines Phase 1, ~200 Phase 2, ~150 + a vendored font Phase 3.
+**Ship Phase 1 alone if the session runs short — it is most of the value.**
+
+---
+
 ## §Z Dispatch plan
 
 **Order** (respects dependencies, front-loads feel):
@@ -543,6 +698,7 @@ binding cross-check vs engine; contrast assertions on every palette pair used.
 |---|---|---|
 | 1 | M-POLISH | everything else builds on a shipped-quality base; owns balance |
 | 2 | M-ANIM-1 + M-ANIM-2 (one session), M-RECAP + M-MANUAL (parallel sessions) | biggest feel jump per line; recap locks the payoff; the manual is the front door |
+| 2.5 | M-HIRES (alone — it rewrites render's coordinate basis) | the game stops being an 800px island on the monitor; on a clean board this would be first |
 | 3 | M-CORELORE + M-GRITPLUS (one session — both are writing), M-WONDERS (parallel) | identity deepeners, no cross-deps |
 | 4 | M-EVENTS (big; includes the cat) | the roguelike soul; benefits from anim layer existing |
 | 5 | M-MANTLE + M-SCHEMS2 (one session), M-TIER2 (parallel, strong session) | systems expansion |
