@@ -36,6 +36,7 @@ const B = DC.Barks;
 const HZ = D.TICK_HZ;
 
 let SECTION = 'boot';
+let PROSE_N = 0;              // authored lines checked against the prose panels
 function fail(msg) {
   console.error('FAIL [' + SECTION + ']: ' + msg);
   process.exit(1);
@@ -596,6 +597,82 @@ SECTION = 'stock-rows';
   assertEq(R.stockCount(-5), '0', 'negative stock clamps to 0');
 }
 
+// ------------------ prose panels: no authored line is ever cut mid-word
+// CX-04 fixed the SCAN tooltips by shortening them. The same defect lived on
+// in the two panels that carry authored PROSE: the LOG sliced every message at
+// 29 columns ('The rig bites into the topsoi', and every mirrored GRIT bark at
+// 29 of its ~70 characters) and the Foreman bar split at raw column 41
+// ('Gravi / ty agrees'). Both now word-wrap through Render.wrapClamp. This
+// lint holds the corpus and the panel geometry together: a new bark too long
+// to wrap whole, or a re-inlined slice, fails here.
+SECTION = 'prose-panels';
+{
+  const fs = require('fs');
+  const path = require('path');
+  const R = DC.Render;
+  const LW = R.SCAN_COL_W, LR = R.LOG_MSG_ROWS, FW = R.FOREMAN_ROW_W;
+  assert(typeof R.wrapClamp === 'function', 'Render exports wrapClamp');
+  assert(LW > 0 && LR > 0 && FW > 0, 'Render exports the LOG/Foreman geometry');
+
+  // rows must fit the panel, and reading them top to bottom must reproduce the
+  // line word for word — no split words, nothing dropped, no '…' (a line that
+  // needs the ellipsis is one the corpus should not contain).
+  function checkWrap(str, w, rows, where) {
+    const out = R.wrapClamp(str, w, rows);
+    assert(out.length <= rows, where + ': "' + str + '" needs ' + out.length +
+      ' rows, panel holds ' + rows);
+    for (const ln of out) {
+      assert([...ln].length <= w, where + ': row "' + ln + '" is ' +
+        [...ln].length + ' > ' + w + ' columns');
+      assert(ln.indexOf('…') < 0, where + ': "' + str +
+        '" does not fit ' + rows + 'x' + w + ' — it would be truncated to "' + ln + '"');
+    }
+    const words = (s) => String(s).trim().split(/\s+/).filter(Boolean).join(' ');
+    assertEq(words(out.join(' ')), words(str),
+      where + ': wrapping "' + str + '" changed the words');
+  }
+
+  for (const [tag, line] of allLines) {
+    // barks.js mirrors into the LOG behind this tag; the bar draws it untagged
+    checkWrap('GRIT ▸ ' + line, LW, LR, 'LOG bark mirror [' + tag + ']');
+    checkWrap(line, FW, 2, 'Foreman bar [' + tag + ']');
+  }
+
+  // sim.js messages: every static literal handed to msg(), plus the worst case
+  // of each message built by concatenation (longest name / widest number).
+  const simSrc2 = fs.readFileSync(path.join(__dirname, '../js/sim.js'), 'utf8');
+  const lits = [];
+  const callRe = /msg\(\s*run\s*,/g;                 // ternaries and concatenations included
+  let mm;
+  while ((mm = callRe.exec(simSrc2)) !== null) {
+    const seg = simSrc2.slice(mm.index, mm.index + 400);
+    const cut = seg.indexOf(');');
+    const body = cut > 0 ? seg.slice(0, cut) : seg;
+    const litRe = /'((?:[^'\\]|\\.)*)'/g;
+    let x;
+    while ((x = litRe.exec(body)) !== null) {
+      const s = x[1].replace(/\\'/g, "'");
+      if (s.length > 3) lits.push(s);               // skip glyph/format fragments
+    }
+  }
+  assert(lits.length >= 12, 'found the static sim.js log messages (' + lits.length + ')');
+  const bnames = Object.keys(D.BUILDINGS).map(k => D.BUILDINGS[k].name);
+  const snames = Object.keys(D.SCHEMATICS || {}).map(k => D.SCHEMATICS[k].name);
+  const longestB = bnames.sort((a, b) => b.length - a.length)[0];
+  const longestS = (snames.sort((a, b) => b.length - a.length)[0]) || 'x';
+  const dyn = [
+    longestB + ' self-repaired.',
+    longestB + ' destroyed!',
+    longestB + ' swallowed by magma!',
+    '≋ QUAKE — the stratum shudders (−99 integrity)',
+    'Salvage claws recover 999 parts.',
+    'Schematic installed: ' + longestS,
+    '▼ Descending — stratum 99.',
+  ];
+  for (const t of lits.concat(dyn)) checkWrap(t, LW, LR, 'LOG sim message');
+  PROSE_N = allLines.length * 2 + lits.length + dyn.length;
+}
+
 console.log('PASS barks | categories ' + CATALOG.length +
   ' | lines ' + allLines.length +
   ' | drive triggers ' + trigs.size + ' (' + Array.from(trigs).sort().join(',') + ')' +
@@ -603,4 +680,6 @@ console.log('PASS barks | categories ' + CATALOG.length +
   ' | worst line overlap ' + DUP_WORST.toFixed(2) + '/' + DUP_MAX.toFixed(2) +
   ' | manual ' + DC.Art.help[0].length + 'x' + DC.Art.help.length + ' data-composed' +
   ' | scan lines ' + scanLines + ' <= ' + S.SCAN_W +
-  ' | stock labels ' + D.ITEM_ORDER.length + ' unambiguous');
+  ' | stock labels ' + D.ITEM_ORDER.length + ' unambiguous' +
+  ' | prose ' + PROSE_N + ' lines wrap whole (LOG ' + DC.Render.LOG_MSG_ROWS +
+  'x' + DC.Render.SCAN_COL_W + ', bar 2x' + DC.Render.FOREMAN_ROW_W + ')');

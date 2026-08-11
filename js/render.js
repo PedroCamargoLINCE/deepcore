@@ -17,6 +17,10 @@
   const UNREV_BG = '#050504';        // near-black for unrevealed tiles (SPEC §7)
   const SB = 49, SBW = 31;           // sidebar box: cols 49..79
   const SBC = 50, SCW = 29;          // sidebar content col + width
+  // Tallest one LOG message may grow to once word-wrapped into SCW columns.
+  // 3 rows holds the longest mirrored GRIT bark (75 chars with its tag) whole;
+  // anything longer ends in '…' on a word boundary. The panel has 9 rows.
+  const LOG_MSG_ROWS = 3;
   const LETTERS = 'abcdefghi';
   const HUB_ART = ['╔═╗', '║D║', '╚═╝'];
   const EMBER = '#ff7a45';           // v1.1 §E title sweep endpoint (stratum-6 ember)
@@ -125,6 +129,21 @@
     }
     if (line) out.push(line);
     return out;
+  }
+  // wrap(), but never taller than `rows`. What does not fit ends in '…' placed
+  // on a WORD boundary — CX-04's rule ("shorten to fit rather than clip") for
+  // the two panels that carry authored prose: the LOG and the Foreman bar.
+  function wrapClamp(str, w, rows) {
+    const out = wrap(str, w);
+    if (out.length <= rows) return out;
+    const keep = out.slice(0, rows);
+    let last = keep[rows - 1];
+    if (last.length >= w) {                    // make room for the ellipsis
+      const cut = last.lastIndexOf(' ');
+      last = cut > 0 ? last.slice(0, cut) : last.slice(0, w - 1);
+    }
+    keep[rows - 1] = last + '…';
+    return keep;
   }
   function fmtTime(sec) {
     sec = Math.max(0, Math.floor(sec || 0));
@@ -601,19 +620,32 @@
     }
     y += 5;
 
-    // LOG — fills the rest; newest at bottom, brightest
+    // LOG — fills the rest; newest at bottom, brightest. Messages WORD-WRAP
+    // into the panel: it used to slice every line at SCW, which cut the first
+    // message of every run mid-word ('The rig bites into the topsoi') and
+    // every mirrored GRIT bark at 29 of its ~70 characters. The newest message
+    // is always drawn whole; older ones drop off the top instead of appearing
+    // headless (a message is either fully on the panel or not on it at all).
     y = sideEdge(y, 'sep', 'LOG');
     const bottom = ROWS - 1;                       // bottom border row (32)
     for (let r = y; r < bottom; r++) sideWalls(r);
-    const cap = Math.min(6, bottom - y);
-    const msgs = (run.messages || []).slice(-cap);
-    for (let j = 0; j < msgs.length; j++) {
-      const m = msgs[j];
-      const age = msgs.length - 1 - j;
+    const logRows = bottom - y;                    // drawable rows (9 today)
+    const all = run.messages || [];
+    const painted = [];                            // bottom-up: newest first
+    for (let j = all.length - 1; j >= 0 && painted.length < logRows; j--) {
+      const m = all[j];
+      const age = all.length - 1 - j;
       let mc = resolveColor(m.color) || C.gray;
       if (age > 3) mc = C.amberDim;
       else if (age > 0) mc = shade(mc, 1 - age * 0.18);
-      text(SBC, bottom - msgs.length + j, String(m.text).slice(0, SCW), mc);
+      const rows = wrapClamp(String(m.text), SCW, LOG_MSG_ROWS);
+      if (painted.length && painted.length + rows.length > logRows) break;
+      for (let k = rows.length - 1; k >= 0 && painted.length < logRows; k--) {
+        painted.push({ text: rows[k], color: mc });
+      }
+    }
+    for (let i = 0; i < painted.length; i++) {
+      text(SBC, bottom - 1 - i, painted[i].text.slice(0, SCW), painted[i].color);
     }
     sideEdge(bottom, 'bot');
   }
@@ -669,10 +701,18 @@
     const full = String(f.text);
     const shown = U.clamp(Math.floor((run.totalT - (f.t0 || 0)) * 2), 0, full.length);
     const w = SB - 1 - 7;                                    // 41 cols per row
-    const s = full.slice(0, shown);
+    // Two rows, split on a WORD boundary. The old split was a raw column cut,
+    // so GRIT's longer lines broke as 'Gravi / ty agrees' on the most-read
+    // line in the game. The typewriter is unchanged: `shown` characters of the
+    // whole line are revealed, each row taking its share as the reveal reaches
+    // it (+1 per row for the space the wrap consumed).
+    const rows = wrapClamp(full, w, 2);
     text(0, 31, 'GRIT ▸', fading ? C.amberDim : C.amber);
-    text(7, 31, s.slice(0, w), fading ? C.amberDim : C.cyan);
-    if (s.length > w) text(7, 32, s.slice(w, w * 2), fading ? C.amberDim : C.cyan);
+    let left = shown;
+    for (let i = 0; i < rows.length && left > 0; i++) {
+      text(7, 31 + i, rows[i].slice(0, left), fading ? C.amberDim : C.cyan);
+      left -= rows[i].length + 1;
+    }
   }
 
   // ================= TITLE =================
@@ -961,6 +1001,13 @@
     STOCK_COUNT_W: STOCK_COUNT_W,
     itemLabel: itemLabel,
     stockCount: stockCount,
+    // The prose panels' text contract (LOG at SCW columns, Foreman bar at 41),
+    // exported so test/barks_test.js can prove no authored line — sim message
+    // or GRIT bark — is ever cut mid-word by either one.
+    SCAN_COL_W: SCW,
+    LOG_MSG_ROWS: LOG_MSG_ROWS,
+    FOREMAN_ROW_W: SB - 1 - 7,
+    wrapClamp: wrapClamp,
 
     init: function (cv) {
       canvas = cv;
