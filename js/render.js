@@ -150,6 +150,20 @@
     const m = Math.floor(sec / 60), s = sec % 60;
     return m + ':' + (s < 10 ? '0' : '') + s;
   }
+  // Split delta, compact: seconds under a minute, m:ss past it.
+  function fmtDelta(sec) {
+    const a = Math.abs(Math.round(sec || 0));
+    return a < 60 ? a + 's' : fmtTime(a);
+  }
+  // The ghost you are racing (M-RECAP): your best time in THIS stratum, from
+  // the meta save. 0 / missing = no record yet, and the row is not drawn.
+  function ghostSplit(run, meta) {
+    const splits = meta && meta.bestSplits;
+    const best = splits && splits[String(run.depth)];
+    if (!(typeof best === 'number' && isFinite(best) && best > 0)) return null;
+    const delta = best - (run.t || 0) / D.TICK_HZ;
+    return { best: best, delta: delta, mark: delta >= 0 ? '▲' : '▼' };
+  }
 
   // ---------------- art access (defensive) ----------------
   function placeholder(name) {
@@ -560,6 +574,18 @@
       run.overdrive ? (phase ? C.red : C.orange) : C.darkgray);
     y++;
 
+    // M-RECAP ghost split: this stratum's clock against your best-ever run at
+    // this depth. The delta is time IN HAND — it counts down as you dig, green
+    // while you are still under the record, red the moment you are not. Only
+    // drawn once a record exists, so a first run costs no sidebar rows.
+    const gs = ghostSplit(run, meta);
+    if (gs) {
+      sideWalls(y);
+      text(SBC, y, 'BEST ' + fmtTime(gs.best), C.darkgray);
+      textR(SB + SBW - 2, y, gs.mark + fmtDelta(gs.delta), gs.delta >= 0 ? C.green : C.red);
+      y++;
+    }
+
     // STOCK — 2 columns, always show ironPlate & gear
     y = sideEdge(y, 'sep', 'STOCK');
     const inv = run.inv || {};
@@ -759,6 +785,7 @@
     // menu
     const segs = [
       ['[ENTER]', C.green], [' BEGIN DESCENT   ', C.amber],
+      ['[T]', C.green], [' DAILY SHAFT   ', C.amber],      // M-RECAP
       ['[F]', C.green], [' THE FOUNDRY   ', C.amber],
       ['[H]', C.green], [' MANUAL', C.amber],
     ];
@@ -767,6 +794,16 @@
     let x = (COLS - tot) >> 1;
     layout.title.enter = { col: x, row: 28, len: segs[0][0].length };  // it breathes
     for (const s of segs) { text(x, 28, s[0], s[1]); x += s[0].length; }
+    // M-RECAP: today's shaft at a glance — the local daily table, made visible
+    // on the front door. state.today is stamped by the engine (render keeps no
+    // clock of its own); absent, the line simply does not appear.
+    const today = state.today;
+    if (today) {
+      const de = (DC.Meta && DC.Meta.dailyEntry) ? DC.Meta.dailyEntry(meta, today) : null;
+      ctext(29, de
+        ? 'DAILY ' + today + ' — RUN: STRATUM ' + de.depth + ' in ' + fmtTime(de.timeSec)
+        : 'DAILY ' + today + ' — OPEN, ONE RANKED ATTEMPT', C.darkgray);
+    }
     // meta stats footer
     put(2, 31, '◈', C.magenta);
     text(4, 31, (meta.cores || 0) + ' CORES BANKED   BEST STRATUM ' + (meta.bestDepth || 0) +
@@ -944,6 +981,7 @@
   }
 
   function drawGameover(state, phase) {
+    if (state.ui && state.ui.recap) { drawRecap(state); return; }   // M-RECAP
     const lines = art('gameover');
     drawArt(lines, 1, artColor('gameover', C.red));
     layout.artBlock = { row: 1, h: lines.length };   // fx: dust motes drift here
@@ -956,10 +994,12 @@
       ctext(y + 5 + i, (i === 0 ? 'GRIT ▸ ' : '') +
         fxTyped('epitaph' + i, String(epi[i]).slice(0, 70), 8), C.cyan);
     }
+    ctext(30, '[TAB] RUN RECAP CARD', C.amberDim);
     ctext(31, '[ENTER] RETURN TO THE SURFACE', phase ? C.white : C.amber);
   }
 
   function drawVictory(state, phase) {
+    if (state.ui && state.ui.recap) { drawRecap(state); return; }   // M-RECAP
     const lines = art('victory');
     drawArt(lines, 1, artColor('victory', C.magmaHot));
     layout.artBlock = { row: 1, h: lines.length };   // fx: the core sphere pulses
@@ -968,7 +1008,182 @@
     ctext(y + 5, '+' + D.WIN_CORES + ' ◈ CORE BONUS', phase ? C.magenta : shade(C.magenta, 0.6));
     const tl = toastSafe(state.run);
     if (tl && y + 7 < 31) ctext(y + 7, 'GRIT ▸ ' + fxTyped('toast', tl.slice(0, 70), 14), C.cyan);
+    ctext(30, '[TAB] RUN RECAP CARD', C.amberDim);
     ctext(31, '[ENTER] ASCEND      [C] CONTINUE INTO THE MANTLE', C.amber);
+  }
+
+  // ================= RECAP CARD (SPEC3 M-RECAP) =================
+  // A 46-wide boxed ASCII artifact: the whole run as one picture you can paste
+  // into a chat window. Built once as text rows plus colour spans, so what the
+  // screen shows and what `C` copies are the same card by construction —
+  // recapText() is literally these rows' text.
+  // Everything here reads state; nothing writes it, and no sim value is
+  // recomputed — splits come from the engine, the roast from barks.js.
+  const CARD_W = 46;
+  const CARD_IN = CARD_W - 2;             // interior columns (44)
+  const CARD_STRATA_MAX = 12;             // Mantle runs elide the earliest rows
+  const EIGHTHS = ['▏', '▎', '▍', '▌', '▋', '▊', '▉'];
+
+  // Horizontal bar in eighth-blocks: a 2:41 stratum next to a 2:44 one has to
+  // look different, and whole cells cannot show that at 13 columns.
+  function cardBar(frac, width) {
+    const units = Math.round(U.clamp(frac || 0, 0, 1) * width * 8);
+    const full = Math.min(width, Math.floor(units / 8));
+    const rem = units % 8;
+    let s = '█'.repeat(full);
+    if (rem > 0 && full < width) s += EIGHTHS[rem - 1];
+    return U.pad(s, width);
+  }
+  function cardRow(inner, color, spans) {
+    return { text: '│' + U.pad(inner, CARD_IN) + '│', color: color || C.gray, spans: spans || null };
+  }
+  function cardEdge(kind, title, color) {
+    const bar = '─'.repeat(CARD_IN);
+    const l = kind === 'top' ? '┌' : kind === 'bot' ? '└' : '├';
+    const r = kind === 'top' ? '┐' : kind === 'bot' ? '┘' : '┤';
+    let s = l + bar + r;
+    if (title) {
+      const t = ' ' + title + ' ';
+      s = s.slice(0, 2) + t + s.slice(2 + t.length);
+    }
+    return { text: s, color: color || C.amberDim, spans: null };
+  }
+
+  // GRIT's Performance Review consumes run.rng, so it is cached per run and
+  // outcome — a per-frame redraw must never re-roll the roast.
+  let revRun = null, revKey = '', revLine = '';
+  function reviewSafe(run, res) {
+    if (!run || !DC.Barks || typeof DC.Barks.review !== 'function') return '';
+    const key = (res.won ? 'w' : 'l') + '|' + res.depth + '|' + (run.mantle ? 'm' : '');
+    if (revRun === run && revKey === key) return revLine;
+    let l = '';
+    try { l = DC.Barks.review(run, res) || ''; } catch (e) { /* barks in flux */ }
+    revRun = run; revKey = key;
+    revLine = typeof l === 'string' ? l : '';
+    return revLine;
+  }
+
+  // Cause of death, in the same three buckets Barks.epitaph reasons about.
+  function recapOutcome(run, res) {
+    if (res.won && !run.mantle) return 'CORE BREACHED';
+    if (run.status !== 'dead' && run.status !== 'won') return 'RUN IN PROGRESS';
+    if (run.integrity > 0) return 'ABANDONED THE DIG';
+    const st = stratumOf(res.depth);
+    if (st.features && st.features.magma) return 'LOST TO THE MELT';
+    return 'RIG DESTROYED';
+  }
+
+  // The rows the bar chart draws: one per stratum entered. Cleared strata come
+  // from the engine's splits; the stratum the run ended in has no split, so it
+  // is added here from run.t and flagged.
+  function recapStrata(run) {
+    const out = [];
+    const splits = Array.isArray(run.splits) ? run.splits : [];
+    let cleared = false;
+    for (let i = 0; i < splits.length; i++) {
+      const s = splits[i];
+      if (!s || typeof s.depth !== 'number') continue;
+      if (s.depth === run.depth) cleared = true;
+      out.push({ depth: s.depth, sec: s.sec || 0, partial: false });
+    }
+    if (!cleared) out.push({ depth: run.depth, sec: (run.t || 0) / D.TICK_HZ, partial: true });
+    return out;
+  }
+
+  function buildRecap(state) {
+    const run = state && state.run;
+    if (!run) {
+      const rows = [cardEdge('top', 'RUN RECAP'), cardRow(' no run to recap', C.red), cardEdge('bot')];
+      return { rows: rows, plain: rows.map(r => r.text) };
+    }
+    const res = fallbackResult(run, !!(run.result && run.result.won));
+    const rows = [];
+    rows.push(cardEdge('top', 'DEEPCORE ─ RUN RECAP', C.amber));
+
+    // identity line: when it was dug, and which hole
+    const date = (DC.Meta && DC.Meta.dailyKey && run.startedAt)
+      ? DC.Meta.dailyKey(run.startedAt) : '';
+    rows.push(cardRow(' ' + U.pad(date, 12) +
+      U.padL('SEED ' + (run.seed >>> 0), CARD_IN - 14) + ' ', C.gray));
+    if (run.daily) {
+      rows.push(cardRow(' DAILY SHAFT  ·  ' +
+        (run.daily.practice ? 'PRACTICE (UNRANKED)' : 'RANKED ATTEMPT'),
+        run.daily.practice ? C.amberDim : C.magenta));
+    }
+
+    // depth bar chart, one row per stratum, in the stratum accents
+    rows.push(cardEdge('sep', 'DESCENT', C.amberDim));
+    let strata = recapStrata(run);
+    let elided = 0;
+    if (strata.length > CARD_STRATA_MAX) {
+      elided = strata.length - CARD_STRATA_MAX;
+      strata = strata.slice(elided);
+    }
+    let maxSec = 1;
+    for (let i = 0; i < strata.length; i++) if (strata[i].sec > maxSec) maxSec = strata[i].sec;
+    if (elided) rows.push(cardRow(' ... ' + elided + ' earlier strata', C.darkgray));
+    for (let i = 0; i < strata.length; i++) {
+      const s = strata[i];
+      const st = stratumOf(s.depth);
+      const inner = ' ' + U.pad('S' + s.depth, 3) + ' ' + U.pad(st.name, 15) + ' ' +
+        cardBar(s.sec / maxSec, 13) + ' ' + U.padL(fmtTime(s.sec), 6) + ' ' +
+        (s.partial ? '†' : ' ');
+      rows.push(cardRow(inner, C.gray, [
+        { from: 5, len: 15, color: st.accent || C.amber },
+        { from: 21, len: 13, color: st.accent || C.amber },
+        { from: 35, len: 7, color: s.partial ? C.red : C.white },
+      ]));
+    }
+
+    // the numbers: how it ended, what was taken, what was fed, what was banked
+    rows.push(cardEdge('sep', 'LEDGER', C.amberDim));
+    const outcome = recapOutcome(run, res);
+    rows.push(cardRow(' ' + U.pad(outcome, 27) + U.padL('TIME ' + fmtTime(res.timeSec), 15) + ' ',
+      res.won ? C.green : C.red));
+    const scs = run.schematics || [];
+    const spans = [];
+    let badges = '';
+    for (let i = 0; i < scs.length && badges.length < 26; i++) {
+      spans.push({ from: 13 + badges.length, len: 2, color: schemColor(scs[i]) });
+      badges += schemBadge(scs[i]) + ' ';
+    }
+    rows.push(cardRow(' SCHEMATICS  ' + (badges || '(none taken)'), C.gray, spans));
+    const ctx = (DC.Barks && DC.Barks.reviewCtx) ? DC.Barks.reviewCtx(run, res) : null;
+    const gears = ctx ? ctx.gears : (run.gearsFed || 0);
+    const charges = ctx ? ctx.charges : (run.chargesFed || 0);
+    const fedL = ' FED  ' + gears + D.ITEMS.gear.glyph + '  ' + charges + D.ITEMS.charge.glyph;
+    const fedR = 'CORES +' + (res.cores || 0) + ' ◈ ';
+    rows.push(cardRow(U.pad(fedL, Math.max(0, CARD_IN - fedR.length)) + fedR, C.gray));
+
+    // and the reason to read the thing
+    const line = reviewSafe(run, res);
+    if (line) {
+      rows.push(cardEdge('sep', "GRIT'S PERFORMANCE REVIEW", C.amberDim));
+      const wrapped = wrapClamp(line, CARD_IN - 2, 3);
+      for (let i = 0; i < wrapped.length; i++) rows.push(cardRow(' ' + wrapped[i], C.cyan));
+    }
+    rows.push(cardEdge('bot', null, C.amber));
+    return { rows: rows, plain: rows.map(r => r.text) };
+  }
+
+  // The end-screen card view (TAB from the stats view on gameover/victory).
+  function drawRecap(state) {
+    const card = buildRecap(state);
+    const rows = card.rows;
+    const x = Math.max(0, (COLS - CARD_W) >> 1);
+    const y0 = Math.max(1, (ROWS - 2 - rows.length) >> 1);
+    for (let i = 0; i < rows.length && y0 + i < ROWS - 2; i++) {
+      const r = rows[i];
+      text(x, y0 + i, r.text, r.color);
+      if (!r.spans) continue;
+      for (let s = 0; s < r.spans.length; s++) {
+        const sp = r.spans[s];
+        text(x + 1 + sp.from, y0 + i, r.text.slice(1 + sp.from, 1 + sp.from + sp.len), sp.color);
+      }
+    }
+    const note = state.ui && state.ui.copied;
+    if (note) ctext(ROWS - 2, String(note), C.green);
+    ctext(ROWS - 1, '[TAB] STATS   [C] COPY CARD   [ENTER] RETURN TO THE SURFACE', C.amber);
   }
 
   // ================= flush (batched fillText) =================
@@ -1066,6 +1281,16 @@
     LOG_MSG_ROWS: LOG_MSG_ROWS,
     FOREMAN_ROW_W: SB - 1 - 7,
     wrapClamp: wrapClamp,
+
+    // M-RECAP: the card as data and as plain text. engine.js copies
+    // recapText() to the clipboard, so the shared artifact and the drawn
+    // screen can never drift apart.
+    CARD_W: CARD_W,
+    recapCard: buildRecap,
+    recapText: function (state) {
+      try { return buildRecap(state).plain.join('\n'); } catch (e) { return ''; }
+    },
+    ghostSplit: ghostSplit,
 
     init: function (cv) {
       canvas = cv;

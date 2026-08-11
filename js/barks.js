@@ -184,6 +184,19 @@
       "Hull's wheezing, kid. Patch something or start praying to rocks.",
       "Rig's critical. One more kiss from this planet, we're a plaque.",
     ],
+    // M-RECAP: the Daily Shaft — one seed a day, naked rig, no Foundry.
+    dailyStart: [
+      "Daily shaft. Same hole as everybody else today. No toys. Prove it.",
+      "One seed, one shot, no upgrades. Just you and an honest hole, kid.",
+      "Today's shaft is open. Company logged the time. Make it look good.",
+      "Naked rig, ranked run. This is the one they'll read out. Dig sharp.",
+    ],
+    dailyPractice: [
+      "Practice run. Doesn't count, doesn't rank, doesn't fool me either.",
+      "Second crack at today's shaft. Unranked. Warm up, kid, then sulk.",
+      "This one's off the books. Like most of my best work, honestly.",
+      "Practice. Your ranked time's already carved. Go on, chase it anyway.",
+    ],
     idle: [
       "Napping, kid? The drill's tapping her foot. Learned it from me.",
       "Forty-five seconds of nothing. Union says I gotta yell: HEY.",
@@ -261,6 +274,75 @@
        "Don't sulk, kid. The core's not going anywhere. Sadly."],
       ["Abandoned the dig. My lungs thank you. My pride abstains.",
        "Surface air. Weird stuff. Doesn't even taste like coal."],
+    ],
+  };
+
+  // ---------- GRIT's Performance Review (SPEC3 M-RECAP) ----------
+  // One line on the recap card at the end of every run, tiered by how it
+  // ended. This is the reward: the card is the artifact, the roast is why you
+  // read it. Tokens in {braces} are filled from the finished run, so the line
+  // knows what you actually did — a hoarder gets the hoarding joke.
+  // Tokens: depth time min plates gears charges cores breaches schems
+  const REVIEWS = {
+    shallow: [
+      "Stratum {depth}. The topsoil's still warm and you're already a fossil.",
+      "Depth {depth}, kid. My gran's compost heap runs deeper than that.",
+      "{min} minutes for stratum {depth}. Snails file better mileage, kid.",
+      "We died under the parking lot. Genuinely. The parking lot.",
+      "Banked {plates} plates and no hole worth the name. Nice hoarding.",
+      "Surface casualty. The Company files these under 'stationery'.",
+      "That was a pothole with ambition. Try leaving one behind, kid.",
+      "{gears} gears fed. Drill's still hungry and now so are the worms.",
+      "Rookie depth. Cheer up — this rock forgets faster than I do.",
+      "Shallow end, kid. They can still hear you screaming from up top.",
+    ],
+    mid: [
+      "Depth {depth}. My nephew got to 4 his first week. He's an idiot, kid.",
+      "Halfway to somewhere. The Company calls that 'promising trajectory'.",
+      "Stratum {depth}, {min} min. Fine work don't get statues though, kid.",
+      "You died with {plates} plates banked. Saving for retirement? Down HERE?",
+      "Middle depth, middle time. You're management material, and I'm sorry.",
+      "Stratum {depth} is where the rock quits being polite. It showed, huh.",
+      "{gears} gears, {breaches} floors. Solid shift. Solid ain't deep, kid.",
+      "Not bottom, not bad. The core never even looked up from its work.",
+      "You cleared the easy dirt. Then the dirt made its counter-argument.",
+      "{schems} schematics recovered and you still parked at {depth}. Ouch.",
+    ],
+    deep: [
+      "Stratum {depth}. That's real mining. Wear a hard hat next time. HARD.",
+      "{min} minutes where the rock glows. Few get there. Fewer walk back.",
+      "Depth {depth} and the heat got a vote. I'd have voted the same way.",
+      "You went deep enough to spook me, and I'm already hollowed out.",
+      "{gears} gears into that throat. She swallowed every one, then you.",
+      "Almost, kid. 'Almost' is what they carve on the expensive headstones.",
+      "That's a career-ending depth. Your career ended. The depth's fine.",
+      "At {depth} the Company stops sending memos. Take the compliment.",
+      "You had {plates} plates and nowhere left to spend 'em. Deep problem.",
+      "Stratum {depth}. I felt that one through my boots from the surface.",
+    ],
+    win: [
+      "A win's a win. Don't let it get around that it took you {min} minutes.",
+      "Core breached in {time}. I've seen faster. I've seen nobody, mostly.",
+      "You drilled through the bottom of a planet. Put THAT on a resume.",
+      "Deepest hole on the payroll, {time} flat. Your name's scratched in it.",
+      "Won it. The Company will bill you for the hole. Frame the invoice.",
+      "Clean descent. I'd call it luck, but I watched the whole damn thing.",
+      "Core's punched. Somewhere an executive is having a terrible morning.",
+      "{time} to the bottom. My whole career was slower AND shallower.",
+      "You made it. I retire on this story, so quit while I still look good.",
+      "Victory, and {cores} cores to spend. Buy something obscenely loud.",
+    ],
+    mantle: [
+      "Past the core, into the Mantle. Stratum {depth}. There's no bottom.",
+      "The Mantle collected you at {depth}. It collects everybody, kid.",
+      "You won and kept digging. That's not bravery, that's a condition.",
+      "{min} minutes past the end of every map. Nobody charts that but us.",
+      "Depth {depth} in the deep heat. The planet knows your name now. Badly.",
+      "Mantle run. The stone hums down there and you went to argue with it.",
+      "Had a win in your pocket and spent it on {depth}. Respect, you fool.",
+      "Stratum {depth}. Past here the Company hasn't even printed a form.",
+      "{gears} gears burned in the Mantle. That's a bonfire, not a shift.",
+      "Died rich and unreasonably deep. Best kind there is. Sleep warm, kid.",
     ],
   };
 
@@ -448,8 +530,71 @@
     return TOASTS[i];
   }
 
+  // ---------------- performance review (SPEC3 M-RECAP) ----------------
+  function mmss(sec) {
+    sec = Math.max(0, Math.floor(sec || 0));
+    const m = Math.floor(sec / 60), s = sec % 60;
+    return m + ':' + (s < 10 ? '0' : '') + s;
+  }
+
+  // Which pool the run earned. A Mantle run is judged as a Mantle run even
+  // though it also won, because that is the more interesting fact about it.
+  function reviewTier(run, result) {
+    const res = result || (run && run.result) || {};
+    const depth = res.depth || (run && run.depth) || 1;
+    if (run && run.mantle) return 'mantle';
+    if (res.won) return 'win';
+    if (depth >= 6) return 'deep';
+    if (depth >= 3) return 'mid';
+    return 'shallow';
+  }
+
+  // Facts the roast can reach for. gearsFed/chargesFed reset every stratum, so
+  // the run totals come from the engine's per-stratum splits plus whatever the
+  // current stratum had banked when it ended (absent splits = current only).
+  function reviewCtx(run, result) {
+    const res = result || (run && run.result) || {};
+    const inv = (run && run.inv) || {};
+    let gears = (run && run.gearsFed) || 0;
+    let charges = (run && run.chargesFed) || 0;
+    const splits = (run && Array.isArray(run.splits)) ? run.splits : [];
+    for (let i = 0; i < splits.length; i++) {
+      const s = splits[i];
+      if (!s) continue;
+      gears += s.gears || 0;
+      charges += s.charges || 0;
+    }
+    const sec = typeof res.timeSec === 'number' ? res.timeSec
+      : Math.round(((run && run.totalT) || 0) / HZ);
+    return {
+      depth: res.depth || (run && run.depth) || 1,
+      time: mmss(sec),
+      min: Math.max(1, Math.round(sec / 60)),
+      plates: Math.floor(inv.ironPlate || 0),
+      gears: gears, charges: charges,
+      cores: res.cores || 0,
+      breaches: res.breaches || (run && run.breaches) || 0,
+      schems: ((run && run.schematics) || []).length,
+    };
+  }
+
+  function fillReview(line, ctx) {
+    return String(line).replace(/\{(\w+)\}/g, function (m, k) {
+      return Object.prototype.hasOwnProperty.call(ctx, k) ? String(ctx[k]) : m;
+    });
+  }
+
+  function review(run, result) {
+    const pool = REVIEWS[reviewTier(run, result)] || REVIEWS.shallow;
+    const i = run && run.rng ? Math.floor(run.rng() * pool.length) : 0;
+    return fillReview(pool[i], reviewCtx(run, result));
+  }
+
   DC.Barks = {
     tick: tick, fire: fire, epitaph: epitaph, toast: toast,
+    // M-RECAP
+    review: review, reviewTier: reviewTier, reviewCtx: reviewCtx,
+    fillReview: fillReview, REVIEWS: REVIEWS,
     // data exposed for the headless acceptance test (SPEC2 §G)
     POOLS: POOLS, STRATUM_LINES: STRATUM_LINES, SCHEM_LINES: SCHEM_LINES,
     META_LINES: META_LINES, EPITAPHS: EPITAPHS, TOASTS: TOASTS,
