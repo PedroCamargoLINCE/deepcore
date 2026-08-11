@@ -79,7 +79,8 @@
     } else {
       acc = 0;
     }
-    if (st.screen === 'descend') st.ui.descendAnim++;
+    // NOTE: ui.descendAnim is advanced by Render.frame (SPEC §7), not here —
+    // incrementing in both places played the descent animation at double speed.
     DC.Render.frame(st);
   }
 
@@ -197,9 +198,12 @@
     }
   }
 
+  // Must mirror render.js drawDescend: frames.length * 10 + 45 hold, with a
+  // 1-frame placeholder when Art.descent is missing/malformed.
   function animLen() {
     const fr = DC.Art && DC.Art.descent;
-    return Array.isArray(fr) ? fr.length * 10 : 0;
+    const n = (Array.isArray(fr) && fr.length && Array.isArray(fr[0])) ? fr.length : 1;
+    return n * 10 + 45;
   }
 
   function applyChoice(st, i) {
@@ -497,14 +501,23 @@
     endDrag(st);
   }
 
-  // Sidebar build-list clicks. Render may publish DC.Render.layout.buildRows
-  // ({gridRow: toolId, ..., 'demolish'}) — without it, clicks are a no-op
+  // Sidebar build-list clicks. render.js publishes DC.Render.layout.buildRows
+  // as an array of {row, tool} entries (grid row -> tool id); a plain
+  // {gridRow: toolId} map is also accepted. Without it, clicks are a no-op
   // (keyboard 1-5 / X always works).
   function sidebarClick(st, c) {
     const L = DC.Render.layout;
-    if (!L || !L.buildRows) return;
-    const t = L.buildRows[c.row];
-    if (!t) return;
+    const rows = L && L.buildRows;
+    if (!rows) return;
+    let t = null;
+    if (Array.isArray(rows)) {
+      for (let i = 0; i < rows.length; i++) {
+        if (rows[i] && rows[i].row === c.row) { t = rows[i].tool; break; }
+      }
+    } else {
+      t = rows[c.row];
+    }
+    if (!t || typeof t !== 'string') return;
     setTool(st, t === st.ui.tool ? null : t);
   }
 

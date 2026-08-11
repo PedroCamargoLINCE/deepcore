@@ -20,6 +20,13 @@
     run.messages.push({ text: text, color: color || D.COLORS.gray, t: run.t });
     if (run.messages.length > 40) run.messages.shift();
   }
+  // v1.1 (SPEC2 §B) event queue: engine splice-drains every tick.
+  // Entries are { type, t, data } with t = run.totalT (monotonic across strata).
+  function pushEvent(run, type, data) {
+    if (!run.events) run.events = [];
+    run.events.push({ type: type, t: run.totalT, data: data || null });
+    if (run.events.length > 200) run.events.shift(); // never grow unbounded headless
+  }
   function setResult(run, won) {
     run.result = {
       depth: run.depth, breaches: run.breaches,
@@ -88,6 +95,10 @@
       schematics: [], mods: mods, pendingOffers: null,
       breaches: 0, mantle: false, messages: [], result: null,
       magmaCap: 0,
+      // v1.1 (SPEC2 §B): additive event/stat/foreman surface
+      events: [],
+      stats: { placed: {}, lastPlaceT: 0, lastFeedT: 0 },
+      foreman: null,
       _feed: [], _lastRevealR: -1,
     };
     for (const k in D.START_STOCK) add(run.inv, k, D.START_STOCK[k]);
@@ -115,7 +126,8 @@
     run.machines = {
       0: { id: 0, type: 'hub', x: run.hub.x, y: run.hub.y, w: 3, h: 3, facing: 0,
            hp: Infinity, progress: 0, recipe: null, input: {}, fuel: 0,
-           status: 'ok', repairAt: 0, out: [], job: null },
+           status: 'ok', repairAt: 0, blockedSince: 0, nofuelSince: 0,
+           out: [], job: null },
     };
     run.nextId = 1;
     run.quakeAt = 0;
@@ -179,12 +191,14 @@
         run.gearsFed >= run.breachReq.gear && run.chargesFed >= run.breachReq.charge) {
       run.status = 'breachReady';
       msg(run, '»» BREACH READY — press D to descend ««', D.COLORS.amber);
+      pushEvent(run, 'breachReady', { depth: run.depth });
     }
     if (run.integrity <= 0) {
       run.integrity = 0;
       run.status = 'dead';
       setResult(run, false);
       msg(run, 'The rig gives way. The depth keeps it.', D.COLORS.red);
+      pushEvent(run, 'death', { depth: run.depth, cause: 'integrity' });
     }
   }
 
@@ -233,6 +247,7 @@
 
   function stepMachine(run, m) {
     const B = D.BUILDINGS[m.type];
+    const wasDepleted = m.status === 'depleted';
     if (m.repairAt > 0 && run.t >= m.repairAt) {
       if (m.hp === 1) { m.hp = B.hp; msg(run, B.name + ' self-repaired.', D.COLORS.green); }
       m.repairAt = 0;
@@ -315,6 +330,17 @@
       : nofuel ? 'nofuel'
       : m.out.length ? 'blocked'
       : (working || m.job) ? 'ok' : 'idle';
+    // v1.1 (SPEC2 §B) debounce stamps: run.t of when the underlying condition
+    // began, 0 while clear. Based on the raw condition (not display precedence)
+    // so a damaged-but-jammed machine still reads as jammed.
+    if (m.out.length) { if (!m.blockedSince) m.blockedSince = run.t; }
+    else m.blockedSince = 0;
+    if (nofuel) { if (!m.nofuelSince) m.nofuelSince = run.t; }
+    else m.nofuelSince = 0;
+    if (depleted && !wasDepleted) {
+      pushEvent(run, 'depleted', { id: m.id, x: m.x, y: m.y,
+        ore: (tileAt(run, m.x, m.y) || {}).ore || null });
+    }
   }
 
   // ---------------- belts (§5.2) ----------------
@@ -365,10 +391,12 @@
       run.inv.gear--;
       run.gearsFed++;
       run._feed.push({ t: run.t, item: 'gear' });
+      if (run.stats) run.stats.lastFeedT = run.totalT;
     } else if (run.chargesFed < run.breachReq.charge && (run.inv.charge || 0) > 0) {
       run.inv.charge--;
       run.chargesFed += run.mods.chargeX2 ? 2 : 1;
       run._feed.push({ t: run.t, item: 'charge' });
+      if (run.stats) run.stats.lastFeedT = run.totalT;
     }
     while (run._feed.length && run._feed[0].t < run.t - 10 * HZ) run._feed.shift();
   }
@@ -455,6 +483,7 @@
     run.shake = true;
     if (run.instability >= 99) msg(run, '!! COLLAPSE — the stratum is failing !!', D.COLORS.red);
     else msg(run, '≋ QUAKE — the stratum shudders (−' + dmg + ' integrity)', D.COLORS.orange);
+    pushEvent(run, 'quake', { dmg: dmg });
   }
 
   // ---------------- magma (§5.5) ----------------
@@ -492,7 +521,10 @@
           count++; spread++;
         }
       }
-      if (spread > 0) msg(run, '≈ magma claims new ground ≈', D.COLORS.magma);
+      if (spread > 0) {
+        msg(run, '≈ magma claims new ground ≈', D.COLORS.magma);
+        pushEvent(run, 'magma', { tiles: spread });
+      }
     }
     if (run.t % M.burnPeriod === 0) {
       for (let y = 0; y < H; y++)
@@ -545,6 +577,10 @@
     const B = D.BUILDINGS[type];
     if (!(type === 'belt' && run.mods.beltFree))
       for (const k in B.cost) run.inv[k] = (run.inv[k] || 0) - B.cost[k];
+    if (run.stats) { // v1.1 (SPEC2 §B)
+      run.stats.placed[type] = (run.stats.placed[type] || 0) + 1;
+      run.stats.lastPlaceT = run.totalT;
+    }
     if (type === 'belt') {
       run.grid[y][x].belt = { dir: facing, item: null, moved: false };
       return true;
@@ -553,7 +589,8 @@
     run.machines[id] = {
       id: id, type: type, x: x, y: y, w: B.w, h: B.h, facing: facing, hp: B.hp,
       progress: 0, recipe: type === 'assembler' ? 'gear' : null,
-      input: {}, fuel: 0, status: 'idle', repairAt: 0, out: [], job: null,
+      input: {}, fuel: 0, status: 'idle', repairAt: 0,
+      blockedSince: 0, nofuelSince: 0, out: [], job: null,
     };
     for (let ty = y; ty < y + B.h; ty++)
       for (let tx = x; tx < x + B.w; tx++) run.grid[ty][tx].machine = id;
@@ -610,8 +647,8 @@
       return { handled: true, msg: 'repair needs ' + cost + ' iron plate' };
     }
     if (m.id === 0) {
-      toggleOverdrive(run);
-      return { handled: true, msg: 'overdrive ' + (run.overdrive ? 'ON' : 'OFF') };
+      toggleOverdrive(run); // logs its own message; no msg here (engine echoes msg)
+      return { handled: true };
     }
     if (m.type === 'assembler') {
       const list = D.ASSEMBLER_RECIPES.filter(r => r !== 'bronzeGear' || run.mods.bronzeGear);
@@ -662,9 +699,11 @@
     if (run.depth === D.STRATA_COUNT && !run.mantle) {
       run.status = 'won';
       setResult(run, true);
+      pushEvent(run, 'won', { depth: run.depth });
       return true;
     }
     run.pendingOffers = offerSchematics(run);
+    pushEvent(run, 'descend', { from: run.depth, to: run.depth + 1 });
     return true;
   }
 
@@ -687,6 +726,7 @@
   function abandon(run) {
     run.status = 'dead';
     setResult(run, false);
+    pushEvent(run, 'death', { depth: run.depth, cause: 'abandon' });
   }
 
   // ---------------- tooltip (§5.9) ----------------
