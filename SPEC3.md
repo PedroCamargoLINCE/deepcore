@@ -26,6 +26,16 @@ dispatch prompt):
    one existing line to fix and the standard to hold).
 6. The aesthetic is the material: every new feature is characters and colors on
    the grid. If a feature needs a sprite sheet, it's wrong.
+7. **Dependencies are now permitted** (director's policy change, 2026-08-11): a
+   library or vendored asset is welcome when it *demonstrably improves the
+   player's experience* — never for dev convenience alone. Conditions: the
+   character-grid identity is untouchable (no images, no sprites — rule 6
+   stands); everything is vendored into the repo and inlined by
+   `tools/build.js` (no CDN links — the artifact CSP blocks them and `file://`
+   must keep working); prefer the zero-dep solution when it is equally good.
+   First sanctioned candidate: an embedded CP437/VGA-style monospace font as a
+   data-URI `@font-face` — game-wide glyph coverage plus real terminal
+   texture (see M-MANUAL).
 
 ---
 
@@ -338,9 +348,26 @@ document.
   gentle rib → 90s sarcasm → 150s GRIT starts narrating a nature documentary
   about the player).
 
+- **EGG-420 — The Botanical Incident** (easter egg): two discovery routes —
+  typing `4 2 0` during a run, or a 0.42%-weight dig find (*a perfectly
+  preserved pre-collapse tin*; GRIT: `"That's botanical. I'm confiscating it.
+  For evidence."`). Effect, exactly 42 seconds: a subtle green wash over the
+  map (readability is sacred — tint, don't paint), the foreman bar switches to
+  a mellow pool (~10 lines: `"...you ever really LOOK at a belt, kid? It
+  just... goes."` · `"The quakes are just the planet's heartbeat, man."`),
+  damper tooltips read `chill unit`, dampers puff leaf-green `~` smoke (FX
+  hook), instability rate ×0.9 (the stratum relaxes too), and on expiry GRIT
+  exits with the munchies (`"Break's over. Why does the copper smell like
+  breakfast? Does anyone have breakfast?"`). Trophy hook (M-ACHIEVE): **High
+  Score** — win a run that included the window (trophy: a tiny potted plant).
+  Guardrails: it's GRIT being gloriously unprofessional on Company time — a
+  wink, not a PSA in either direction.
+
 **Contracts:** barks.js pools + tiny engine/render hooks; graffiti = art.js
 pool + descent interstitial slot (M-ANIM-2 provides the slot; without it,
-render above the frames). **Size:** ~150 lines, mostly writing.
+render above the frames); EGG-420 adds a 3-key input buffer in engine, a
+render tint overlay, and the dig-find weight (M-EVENTS hook — without
+M-EVENTS, the keys are the only route). **Size:** ~220 lines, mostly writing.
 
 ---
 
@@ -463,6 +490,43 @@ first user gesture. **Size:** ~400 lines.
 
 ---
 
+### M-MANUAL — The Field Manual, Redesigned (P0-adjacent — dispatch anytime)
+
+**Pitch:** the current help page works but reads as a 74×30 monolith — blocky,
+one color, no visual hierarchy (director's note: user-flagged). Rebuild it as
+the most *readable* screen in the game: scannable in 5 seconds, worth 30.
+
+**Design directives:**
+- **Color hierarchy**: section headers in amber caps over thin rules; keycaps
+  rendered as inverse cells (`[R]` bright-on-amber blocks); body text in warm
+  dim gray; every item/machine glyph shown inline in its TRUE game color —
+  the manual becomes a living legend, not a description of one.
+- **Two pages**, `←`/`→` (and `1`/`2`): page 1 **OPERATE** — controls as a
+  real two-column key table + the production chain as the centerpiece,
+  drawn big with live-colored glyphs; page 2 **SURVIVE** — hazard glossary
+  with the actual status glyphs (blinking, via the A1 layer if present),
+  damage/repair math, three tips, and GRIT's one contribution
+  (`"Page 3 fell in a chasm. You're welcome."`).
+- **Air**: ≤60% ink density per page; gutters ≥3 cols; boxes only where they
+  mean something (structure is information — no decorative frames).
+- **Contrast**: every text tier ≥4.5:1 against the background (pairs with
+  M-POLISH/CX-01's coal fix).
+- **Optional, sanctioned (rule 7)**: embed a CP437/VGA-style monospace font as
+  a data-URI and apply it game-wide — authentic terminal texture, guaranteed
+  glyph coverage (kills the CX-08 class of bug forever). If adopted: verify
+  every glyph used in data/art/barks renders, re-measure cell metrics (CW/CH),
+  and confirm `tools/build.js` inlines the vendored font into the single file.
+
+**Contracts:** art.js (manual rebuilt as two page assets + shared legend
+builders), render.js (pager + inverse keycaps), engine.js (page keys),
+optional `vendor/` font + build.js inlining. The manual must match ACTUAL
+bindings (cross-check engine key handlers — arrows-only cursor, no WASD).
+**Acceptance:** stub-canvas render test for both pages; width/height limits;
+binding cross-check vs engine; contrast assertions on every palette pair used.
+**Size:** ~200 lines + real design care.
+
+---
+
 ## §Z Dispatch plan
 
 **Order** (respects dependencies, front-loads feel):
@@ -470,7 +534,7 @@ first user gesture. **Size:** ~400 lines.
 | Wave | Modules | Why first |
 |---|---|---|
 | 1 | M-POLISH | everything else builds on a shipped-quality base; owns balance |
-| 2 | M-ANIM-1 + M-ANIM-2 (one session), M-RECAP (parallel session) | biggest feel jump per line; recap locks the run loop's payoff |
+| 2 | M-ANIM-1 + M-ANIM-2 (one session), M-RECAP + M-MANUAL (parallel sessions) | biggest feel jump per line; recap locks the payoff; the manual is the front door |
 | 3 | M-CORELORE + M-GRITPLUS (one session — both are writing), M-WONDERS (parallel) | identity deepeners, no cross-deps |
 | 4 | M-EVENTS (big; includes the cat) | the roguelike soul; benefits from anim layer existing |
 | 5 | M-MANTLE + M-SCHEMS2 (one session), M-TIER2 (parallel, strong session) | systems expansion |

@@ -61,4 +61,7 @@ can be spent or drilled. The factory *is* the timer.
 - `docs/ROADMAP.md` — dispatchable follow-up modules (sound, tier-2 logistics,
   events, daily seed)
 
-No dependencies. Plain JS, one canvas, characters only.
+Plain JS on one canvas, characters only — the ASCII is the identity and it
+stays. Dependencies are welcome when they genuinely sharpen the experience
+(vendored into the repo and inlined by the bundler, so the single file keeps
+working offline) — see SPEC3, rules of engagement #7.
