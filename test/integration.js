@@ -1513,6 +1513,7 @@ function engineBarksSection(seed) {
 function recapSection(seed) {
   SECTION = 'recap seed=' + seed;
   require('../js/barks.js');
+  require('../js/fx.js');          // loaded on purpose: the card must survive it
   require('../js/render.js');
   require('../js/engine.js');
   const B = DC.Barks, R = DC.Render, M = DC.Meta;
@@ -1636,7 +1637,7 @@ function recapSection(seed) {
     assert(shown('STRATUM REACHED'), 'gameover opens on the stats view');
     assert(shown('[TAB]'), 'the stats view advertises the card');
     key('Tab');
-    assertEq(st.ui.recap, true, 'TAB opens the recap card');
+    assertEq(st.screen, 'recap', 'TAB opens the recap card as its own screen');
     const card = R.recapCard(st);
     const txt = R.recapText(st);
     for (let i = 0; i < card.plain.length; i++) {
@@ -1663,6 +1664,29 @@ function recapSection(seed) {
     assert(!shown('STRATUM REACHED'), 'the card replaces the stats view');
     assert(shown('[C] COPY CARD'), 'the card advertises the copy key');
 
+    // The card is its own screen id precisely so the FX layer leaves it
+    // alone: gameover dust motes and the victory core-pulse are scoped by
+    // screen, and a card with a '·' punched through its border is a card you
+    // would not paste. Read the cells back after a run of frames and require
+    // the drawn card to still be the built card, glyph for glyph.
+    frames(40);
+    assert(DC.FX && DC.FX.clock && DC.FX.clock() > 0,
+      'the FX layer really was live for those frames (the check is not vacuous)');
+    const grid = [];
+    for (let r = 0; r < D.ROWS; r++) {
+      let line = '';
+      for (let c = 0; c < D.COLS; c++) line += (R.cellAt(c, r) || { ch: ' ' }).ch;
+      grid.push(line);
+    }
+    let top = -1;
+    for (let r = 0; r < grid.length; r++) if (grid[r].indexOf('┌─ DEEPCORE') >= 0) { top = r; break; }
+    assert(top >= 0, 'the card box is on the cell grid');
+    const cx = grid[top].indexOf('┌─ DEEPCORE');
+    for (let i = 0; i < card.plain.length; i++) {
+      assertEq(grid[top + i].slice(cx, cx + R.CARD_W), card.plain[i],
+        'card row ' + i + ' survives 40 frames of the FX overlay intact');
+    }
+
     // --- C: clipboard, and both ways it can fail --------------------------
     global.navigator = {
       clipboard: { writeText: function (t) { captured = t; return { catch: function () {} }; } },
@@ -1670,7 +1694,7 @@ function recapSection(seed) {
     key('c');
     assertEq(captured, txt, 'C copied exactly the card that is on screen');
     assert(/COPIED/.test(st.ui.copied), 'the copy is confirmed on the card');
-    assertEq(st.screen, 'gameover', 'copying does not leave the screen');
+    assertEq(st.screen, 'recap', 'copying does not leave the card');
     global.navigator = {                                   // permission denied
       clipboard: { writeText: function () { return { catch: function (fn) { fn(new Error('no')); } }; } },
     };
@@ -1685,13 +1709,12 @@ function recapSection(seed) {
 
     // --- TAB back, ENTER out ----------------------------------------------
     key('Tab');
-    assertEq(st.ui.recap, false, 'TAB returns to the stats view');
+    assertEq(st.screen, 'gameover', 'TAB returns to the stats view it came from');
     assertEq(st.ui.copied, null, 'the copy notice does not follow you off the card');
     paint();
     assert(shown('STRATUM REACHED'), 'the stats view came back');
     key('Enter');
     assertEq(st.screen, 'title', 'ENTER returns to the surface');
-    assertEq(st.ui.recap, false, 'the card view is cleared on the way out');
 
     // --- second attempt today = practice, and it never ranks --------------
     key('t');
@@ -1742,7 +1765,6 @@ function recapSection(seed) {
     vr.result = { depth: D.STRATA_COUNT, breaches: D.STRATA_COUNT, timeSec: 1200,
                   cores: D.STRATA_COUNT + D.WIN_CORES, won: true };
     st.screen = 'victory';
-    st.ui.recap = false;
     st.ui.copied = null;
     paint();
     assert(shown('CONTINUE INTO THE MANTLE'), 'the victory stats view offers the Mantle');
@@ -1754,14 +1776,14 @@ function recapSection(seed) {
     key('c');
     assert(captured && captured.indexOf('CORE BREACHED') >= 0,
       'C on the victory card copies the win');
-    assertEq(st.screen, 'victory', 'copying did not descend into the Mantle');
+    assertEq(st.screen, 'recap', 'copying did not descend into the Mantle');
     const wonCard = R.recapCard(st).plain.join('\n');
     assert(/S8\s+THE CORE GATE/.test(wonCard), 'the winning card charts all eight strata');
     assert(wonCard.indexOf('†') < 0, 'a completed run has no unfinished stratum');
     key('Tab');
+    assertEq(st.screen, 'victory', 'TAB goes back to the victory stats view');
     key('c');
     assertEq(st.screen, 'descend', 'C on the stats view still continues into the Mantle');
-    assertEq(st.ui.recap, false, 'and leaves the card view behind');
 
     assert(!drawn.some((s) => s.indexOf('RENDER ERROR') >= 0),
       'no render faults across the recap drive');

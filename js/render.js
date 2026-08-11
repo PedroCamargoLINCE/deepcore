@@ -799,7 +799,14 @@
     // clock of its own); absent, the line simply does not appear.
     const today = state.today;
     if (today) {
-      const de = (DC.Meta && DC.Meta.dailyEntry) ? DC.Meta.dailyEntry(meta, today) : null;
+      // read the history directly rather than through Meta.dailyEntry: that
+      // helper normalises the profile as a side effect, and render writes to
+      // nothing.
+      const hist = (meta && Array.isArray(meta.dailyHistory)) ? meta.dailyHistory : [];
+      let de = null;
+      for (let i = 0; i < hist.length; i++) {
+        if (hist[i] && hist[i].date === today) { de = hist[i]; break; }
+      }
       ctext(29, de
         ? 'DAILY ' + today + ' — RUN: STRATUM ' + de.depth + ' in ' + fmtTime(de.timeSec)
         : 'DAILY ' + today + ' — OPEN, ONE RANKED ATTEMPT', C.darkgray);
@@ -981,7 +988,6 @@
   }
 
   function drawGameover(state, phase) {
-    if (state.ui && state.ui.recap) { drawRecap(state); return; }   // M-RECAP
     const lines = art('gameover');
     drawArt(lines, 1, artColor('gameover', C.red));
     layout.artBlock = { row: 1, h: lines.length };   // fx: dust motes drift here
@@ -999,7 +1005,6 @@
   }
 
   function drawVictory(state, phase) {
-    if (state.ui && state.ui.recap) { drawRecap(state); return; }   // M-RECAP
     const lines = art('victory');
     drawArt(lines, 1, artColor('victory', C.magmaHot));
     layout.artBlock = { row: 1, h: lines.length };   // fx: the core sphere pulses
@@ -1329,6 +1334,7 @@
           case 'foundry':  drawFoundry(state); break;
           case 'help':     drawHelp(); break;
           case 'gameover': drawGameover(state, phase); break;
+          case 'recap':    drawRecap(state); break;      // M-RECAP
           case 'victory':  drawVictory(state, phase); break;
           case 'title':
           default:         drawTitle(state); break;
