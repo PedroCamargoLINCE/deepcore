@@ -295,11 +295,14 @@
     lastScreen = screen;
     if (screen === 'descend' && prev === 'run' && run && run.hub) {
       const B = mapBox(surf);
-      crack = B
-        ? { x: B.x + run.hub.x + 1, y: B.y + run.hub.y + 1, f: F }
-        : { x: (D.COLS / 2) | 0, y: (D.ROWS / 2) | 0, f: F };
+      const x = B ? B.x + run.hub.x + 1 : (D.COLS / 2) | 0;
+      const y = B ? B.y + run.hub.y + 1 : (D.ROWS / 2) | 0;
+      // Kept inside the field the descent art occupies: the glass breaks
+      // under the interstitial's header, never through it.
+      crack = { x: U.clamp(x, 4, D.COLS - 5), y: U.clamp(y, CRACK_TOP + 2, D.ROWS - 4), f: F };
     }
   }
+  const CRACK_TOP = 6;                         // first row the crack may touch
   function drawCrack(surf) {
     if (!crack) return;
     const age = F - crack.f;
@@ -310,7 +313,7 @@
       const R = RAYS[i];
       for (let d = 1; d <= reach; d++) {
         const c = crack.x + R.dx * d, r = crack.y + R.dy * d;
-        if (c < 0 || c >= D.COLS || r < 0 || r >= D.ROWS) break;
+        if (c < 0 || c >= D.COLS || r < CRACK_TOP || r >= D.ROWS) break;
         surf.put(c, r, R.ch, d === reach ? C.white : mixOf(C.white, C.amber, 0.5));
       }
     }
@@ -608,8 +611,74 @@
       drawBorder(run, surf);
       drawEmber(run, surf);
     }
+    if (screen === 'title') drawTitle(state, surf);
     if (screen === 'descend') drawCrack(surf);
     drawParts(surf, screen);
+  }
+
+  // --- A2: typewriters and the depth odometer ------------------------------
+  // Keyed by call site. A changed string restarts the reveal, so a screen can
+  // ask for the same key every frame without owning any state itself.
+  const typers = Object.create(null);
+  function typed(key, str, cps) {
+    let e = typers[key];
+    if (!e || e.str !== str) { e = typers[key] = { str: str, f0: F, done: 0 }; }
+    const n = Math.floor(((F - e.f0) * (cps || 20)) / FPS);
+    if (n >= str.length && !e.done) e.done = F;
+    return n >= str.length ? str : str.slice(0, Math.max(0, n));
+  }
+  // The frame a `typed` key finished, or 0 while it is still running.
+  function typedDone(key) {
+    const e = typers[key];
+    return e ? e.done : 0;
+  }
+  // Digits settle left to right; the rest roll through randoms at ~10 fps.
+  function odometer(key, value, prog) {
+    const s = String(Math.round(value));
+    const settled = Math.floor(U.clamp(prog, 0, 1) * (s.length + 0.5));
+    let o = '';
+    for (let i = 0; i < s.length; i++) {
+      o += i < settled ? s[i]
+        : String(Math.floor(hash(((F / 6) | 0) * 131 + i * 17 + s.length) * 10) % 10);
+    }
+    return o;
+  }
+
+  // --- A2: the title screen ------------------------------------------------
+  // Slow embers rise behind the rig, the drill string idles, PRESS ENTER
+  // breathes. The logo's 3-tone sweep is render's and is left alone.
+  const EMBER_COL = [C.amber, C.orange, '#ff7a45'];
+  function drawTitle(state, surf) {
+    if (F % 18 === 0) {
+      spawn({
+        screen: 'title',
+        x: 8 + rand() * (D.COLS - 16), y: D.ROWS - 3,
+        vx: (rand() - 0.5) * 0.05, vy: -0.11,
+        ch: rand() < 0.5 ? '.' : '·',
+        col: EMBER_COL[(rand() * 3) | 0],
+        life: 170, behind: true,                 // they rise BEHIND the rig
+      });
+    }
+    const T = surf.layout && surf.layout.title;
+    if (!T) return;
+    if (T.rig) {
+      // the drill string below the wellhead churns on a 2-frame swap, offset
+      // per row so the pipe reads as turning rather than blinking
+      for (let r = 8; r < T.rig.h; r++) {
+        for (let c = 0; c < T.rig.w; c++) {
+          const gc = T.rig.x + c, gr = T.rig.y + r;
+          if (surf.ch(gc, gr) !== '║') continue;
+          if (((((F / 8) | 0) + r) & 1)) surf.put(gc, gr, '╫', surf.fg(gc, gr));
+        }
+      }
+    }
+    if (T.enter) {
+      const k = 0.45 + 0.55 * breathe(1.6 * FPS);
+      for (let i = 0; i < T.enter.len; i++) {
+        const gc = T.enter.col + i;
+        surf.put(gc, T.enter.row, surf.ch(gc, T.enter.row), mixOf(C.green, C.white, k));
+      }
+    }
   }
 
   // --- A2: the lights flicker before the hit -------------------------------
@@ -692,6 +761,8 @@
     begin: function (state, surf) { SURF = surf || SURF; begin(state, surf); },
     tile: tile,
     frame: frame,
+    typed: typed,
+    odometer: odometer,
     // test surface: the clock and the per-stratum scratch are inspectable so
     // a stub-canvas frame-advance test can prove each A1/A2 row fires.
     clock: function () { return F; },

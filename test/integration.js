@@ -1522,6 +1522,7 @@ const FX_ROWS_A1 = [
 ];
 const FX_ROWS_A2 = [
   'quake.debris', 'collapse.dread', 'instability.border', 'breach.crack',
+  'descent.interstitial', 'title.embers',
 ];
 
 function fxSection(seed) {
@@ -2041,6 +2042,81 @@ function fxSection(seed) {
   st.screen = 'run';
   frames(1);
   row('breach.crack');
+
+  // ---- A2: the descent interstitial — name types, odometer rolls ---------
+  st.screen = 'descend';
+  st.ui.descendAnim = 0;
+  run.pendingOffers = null;                   // scaffold: hold on the animation
+  frames(2);
+  const nameRow = function () {
+    let s = '';
+    for (let c = 0; c < D.COLS; c++) s += R.cellAt(c, 4).ch;
+    return s.replace(/\s+$/, '').replace(/^\s+/, '');
+  };
+  const early = nameRow();
+  frames(40);
+  const later = nameRow();
+  assert(later.length > early.length, 'the stratum name typewriters in (' +
+    early.length + ' -> ' + later.length + ' chars)');
+  assert(later.indexOf('STRATUM ' + (run.depth + 1)) >= 0,
+    'and it names the stratum it is taking you to (' + later + ')');
+  // the odometer: digits roll before they settle
+  const depthRow = function () {
+    for (let r = 0; r < D.ROWS; r++) {
+      let s = '';
+      for (let c = 0; c < D.COLS; c++) s += R.cellAt(c, r).ch;
+      if (s.indexOf('DEPTH -') >= 0) return s.trim();
+    }
+    return '';
+  };
+  const spun = {};
+  for (let i = 0; i < 40; i++) { frames(1); spun[depthRow()] = 1; }
+  assert(Object.keys(spun).length >= 3, 'the depth odometer spins its digits');
+  st.ui.descendAnim = 10000;                  // scaffold: run the animation out
+  frames(2);
+  const settledRow = depthRow();
+  assert(settledRow.indexOf('-' + (run.depth + 1) * D.DEPTH_M + 'm') >= 0,
+    'the odometer settles on the depth you are arriving at (' + settledRow + ')');
+  row('descent.interstitial');
+  st.screen = 'run';
+  st.ui.descendAnim = 0;
+  frames(1);
+
+  // ---- A2: the title screen — embers, drill churn, breathing ENTER -------
+  st.screen = 'title';
+  frames(1);
+  const T = R.layout.title;
+  assert(T && T.enter, 'render publishes the title layout for fx');
+  const logo = {};
+  for (let r = 1; r <= 5; r++) for (let c = 0; c < D.COLS; c++) {
+    const cc = R.cellAt(c, r);
+    if (cc.ch !== ' ') logo[cc.fg] = 1;
+  }
+  assert(Object.keys(logo).length >= 3, 'the logo keeps its 3-tone sweep');
+  const motes0 = countCh(".·", 0, 20, D.COLS, 12);
+  frames(240);
+  let motesPeak = 0;
+  for (let i = 0; i < 60; i++) { frames(1); motesPeak = Math.max(motesPeak, countCh(".·", 0, 12, D.COLS, 18)); }
+  assert(motesPeak > motes0, 'embers rise behind the rig (' + motes0 + ' -> ' + motesPeak + ')');
+  if (T.rig) {
+    let churn = null;
+    for (let r = 8; r < T.rig.h && !churn; r++) {
+      for (let c = 0; c < T.rig.w && !churn; c++) {
+        if (R.cellAt(T.rig.x + c, T.rig.y + r).ch === '║' ||
+            R.cellAt(T.rig.x + c, T.rig.y + r).ch === '╫') churn = { c: T.rig.x + c, r: T.rig.y + r };
+      }
+    }
+    assert(churn, 'scaffold: the drill string is on screen');
+    const churned = {};
+    for (let i = 0; i < 40; i++) { frames(1); churned[R.cellAt(churn.c, churn.r).ch] = 1; }
+    assert(churned['║'] && churned['╫'], 'the drill string idles on a 2-frame churn');
+  }
+  const enterCols = {};
+  for (let i = 0; i < 120; i++) { frames(1); enterCols[R.cellAt(T.enter.col, T.enter.row).fg] = 1; }
+  assert(Object.keys(enterCols).length >= 4, 'PRESS ENTER breathes');
+  row('title.embers');
+  st.screen = 'run';
+  frames(1);
 
   // ---- the hard constraint: FX never writes back into the sim ------------
   const before = JSON.stringify({
