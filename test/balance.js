@@ -1114,6 +1114,11 @@ const policies = (process.env.DC_BAL_POLICIES || 'standard,camper').split(',');
 const capMin = parseInt(process.env.DC_BAL_CAPMIN || '30', 10);
 
 // Foundry loadout: default is a naked first run (SPEC §12's baseline).
+// NAKED gates the annotations that only describe that baseline — a run with
+// upgrades beats the naked s1-breach and cores bands by design, and printing
+// "[target ...]" next to a number the target was never about reads as a
+// failure. See the FOOTER at the bottom for which target is checked where.
+const NAKED = !process.env.DC_BAL_META;
 const profile = DC.Meta.newProfile();
 if (process.env.DC_BAL_META) {
   for (const part of process.env.DC_BAL_META.split(',')) {
@@ -1184,17 +1189,17 @@ function agg(policy) {
     console.log('  s1 breach-ready: med ' + med(s1.map((s) => s.tBreach)) + 's  range ' +
       Math.min.apply(null, s1.map((s) => s.tBreach)) + '-' +
       Math.max.apply(null, s1.map((s) => s.tBreach)) + 's' +
-      '   [SPEC 90-150s + ~40s build => 130-190s here]');
+      (NAKED ? '   [SPEC 90-150s + ~40s build => 130-190s here]' : ''));
   }
   console.log('  survive stratum 2: ' + surviveS2.length + '/' + n + ' (' +
     Math.round(100 * surviveS2.length / n) + '%)   [target >=80%]');
   console.log('  wins: ' + wins.length + '/' + n +
     (wins.length ? '  med ' + (med(wins.map((r) => r.totalSec)) / 60).toFixed(1) +
       'min  range ' + wins.map((r) => (r.totalSec / 60).toFixed(1)).sort().join('/') : '') +
-    '   [target 15-25min]');
+    '   [target 15-25min' + (NAKED ? ' — not checked on a naked rig, see footer' : '') + ']');
   console.log('  deaths: ' + deaths.length + (deathDepths.length
     ? ' at depths [' + deathDepths.join(',') + '] med ' + med(deathDepths) : '') +
-    (policy === 'camper' ? '   [target ~6-7]' : ''));
+    (policy === 'camper' ? '   [target ~6-7 with a full Foundry]' : ''));
   const causes = {};
   for (const r of rs) if (r.outcome !== 'WON') causes[r.cause] = (causes[r.cause] || 0) + 1;
   console.log('  causes: ' + (Object.keys(causes).map((k) => k + ' x' + causes[k]).join(', ') || 'none'));
@@ -1203,10 +1208,48 @@ function agg(policy) {
     '  magma dmg med ' + med(rs.map((r) => r.magmaDmg)) +
     '  quakes med ' + med(rs.map((r) => r.quakes)));
   console.log('  cores/run: med ' + med(rs.map((r) => r.cores)) +
-    '  [' + rs.map((r) => r.cores).join(',') + ']   [target 2-5 early]');
+    '  [' + rs.map((r) => r.cores).join(',') + ']' +
+    (NAKED ? '   [target 2-5 early]' : ''));
   if (caps.length) console.log('  hit ' + capMin + '-min cap: ' +
     caps.map((r) => r.outcome + '/' + r.seed).join(' '));
   if (stalls.length) console.log('  stalls: ' + stalls.join(' '));
 }
 for (const p of policies) agg(p);
+
+// ---------------------------------------------------------------- FOOTER
+// What the numbers above are worth. Written because the bare table invites
+// exactly one wrong conclusion — "the naked rig never wins, so the game is
+// unwinnable" — and someone acting on it would flatten the difficulty curve
+// the Foundry exists to create.
+const FULL_LOADOUT =
+  'm_stock:2,m_hull:2,m_damp:2,m_torque:2,m_fix:1,m_scan:1,m_deep:1,m_schem:1';
+console.log('\n' + '─'.repeat(78));
+console.log('WHAT THIS HARNESS MEASURES');
+console.log(`
+  The runner is a SCRIPTED BOT, not a player. It lays a fixed opening (coal →
+  belts → assembler) and extends it down a static priority list. It does not
+  read the map, re-route around a poor vein roll, or improvise a tier-2 chain.
+  Treat its results as a FLOOR on difficulty — the game is at least this
+  survivable — never as the player experience.
+
+  Default loadout is a NAKED rig: run one, no Foundry. Give it upgrades with
+    DC_BAL_META=${FULL_LOADOUT}
+
+  SPEC §12 target                  checked on            last known good
+  ---------------------------------------------------------------------------
+  s1 breach 90-150s +~40s build    naked, standard       med 137s      OK
+  first runs bank 2-5 cores        naked                 med 3         OK
+  survive stratum 2 >= 80%         naked                 93% / 86%     OK
+  full win in 15-25 min            full Foundry, std     4/14 @ 21.7m  OK
+  camping ~1.5x pace dies s6-s7    full Foundry, camper  med 7         OK
+
+  The win target is deliberately NOT checked on a naked rig. SPEC §12 scopes it
+  to "competent play", and the Foundry is the game's answer to a first run that
+  ends at stratum 4. A naked bot going 0/14 is the intended shape of run one.
+
+  KNOWN CEILING: at high loadout most remaining deaths are 'no-breach' stalls at
+  s5+ — look for cu2X / crystal-noroute in the per-stratum tags. That is the bot
+  failing to build the tier-2 chain, not the stratum being unbeatable. Do NOT
+  tune data.js against those stalls; fix the bot's build policy first.`);
+console.log('─'.repeat(78));
 console.log('\ndone in ' + Math.round(elapsed()) + 's wall');

@@ -300,5 +300,8 @@
   D.WIN_CORES = 10;  // bonus cores for reaching the Core (breaching stratum 8)
 
   D.SAVE_KEY = 'deepcore_save_v1';
-  D.VERSION = '1.0';
+  // Display only (title-screen corner). v1.1 is the shipped feature set —
+  // GRIT, the rig portrait, keyboard play — plus this polish round. The save
+  // key is deliberately NOT versioned with it: no save format change here.
+  D.VERSION = '1.1';
 })();
