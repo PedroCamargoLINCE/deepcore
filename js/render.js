@@ -244,20 +244,26 @@
     return { gearPerSec: 0, chargePerSec: 0 };
   }
 
-  // M-POLISH/CX-11 — STOCK row labels. Prefers data.js's per-item `short:`
-  // (added in parallel), then Sim.itemShort's fallback table, then the plain
-  // name; the caller slices to the 9-col name field either way.
+  // M-POLISH/CX-11 — STOCK row labels. Prefers data.js's per-item `short:`,
+  // then Sim.itemShort's fallback table, then the plain name.
+  // STOCK_NAME_W is the name field in characters: the accept test in
+  // itemLabel and the slice at the draw site MUST be the same number, so it
+  // is named once here and exported for the suite to audit against D.ITEMS.
+  const STOCK_NAME_W = 9;
+  const STOCK_COUNT_W = 3;
   function itemLabel(id) {
     const it = D.ITEMS[id] || {};
     // a `short` wider than the field would be cut mid-word — that is the bug
     // being fixed, so fall through to the table instead of trusting it
-    if (typeof it.short === 'string' && it.short.length && it.short.length <= 9) return it.short;
+    if (typeof it.short === 'string' && it.short.length &&
+        it.short.length <= STOCK_NAME_W) return it.short;
     try {
       if (DC.Sim && typeof DC.Sim.itemShort === 'function') return String(DC.Sim.itemShort(id));
     } catch (e) { /* sim in flux */ }
     return String(it.name || id);
   }
-  // Counts live in 3 columns: 999 is the widest number, past that read '1k+'.
+  // Counts live in STOCK_COUNT_W columns: 999 is the widest number that fits,
+  // past that read '1k+' (also STOCK_COUNT_W wide) rather than overrun.
   function stockCount(n) {
     n = Math.max(0, Math.floor(n || 0));
     return n > 999 ? '1k+' : String(n);
@@ -537,10 +543,12 @@
         if (!id) continue;
         const it = D.ITEMS[id], cx = SBC + k * 15;
         put(cx, y + i, it.glyph, it.color);
-        // CX-11: 9 columns (the old blank gutter) + a per-item short name, so
-        // 'copper ore' and 'copper plate' stop rendering as 'copper o/p'.
-        text(cx + 2, y + i, itemLabel(id).slice(0, 9), C.gray);
-        text(cx + 11, y + i, U.padL(stockCount(inv[id] || 0), 3), C.white);
+        // CX-11: STOCK_NAME_W columns (the old blank gutter) + a per-item
+        // short name, so 'copper ore' and 'copper plate' stop rendering as
+        // 'copper o/p'.
+        text(cx + 2, y + i, itemLabel(id).slice(0, STOCK_NAME_W), C.gray);
+        text(cx + 2 + STOCK_NAME_W, y + i,
+             U.padL(stockCount(inv[id] || 0), STOCK_COUNT_W), C.white);
       }
     }
     y += srows;
@@ -946,6 +954,13 @@
   DC.Render = {
     CW: CW, CH: CH,
     layout: layout,
+    // M-POLISH/CX-11: the STOCK row contract, exported so test/barks_test.js
+    // can prove every D.ITEMS.short survives the name field unclipped and
+    // stays unambiguous — mirrors Sim.SCAN_W for the tooltip panel (CX-04).
+    STOCK_NAME_W: STOCK_NAME_W,
+    STOCK_COUNT_W: STOCK_COUNT_W,
+    itemLabel: itemLabel,
+    stockCount: stockCount,
 
     init: function (cv) {
       canvas = cv;

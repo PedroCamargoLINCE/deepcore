@@ -1441,6 +1441,13 @@ function engineBarksSection(seed) {
   key('a');
   assertEq(st.screen, 'gameover', 'pause-menu A abandons the run');
   assertEq(run.status, 'dead', 'abandoned run is dead');
+  // M-POLISH backlog: walking away used to skip the death bark entirely, so
+  // GRIT had nothing to say about the one exit the player chooses. The engine
+  // now fires it before the screen flips; 'death' is a PRIORITY trigger, so
+  // the 6s global cooldown can never swallow it.
+  assert(run.foreman && B.POOLS.death.indexOf(run.foreman.text) >= 0,
+    'abandoning fires a death bark (got ' +
+    JSON.stringify(run.foreman && run.foreman.text) + ')');
   frames(2);
   const epiPool = [];
   for (const pair of B.EPITAPHS.abandon) for (const l of pair) epiPool.push(l);
@@ -1462,8 +1469,25 @@ function engineBarksSection(seed) {
   frames(3);
   assert(drawn.some(s => s.indexOf('▣') >= 0),
     'purchased part appears in the rig portrait');
+  // M-POLISH backlog: GRIT's 9 bespoke foundryBuy lines were unreachable —
+  // bark() needs a live run and the Foundry has none. The engine now keeps a
+  // run-shaped bark context for this screen and parks the line in
+  // st.foundryBark; render draws it under the portrait.
+  assertEq(st.foundryBark && st.foundryBark.line, B.META_LINES.m_stock,
+    'foundry purchase produces its bespoke foreman line with no live run');
+  assert(drawn.some(s => s.indexOf(B.META_LINES.m_stock.slice(0, 30)) >= 0),
+    'the Foundry renders GRIT under the rig portrait');
+  // a second purchase talks too — the runless context must not stall on the
+  // global bark cooldown (its clock does not advance on its own)
+  key('b');
+  assertEq(st.meta.upgrades.m_hull, 1, 'second foundry buy applied');
+  assertEq(st.foundryBark.line, B.META_LINES.m_hull,
+    'consecutive purchases each get their own line (cooldown does not stall)');
   key('Escape');
   assertEq(st.screen, 'title', 'Escape returns to the surface');
+  key('f');
+  assertEq(st.foundryBark.line, null, 're-entering the Foundry clears the stale line');
+  key('Escape');
 
   // --- render smoke over the whole drive ---
   assert(!drawn.some(s => s.indexOf('RENDER ERROR') >= 0),

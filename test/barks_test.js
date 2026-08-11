@@ -6,13 +6,19 @@
    lines); a scripted drive fires ≥6 distinct triggers with no line reuse;
    foreman set/expiry; priority cut-in + cooldown; pool-exhaust reuse;
    cause-aware epitaphs; victory toast; log mirroring.
-   M-POLISH adds three lints over the shipped content:
+   M-POLISH adds five lints over the shipped content — this suite is where the
+   polish contracts live, so a later dispatch cannot quietly undo them:
      CX-07  no duplicate punchlines anywhere in the 168-line corpus
      CX-10  GRIT's voice guardrails as a machine check (non-consent framing,
             explicit anatomy, demographic targeting — all OUT; profanity,
             gallows humor, rig innuendo and Company-hating stay IN)
      CX-02/03  the field manual (art.js) carries no number or key binding that
-            contradicts data.js / engine.js
+            contradicts data.js / engine.js — including the descend vent,
+            which must reach BOTH sim.js and the manual from D.DESCEND_VENT
+     CX-04  every line Sim.describeTile can emit fits Sim.SCAN_W (29 cols),
+            so the SCAN panel never truncates mid-word
+     CX-11  every D.ITEMS.short survives render's STOCK name field unclipped
+            and no two rows draw the same label
    Scaffold mutations (marked "scaffold:") force ambient conditions the
    drive cannot cheaply reach; all bark behavior runs through the API. */
 'use strict';
@@ -400,15 +406,22 @@ SECTION = 'manual';
   assert(help[0].length <= 74, 'manual is <= 74 columns (got ' + help[0].length + ')');
   assert(help.length <= D.ROWS - 2, 'manual fits the 33-row screen with a footer');
 
-  // the vent constant still lives as a literal in sim.js startStratum; read it
-  // from DATA when the integrator promotes it, else from the sim source.
-  let vent = D.DESCEND_VENT;
-  if (vent == null) {
-    const simSrc = fs.readFileSync(path.join(__dirname, '../js/sim.js'), 'utf8');
-    const m = simSrc.match(/run\.instability\s*=\s*Math\.max\(0,\s*run\.instability\s*-\s*(\d+)\)/);
-    assert(m, 'found the descend vent literal in sim.js startStratum');
-    vent = Number(m[1]);
-  }
+  // The descend vent is one number with two consumers (sim.js startStratum and
+  // the manual). It used to be a literal in each, which is how the manual came
+  // to claim 40 while the sim vented 45 (CX-02). It now lives in data.js and
+  // BOTH sides read it — assert that here so the divergence cannot reopen: a
+  // future edit that re-inlines the number in sim.js fails this test.
+  const vent = D.DESCEND_VENT;
+  assert(typeof vent === 'number' && isFinite(vent),
+    'DESCEND_VENT is exposed in data.js (got ' + vent + ')');
+  const simSrc = fs.readFileSync(path.join(__dirname, '../js/sim.js'), 'utf8');
+  const ventLine = simSrc.match(/run\.instability\s*=\s*Math\.max\(0,\s*run\.instability\s*-\s*([^)]+)\)/);
+  assert(ventLine, 'found the descend vent subtraction in sim.js startStratum');
+  assert(/D\.DESCEND_VENT/.test(ventLine[1]),
+    'sim.js vents via D.DESCEND_VENT, not a literal (got "' + ventLine[1].trim() + '")');
+  const artSrc = fs.readFileSync(path.join(__dirname, '../js/art.js'), 'utf8');
+  assert(/const\s+vent\s*=\s*n\(\s*D\.DESCEND_VENT\s*\)/.test(artSrc),
+    'the manual composes its vent figure from D.DESCEND_VENT with no fallback literal');
 
   const allowed = new Map();  // number -> what authorizes it
   const allow = (v, why) => allowed.set(Number(v), why);
@@ -472,9 +485,122 @@ SECTION = 'manual';
   }
 }
 
+// ------------------------------- CX-04: every SCAN tooltip line fits the panel
+// sim.js exports SCAN_W precisely so this can be re-audited whenever the
+// tooltip strings are edited. The old bug was render clipping mid-word
+// ("click: repair (2 pl"); the fix is that no line is ever over-long in the
+// first place, so we generate the machine states that produce the longest
+// strings and measure every line describeTile can emit.
+SECTION = 'scan-panel';
+let scanLines = 0;
+{
+  const W = S.SCAN_W;
+  assert(typeof W === 'number' && W > 0, 'Sim.SCAN_W is exported');
+  const run = S.newRun(defEffects(), 4242);
+  for (let y = 0; y < D.MAP_H; y++)
+    for (let x = 0; x < D.MAP_W; x++) run.grid[y][x].revealed = true;
+
+  const seen = [];
+  function sweep() {
+    for (let y = 0; y < D.MAP_H; y++)
+      for (let x = 0; x < D.MAP_W; x++) {
+        for (const l of S.describeTile(run, x, y) || []) {
+          scanLines++;
+          assert(typeof l.text === 'string', 'tooltip line has text');
+          assert(l.text.length <= W, 'SCAN line overflows ' + W + ' cols (' +
+            l.text.length + '): ' + JSON.stringify(l.text));
+          seen.push(l.text);
+        }
+      }
+  }
+  sweep();  // natural map: terrain, ore veins, the hub
+
+  // scaffold: one of every building, in every status, damaged and whole, with
+  // every input buffer full — the widest strings the panel can be asked to draw
+  const types = ['belt', 'extractor', 'smelter', 'assembler', 'damper'];
+  const statuses = ['ok', 'idle', 'jammed', 'nofuel', 'blocked', 'dead'];
+  let id = 1000;
+  const spots = [];
+  for (let y = 1; y < D.MAP_H - 3; y++)
+    for (let x = 1; x < D.MAP_W - 3; x++) {
+      const t = run.grid[y][x];
+      if (t.machine === null && t.t === 'floor' && !t.belt) spots.push([x, y]);
+    }
+  let si = 0;
+  for (const type of types)
+    for (const st of statuses)
+      for (const hp of [1, 2]) {
+        if (si >= spots.length) break;
+        const [x, y] = spots[si++];
+        const B = D.BUILDINGS[type];
+        const m = mach(id++, type, x, y, B.w, B.h,
+          { hp: hp, status: st, fuel: 40, recipe: type === 'assembler' ? 'charge' : null });
+        for (const k of D.ITEM_ORDER) m.input[k] = D.INPUT_CAP;  // widest buffer line
+        run.machines[m.id] = m;
+        run.grid[y][x].machine = m.id;
+        run.grid[y][x].ore = 'crystal';        // longest ore name under a drill
+        run.grid[y][x].oreAmt = 999;
+      }
+  sweep();
+  // every assembler recipe prints its output name on the panel
+  for (const r of D.ASSEMBLER_RECIPES) {
+    for (const k in run.machines)
+      if (run.machines[k].type === 'assembler') run.machines[k].recipe = r;
+    sweep();
+  }
+  // belts carrying the longest-named cargo
+  for (let y = 0; y < D.MAP_H; y++)
+    for (let x = 0; x < D.MAP_W; x++) {
+      const t = run.grid[y][x];
+      if (t.t === 'floor' && t.machine === null) t.belt = { dir: 2, item: 'crystal' };
+    }
+  sweep();
+  assert(scanLines > 1000, 'the sweep actually exercised the panel (' + scanLines + ')');
+  assert(seen.some(l => /repair/.test(l)), 'the damaged-machine repair line was covered');
+}
+
+// ------------------------ CX-11: STOCK rows are unambiguous and never clipped
+// render.js exports the row contract (STOCK_NAME_W / itemLabel / stockCount).
+// The bug was 'copper ore' and 'copper plate' both drawing as 'copper o/p';
+// the fix is per-item `short:` in data.js, so this lint holds data and render
+// together — a new item with no short, or a short that clips, fails here.
+SECTION = 'stock-rows';
+{
+  require('../js/render.js');          // DOM-free at load; init() is what needs a canvas
+  const R = DC.Render;
+  assert(R && typeof R.itemLabel === 'function', 'Render exports itemLabel');
+  const W = R.STOCK_NAME_W;
+  assert(typeof W === 'number' && W > 0, 'Render exports STOCK_NAME_W');
+
+  const labels = new Map();
+  for (const id of D.ITEM_ORDER) {
+    const it = D.ITEMS[id];
+    assert(it, 'ITEM_ORDER entry ' + id + ' exists in ITEMS');
+    assert(typeof it.short === 'string' && it.short.length,
+      id + ' needs a `short:` STOCK label in data.js');
+    const drawn = R.itemLabel(id).slice(0, W);
+    assertEq(drawn, it.short, id + " draws its data.js short verbatim — '" +
+      it.short + "' is being clipped to '" + drawn + "'");
+    assert(!labels.has(drawn), 'STOCK label ' + JSON.stringify(drawn) +
+      ' is ambiguous: both ' + labels.get(drawn) + ' and ' + id + ' draw it');
+    labels.set(drawn, id);
+  }
+  // counts share the row: 3 columns, and nothing may overrun them
+  for (const n of [0, 1, 42, 999, 1000, 12345, 1e9]) {
+    const s = R.stockCount(n);
+    assertEq(s.length <= R.STOCK_COUNT_W, true,
+      'stock count ' + n + ' -> ' + JSON.stringify(s) + ' overruns the count field');
+  }
+  assertEq(R.stockCount(999), '999', '999 still prints exactly');
+  assertEq(R.stockCount(1000), '1k+', 'past 999 the count reads 1k+');
+  assertEq(R.stockCount(-5), '0', 'negative stock clamps to 0');
+}
+
 console.log('PASS barks | categories ' + CATALOG.length +
   ' | lines ' + allLines.length +
   ' | drive triggers ' + trigs.size + ' (' + Array.from(trigs).sort().join(',') + ')' +
   ' | barks in drive ' + d1.lines.length +
   ' | worst line overlap ' + DUP_WORST.toFixed(2) + '/' + DUP_MAX.toFixed(2) +
-  ' | manual ' + DC.Art.help[0].length + 'x' + DC.Art.help.length + ' data-composed');
+  ' | manual ' + DC.Art.help[0].length + 'x' + DC.Art.help.length + ' data-composed' +
+  ' | scan lines ' + scanLines + ' <= ' + S.SCAN_W +
+  ' | stock labels ' + D.ITEM_ORDER.length + ' unambiguous');

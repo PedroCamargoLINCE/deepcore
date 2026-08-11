@@ -184,10 +184,9 @@
     const fuelPer   = n(D.FUEL_PER);
     const gearIn    = D.RECIPES.gear.in.ironPlate;
     const chgIn     = D.RECIPES.charge.in;
-    // instability vented on descent. Lives as a literal in sim.js startStratum
-    // today; DESCEND_VENT is the DATA key it should move to (see README /
-    // integrator note). Fallback keeps the manual honest until it lands.
-    const vent      = n(D.DESCEND_VENT != null ? D.DESCEND_VENT : 45);
+    // instability vented on descent — the same DATA key sim.js startStratum
+    // subtracts, so retuning it retunes the manual and the sim together.
+    const vent      = n(D.DESCEND_VENT);
     // first stratum whose breach needs core charges = when charges matter
     let chargeStratum = D.STRATA.length;
     for (let i = 0; i < D.STRATA.length; i++) {
