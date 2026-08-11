@@ -140,6 +140,32 @@
     try { B.fire(st.run, trigger, ctx); } catch (e) {}
   }
 
+  // M-POLISH backlog: GRIT's 9 bespoke foundryBuy lines were unreachable —
+  // bark() needs st.run and there is no run on the Foundry screen. Barks.fire
+  // only touches run.rng / run.totalT / run.foreman / run.messages, so a
+  // minimal run-shaped context is enough. totalT jumps between purchases so
+  // the global bark cooldown never swallows a line; render draws the returned
+  // line under the rig portrait (state.foundryBark).
+  function foundryCtx() {
+    return {
+      rng: U.mulberry32(0xC0FFEE), totalT: 0, t: 0, depth: 1,
+      status: 'active', messages: null, foreman: null,
+      integrity: 1, maxIntegrity: 1, machines: null, stats: null,
+      inv: {}, schematics: [],
+    };
+  }
+  function foundryBark(st, id) {
+    const B = DC.Barks;
+    if (!B || !B.fire) return;
+    if (!st.foundryBark) st.foundryBark = { ctx: foundryCtx(), line: null };
+    const fx = st.foundryBark.ctx;
+    fx.totalT += 60 * D.TICK_HZ;          // always clear of any bark cooldown
+    let line = null;
+    try { line = B.fire(fx, 'foundryBuy', id); } catch (e) { /* barks in flux */ }
+    if (!line && fx.foreman && fx.foreman.text) line = fx.foreman.text;
+    if (line) st.foundryBark.line = String(line);
+  }
+
   // ---------------- run lifecycle ----------------
 
   function newRun(st) {
@@ -253,7 +279,10 @@
     switch (st.screen) {
       case 'title':
         if (k === 'Enter') newRun(st);
-        else if (lk === 'f') st.screen = 'foundry';
+        else if (lk === 'f') {
+          st.screen = 'foundry';
+          if (st.foundryBark) st.foundryBark.line = null;   // fresh floor, no stale line
+        }
         else if (lk === 'h') { helpFrom = 'title'; st.screen = 'help'; }
         else handled = false;
         break;
@@ -278,7 +307,8 @@
               // (render keys expiry on object identity; until is advisory,
               // in the rAF-timestamp clock.)
               st.ui.flashPart = { id: id, until: lastTime + 1200 };
-              bark('foundryBuy', id);
+              bark('foundryBuy', id);      // live-run path (unused today)
+              foundryBark(st, id);         // runless foreman line on this screen
             }
           } else handled = false;
         }
@@ -312,6 +342,10 @@
       else if (lk === 'a') {
         DC.Sim.abandon(run);
         awardRun(st);
+        // M-POLISH backlog: a real death barks; walking away used to skip
+        // straight to gameover. The epitaph stays cause-aware (integrity is
+        // still > 0, so Barks.epitaph picks the abandon pool).
+        bark('death');
         ui.paused = false;
         st.screen = 'gameover';
       } else if (lk === 'h') { helpFrom = 'run'; st.screen = 'help'; }

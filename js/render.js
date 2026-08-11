@@ -244,6 +244,23 @@
     return { gearPerSec: 0, chargePerSec: 0 };
   }
 
+  // M-POLISH/CX-11 — STOCK row labels. Prefers data.js's per-item `short:`
+  // (added in parallel), then Sim.itemShort's fallback table, then the plain
+  // name; the caller slices to the 9-col name field either way.
+  function itemLabel(id) {
+    const it = D.ITEMS[id] || {};
+    if (typeof it.short === 'string' && it.short.length) return it.short;
+    try {
+      if (DC.Sim && typeof DC.Sim.itemShort === 'function') return String(DC.Sim.itemShort(id));
+    } catch (e) { /* sim in flux */ }
+    return String(it.name || id);
+  }
+  // Counts live in 3 columns: 999 is the widest number, past that read '1k+'.
+  function stockCount(n) {
+    n = Math.max(0, Math.floor(n || 0));
+    return n > 999 ? '1k+' : String(n);
+  }
+
   function stratumOf(depth) {
     return depth <= D.STRATA_COUNT ? D.STRATA[depth - 1] : D.mantleStratum(depth);
   }
@@ -518,8 +535,10 @@
         if (!id) continue;
         const it = D.ITEMS[id], cx = SBC + k * 15;
         put(cx, y + i, it.glyph, it.color);
-        text(cx + 2, y + i, it.name.slice(0, 8), C.gray);
-        text(cx + 11, y + i, U.padL(String(Math.min(inv[id] || 0, 999)), 3), C.white);
+        // CX-11: 9 columns (the old blank gutter) + a per-item short name, so
+        // 'copper ore' and 'copper plate' stop rendering as 'copper o/p'.
+        text(cx + 2, y + i, itemLabel(id).slice(0, 9), C.gray);
+        text(cx + 11, y + i, U.padL(stockCount(inv[id] || 0), 3), C.white);
       }
     }
     y += srows;
@@ -822,6 +841,13 @@
         maxed ? C.amberDim : afford ? C.magenta : shade(C.red, 0.8));
       text(lx + 3, row + 1, up.desc.slice(0, COLS - lx - 4), C.darkgray);
     }
+
+    // Foreman surface (M-POLISH backlog): GRIT talks on the Foundry floor even
+    // with no live run — the engine parks the last foundryBuy line here.
+    // Accepts a bare string or {line}, so the engine side can grow.
+    const fbRaw = state.foundryBark;
+    const fb = typeof fbRaw === 'string' ? fbRaw : (fbRaw && fbRaw.line);
+    if (fb) ctext(28, 'GRIT ▸ ' + String(fb).slice(0, 70), C.cyan);
 
     ctext(29, 'lifetime cores ' + (meta.totalCores || 0) + '   runs ' + (meta.runs || 0), C.darkgray);
     ctext(31, '[A-I] FORGE UPGRADE      [ESC] RETURN TO SURFACE', C.amber);
