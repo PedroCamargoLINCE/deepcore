@@ -222,6 +222,200 @@
     A.mantle = [bar, sp((bar.length - mid.length) >> 1) + mid, bar];
   })();
 
+  // ---------------- v1.1: layered rig portrait (SPEC2 §C.1) ----------------
+  // The naked rig, exactly 24 x 12: derrick tower between the cab (left,
+  // porthole windows) and the power shed (right, vents), drill string driven
+  // through the wellhead into cracked strata.
+  (function () {
+    const rows = [];
+    rows.push(sp(10) + '╔═╗' + sp(11));              // crown block
+    rows.push(sp(10) + '╠▪╣' + sp(11));              // sheave
+    rows.push(sp(9) + '╔╝│╚╗' + sp(10));             // upper legs, hoist cable
+    rows.push(sp(9) + '║ │ ║' + sp(10));
+    rows.push(sp(3) + '┌───┐╔╝ │ ╚╗┌───┐' + sp(4));  // cab roof · legs · shed roof
+    rows.push(sp(3) + '│▪▪▪│║ ▄█▄ ║│≡≡≡│' + sp(4));  // windows · block · vents
+    rows.push(sp(3) + '└───┘╢  ║  ╟└───┘' + sp(4));  // drill pipe
+    rows.push(rep('▀', 10) + '▌║▐' + rep('▀', 11));  // surface + wellhead
+    let r8  = seg(TEX, 3, 10)   + ' ║ ' + seg(TEX, 17, 11);
+    let r9  = seg(TEX, 12, 10)  + ' ║ ' + seg(TEX, 27, 11);
+    let r10 = seg(DTEX, 5, 10)  + ' ║ ' + seg(DTEX, 19, 11);
+    let r11 = seg(DTEX, 14, 10) + ' ▼ ' + seg(DTEX, 33, 11);
+    r8  = lay(r8, 13, '░');                          // cracks widening downward
+    r9  = lay(r9, 8, '░');
+    r10 = lay(lay(r10, 9, '░'), 13, '░');
+    r11 = lay(lay(r11, 8, '░'), 14, '░');
+    rows.push(r8, r9, r10, r11);
+    A.rigBase = rows;
+  })();
+
+  // One overlay per meta upgrade id (data.js META_UPGRADES). Spaces are
+  // transparent; every non-space cell region is disjoint from every other
+  // part's, so composition order never matters.
+  A.rigParts = {
+    // riveted armor slabs down both flanks (cab + shed outer walls),
+    // rising one row above the roofline
+    m_hull:   { row: 3, col: 3, lines: [
+      '▐               ▌',
+      '▐               ▌',
+      '▐               ▌',
+      '▐               ▌',
+    ] },
+    m_damp:   { row: 3,  col: 10, lines: ['(◎)'] },                    // gyro ring mid-tower
+    m_torque: { row: 11, col: 10, lines: ['█▼█'] },                    // fattened bit
+    m_scan:   { row: 1,  col: 3,  lines: ['·˙·˙·',
+                                          '  ╦  ',
+                                          '  ║  '] },                  // antenna mast, cab roof
+    m_salv:   { row: 4,  col: 20, lines: ['══╗ ',
+                                          '  ║ ',
+                                          ' ╘╨╛'] },                   // claw arm, right side
+    m_stock:  { row: 4,  col: 0,  lines: ['╔═╗',
+                                          '║▣║',
+                                          '╚═╝'] },                    // cargo pod bolted left
+    m_deep:   { row: 5,  col: 4,  lines: ['[♦]'] },                    // crystal vault in cab
+    m_fix:    { row: 4,  col: 16, lines: ['┬┬┬',
+                                          '×⌐×'] },                    // tool rack on the shed
+    m_schem:  { row: 3,  col: 15, lines: ['╞≡≡╡'] },                   // blueprint tube, roof edge
+  };
+
+  // upgrades: {id: level} — any level >= 1 bolts the part on. Returns a fresh
+  // 24 x 12 lines array; never mutates rigBase.
+  A.composeRig = function (upgrades) {
+    const out = A.rigBase.slice();
+    if (upgrades) {
+      for (const id in A.rigParts) {
+        if (!(upgrades[id] >= 1)) continue;
+        const p = A.rigParts[id];
+        for (let i = 0; i < p.lines.length; i++) {
+          const r = p.row + i;
+          if (r < 0 || r >= out.length) continue;
+          const src = p.lines[i];
+          let row = out[r];
+          for (let j = 0; j < src.length; j++) {
+            if (src[j] !== ' ') row = lay(row, p.col + j, src[j]);
+          }
+          out[r] = row;
+        }
+      }
+    }
+    return out;
+  };
+
+  // ---------------- v1.1: schematic icons (SPEC2 §C.3, 10 x 5 each) ----------------
+  A.schemIcons = {
+    s_beltfree: [            // rollers under a humming belt
+      '          ',
+      '▶▶▶▶▶▶▶▶▶▶',
+      '══════════',
+      '○  ○  ○  ○',
+      '          ',
+    ],
+    s_extract: [             // twin drill-heads chewing rock
+      ' ▐█▌  ▐█▌ ',
+      ' ▐█▌  ▐█▌ ',
+      '  ▼    ▼  ',
+      '▓▓░▓▓▓▓░▓▓',
+      '▓▒▓▓░▓▓▓▒▓',
+    ],
+    s_smelt: [               // blast furnace mouth, fire inside
+      '  ▄▄▄▄▄▄  ',
+      ' ██▀▀▀▀██ ',
+      ' ██☼☼☼☼██ ',
+      ' ██▄▄▄▄██ ',
+      ' ▀▀▀▀▀▀▀▀ ',
+    ],
+    s_coal: [                // scrubber stack venting clean, coal below
+      '  ≡ ≡≡ ≡  ',
+      ' ╔══════╗ ',
+      ' ║░▒░▒░▒║ ',
+      ' ╚══════╝ ',
+      ' ♠♠ ♠♠ ♠♠ ',
+    ],
+    s_plate: [               // riveted hull plates
+      '╔═══╦═══╗ ',
+      '║▪▪▪║▪▪▪║ ',
+      '╠═══╬═══╣ ',
+      '║▪▪▪║▪▪▪║ ',
+      '╚═══╩═══╝ ',
+    ],
+    s_damp: [                // seismograph trace going flat
+      '┌────────┐',
+      '│ ≈~──── │',
+      '│   *    │',
+      '└─┬────┬─┘',
+      '  ▀    ▀  ',
+    ],
+    s_repair: [              // bot swarm around a machine
+      ' ·×    ·  ',
+      '×  ┌──┐ × ',
+      '   │▓▓│·  ',
+      ' · └──┘ × ',
+      '  ×    ·  ',
+    ],
+    s_drill: [               // diamond-crowned bit
+      '   ▐██▌   ',
+      '   ▐██▌   ',
+      '   ♦██♦   ',
+      '    ♦♦    ',
+      '  ░░░░░░  ',
+    ],
+    s_salvage: [             // claw over reclaimed scrap
+      ' ═══╦═══  ',
+      '    ║     ',
+      '  ┌─╨─┐   ',
+      '  ╘╗ ╔╛   ',
+      ' ▬  ¤  ▬  ',
+    ],
+    s_survey: [              // sonar pinging downward
+      '   ▄██▄   ',
+      '  ( ▼▼ )  ',
+      ' (( ·· )) ',
+      '((  ··  ))',
+      '(   ··   )',
+    ],
+    s_charge: [              // crystal ringing with resonance
+      '   · ‡ ·  ',
+      '  ) ♦♦ (  ',
+      ' )) ♦♦ (( ',
+      '  ) ♦♦ (  ',
+      '   · ˙ ·  ',
+    ],
+    s_over: [                // throttle gauge buried in the red
+      ' ┌──────┐ ',
+      ' │▒▓█»»»│ ',
+      ' └──┬───┘ ',
+      ' ═══╧═══  ',
+      '  »»»»»»  ',
+    ],
+    s_veins: [               // rock fat with ore
+      '▓▓≡≡▓▓♦▓▓▓',
+      '▓≡≡▓▓♦♦▓¢▓',
+      '▓▓▓♠▓▓♦▓¢▓',
+      '▓♠♠▓▓▓▓¢▓▓',
+      '▓▓▓▓≡≡▓▓▓▓',
+    ],
+    s_gear: [                // meshed gears + the bronze recipe
+      '  ▄█▄     ',
+      '  █¤█▄█▄  ',
+      '  ▀█▀█¤█  ',
+      '     ▀█▀  ',
+      ' ▬▬ ▶ ¤¤  ',
+    ],
+  };
+
+  // 2-char sidebar badges + thematic card colors (keys into DC.DATA.COLORS)
+  A.schemBadges = {
+    s_beltfree: '▶▶', s_extract: '▼▼', s_smelt: '▬▬', s_coal: '♠♠',
+    s_plate: '▐▌', s_damp: '∩∩', s_repair: '+×', s_drill: '♦▼',
+    s_salvage: '╘╛', s_survey: '()', s_charge: '‡‡', s_over: '»»',
+    s_veins: '≡≡', s_gear: '¤¤',
+  };
+  A.schemColors = {
+    s_beltfree: 'cyan', s_extract: 'amber', s_smelt: 'magma', s_coal: 'gray',
+    s_plate: 'steel', s_damp: 'green', s_repair: 'green', s_drill: 'white',
+    s_salvage: 'orange', s_survey: 'blue', s_charge: 'magenta', s_over: 'red',
+    s_veins: 'magmaHot', s_gear: 'orange',
+  };
+
   // ---------------- helpers & color suggestions ----------------
   // Pads every line with a uniform left margin so the block (as a whole)
   // is centered in `width` without breaking internal alignment.
