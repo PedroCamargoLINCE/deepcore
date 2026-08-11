@@ -1522,7 +1522,8 @@ const FX_ROWS_A1 = [
 ];
 const FX_ROWS_A2 = [
   'quake.debris', 'collapse.dread', 'instability.border', 'breach.crack',
-  'descent.interstitial', 'title.embers',
+  'descent.interstitial', 'title.embers', 'foundry.sparks', 'victory.pulse',
+  'gameover.motes', 'pause.smoke',
 ];
 
 function fxSection(seed) {
@@ -2118,6 +2119,86 @@ function fxSection(seed) {
   st.screen = 'run';
   frames(1);
 
+  // ---- A2: the foundry spark burst ---------------------------------------
+  st.screen = 'foundry';
+  st.meta.cores = 20;
+  frames(2);
+  const sparks0 = countCh("*'", 0, 8, 32, 18);
+  st.ui.flashPart = { id: 'm_hull', until: 0 };   // exactly what the engine sets
+  let sparks1 = 0;
+  for (let i = 0; i < 40; i++) { frames(1); sparks1 = Math.max(sparks1, countCh("*'", 0, 8, 32, 18)); }
+  assert(sparks1 > sparks0, 'a purchase throws sparks around the bolted part (' +
+    sparks0 + ' -> ' + sparks1 + ')');
+  frames(2 * FX.FPS);
+  assertEq(countCh("*'", 0, 8, 32, 18), sparks0, 'the sparks burn out');
+  st.ui.flashPart = null;
+  row('foundry.sparks');
+
+  // ---- A2: victory — the core pulses, the toast rings --------------------
+  run.result = { depth: 8, breaches: 8, timeSec: 900, cores: 18, won: true };
+  st.screen = 'victory';
+  frames(1);
+  const A = R.layout.artBlock;
+  assert(A && A.h > 6, 'render publishes the victory art block for fx');
+  function coreRow() {
+    const seen = {};
+    for (let c = 0; c < D.COLS; c++) {
+      const cc = R.cellAt(c, A.row + (A.h >> 1));
+      if (cc.ch !== ' ') seen[cc.fg] = 1;
+    }
+    return Object.keys(seen);
+  }
+  assert(coreRow().length >= 2, 'the core sphere shades by distance');
+  // one cell of the sphere must travel the shading ramp: the shading function
+  // now takes a phase, so a fixed cell changes color over time
+  const midRow = A.row + (A.h >> 1);
+  let probe = -1;
+  for (let c = 20; c < 60 && probe < 0; c++) if (R.cellAt(c, midRow).ch !== ' ') probe = c;
+  assert(probe >= 0, 'scaffold: a sphere cell to watch');
+  const corePhases = {};
+  for (let i = 0; i < 120; i++) { frames(1); corePhases[R.cellAt(probe, midRow).fg] = 1; }
+  assert(Object.keys(corePhases).length >= 2, 'and the shading pulses on a phase');
+  // GRIT's toast types at 14 chars/s, so the ring is a few hundred frames out
+  let ringed = false;
+  for (let i = 0; i < 600 && !ringed; i++) {
+    frames(1);
+    let whites = 0;
+    for (let r = A.row; r < A.row + A.h; r++) {
+      for (let c = 0; c < D.COLS; c++) if (R.cellAt(c, r).fg === D.COLORS.white) whites++;
+    }
+    if (whites >= 6) ringed = true;
+  }
+  assert(ringed, 'the finished toast sends one bright ring through the sphere');
+  row('victory.pulse');
+
+  // ---- A2: gameover — dust motes and a slow epitaph ----------------------
+  run.result = { depth: 4, breaches: 3, timeSec: 400, cores: 3, won: false };
+  st.screen = 'gameover';
+  frames(2);
+  const dust0 = countCh('·', 0, 1, D.COLS, 20);
+  let dust1 = 0;
+  for (let i = 0; i < 300; i++) { frames(1); dust1 = Math.max(dust1, countCh('·', 0, 1, D.COLS, 20)); }
+  assert(dust1 > dust0, 'dust motes drift down over the collapsed rig (' +
+    dust0 + ' -> ' + dust1 + ')');
+  row('gameover.motes');
+
+  // ---- A2: GRIT's smoke break --------------------------------------------
+  st.screen = 'run';
+  st.ui.paused = true;
+  frames(2);
+  assertEq(countCh('░', 0, 24, 24, 9), 0, 'no smoke in the first seconds of a pause');
+  frames(31 * FX.FPS);
+  const smoke1 = countCh('░', 0, 20, 26, 13);
+  assert(smoke1 >= 1, 'after 30s paused, smoke curls in from the corner');
+  frames(20 * FX.FPS);
+  const smoke2 = countCh('░', 0, 20, 26, 13);
+  assert(smoke2 > smoke1, 'and it keeps curling, a cell at a time (' + smoke1 +
+    ' -> ' + smoke2 + ')');
+  st.ui.paused = false;
+  frames(2);
+  assertEq(countCh('░', 0, 20, 26, 13), 0, 'un-pausing clears the smoke');
+  row('pause.smoke');
+
   // ---- the hard constraint: FX never writes back into the sim ------------
   const before = JSON.stringify({
     t: run.t, totalT: run.totalT, inst: run.instability, integ: run.integrity,
@@ -2130,6 +2211,11 @@ function fxSection(seed) {
   }), before, 'advancing 120 FX frames changed nothing in the run');
   assert(FX.clock() > 0, 'the FX frame clock advanced');
 
+  // SPEC3 §A has 21 rows in table A1 and 10 in table A2, and every one of
+  // them is an acceptance criterion — pin the counts so a row cannot quietly
+  // drop out of the list instead of being fixed.
+  assertEq(FX_ROWS_A1.length, 21, 'table A1 has 21 rows');
+  assertEq(FX_ROWS_A2.length, 10, 'table A2 has 10 rows');
   const all = FX_ROWS_A1.concat(FX_ROWS_A2);
   const missing = all.filter(function (id) { return !covered[id]; });
   assert(missing.length === 0, 'SPEC3 §A rows with no frame-advance proof: ' +
