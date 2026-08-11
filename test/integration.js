@@ -1501,6 +1501,112 @@ function engineBarksSection(seed) {
   delete global.requestAnimationFrame;
 }
 
+// =========================================================================
+// SECTION 9 — js/fx.js frame advance (SPEC3 §A, tables A1 + A2)
+// Every row of both tables is an acceptance criterion, so every row gets an
+// assertion here: a state is CONSTRUCTED to make the row's "when" true, the
+// renderer is advanced frame by frame on a stub canvas, and the cell buffer
+// is read back through DC.Render.cellAt to prove the choreography landed on
+// the right cell. The sim is only ever driven through its public API — FX
+// itself must never write to run/ui, which the guards below also check.
+// =========================================================================
+function fxSection(seed) {
+  SECTION = 'fx seed=' + seed;
+  require('../js/fx.js');
+  require('../js/render.js');
+  const FX = DC.FX, R = DC.Render;
+  assert(FX && FX.begin && FX.tile && FX.frame, 'DC.FX exposes begin/tile/frame');
+  assert(typeof R.cellAt === 'function', 'render exports the cellAt test surface');
+
+  const ctxStub = {
+    fillStyle: '', font: '', textBaseline: '', textAlign: '',
+    setTransform: function () {}, fillRect: function () {},
+    save: function () {}, restore: function () {}, scale: function () {},
+    fillText: function () {}, measureText: function () { return { width: 10 }; },
+  };
+  R.init({ style: {}, getContext: function () { return ctxStub; } });
+
+  const run = S.newRun(defEffects(), seed);
+  const st = {
+    screen: 'run', meta: DC.Meta.newProfile(), run: run,
+    ui: { tool: null, facing: 1, hover: null, cursor: { x: 0, y: 0 },
+          dragging: false, dragLast: null, laying: false, paused: false,
+          descendAnim: 0, shakeUntil: 0, flash: null },
+  };
+  const hx = run.hub.x, hy = run.hub.y;
+  st.ui.cursor = { x: hx + 1, y: hy + 1 };
+
+  function frames(n) { for (let i = 0; i < n; i++) R.frame(st); }
+  function cell(x, y) { return R.cellAt(D.MAP_X + x, D.MAP_Y + y); }
+  // distinct fg colors a cell takes across n frames (no sim ticks)
+  function palette(x, y, n) {
+    const seen = {};
+    for (let i = 0; i < n; i++) { frames(1); seen[cell(x, y).fg] = 1; }
+    return Object.keys(seen);
+  }
+  function glyphs(x, y, n) {
+    const seen = {};
+    for (let i = 0; i < n; i++) { frames(1); seen[cell(x, y).ch] = 1; }
+    return Object.keys(seen);
+  }
+
+  // ---- A1: belts (empty) — the arrow dim-pulse marches downstream --------
+  const bx = hx - 2, by = hy + 2;            // inside the 7x7 hub clearing
+  assert(S.place(run, 'belt', bx, by, 1), 'scaffold: belt placed east of the hub');
+  frames(1);
+  const beltCell = cell(bx, by);
+  assertEq(beltCell.ch, D.ARROWS[1], 'empty belt still draws its travel arrow');
+  // the ramp has 3 steps and the phase advances every 2 ticks: over 6 ticks a
+  // fixed cell must show more than one brightness, or nothing is flowing
+  const beltShades = {};
+  for (let i = 0; i < 8; i++) { S.tick(run); S.tick(run); frames(1); beltShades[cell(bx, by).fg] = 1; }
+  assert(Object.keys(beltShades).length >= 3,
+    'empty belt arrow pulses through its 3-step brightness ramp (got ' +
+    Object.keys(beltShades).length + ')');
+
+  // ---- A1: belt item jammed > 2s shivers ---------------------------------
+  // a belt aimed into the hub's own wall of rock: nothing can accept the item
+  const jx = hx - 3, jy = hy + 3;
+  assert(S.place(run, 'belt', jx, jy, 3), 'scaffold: dead-end belt placed');
+  run.grid[jy][jx].belt.item = 'ironPlate';   // scaffold: hand an item to the belt
+  frames(1);
+  const held0 = Object.keys(palette(jx, jy, 20));
+  assertEq(held0.length, 1, 'a fresh item on a belt does not shiver yet');
+  for (let i = 0; i < 2 * HZ + 2; i++) S.tick(run);
+  assert(run.grid[jy][jx].belt.item === 'ironPlate', 'the jammed item really is stuck');
+  const held1 = Object.keys(palette(jx, jy, 20));
+  assertEq(held1.length, 2, 'a jam over 2s shivers between its color and dim');
+
+  // ---- A1: belt item on move tick leaves a one-frame bright smear --------
+  const sx = hx - 2, sy = hy - 2;
+  assert(S.place(run, 'belt', sx, sy, 1), 'scaffold: smear belt A');
+  assert(S.place(run, 'belt', sx + 1, sy, 1), 'scaffold: smear belt B');
+  run.grid[sy][sx].belt.item = 'gear';
+  frames(1);                                  // FX snapshots the item at A
+  while (run.grid[sy][sx].belt.item) S.tick(run);
+  assertEq(run.grid[sy][sx + 1].belt.item, 'gear', 'the item advanced one belt');
+  frames(1);
+  const smear = cell(sx, sy);
+  assertEq(smear.ch, D.ITEMS.gear.glyph, 'the departed cell draws the item glyph');
+  assert(smear.fg !== D.ITEMS.gear.color, 'the smear is brighter than the item');
+  frames(1);
+  assertEq(cell(sx, sy).ch, D.ARROWS[1], 'the smear lasts exactly one frame');
+
+  // ---- the hard constraint: FX never writes back into the sim ------------
+  const before = JSON.stringify({
+    t: run.t, totalT: run.totalT, inst: run.instability, integ: run.integrity,
+    quakeAt: run.quakeAt, status: run.status, ev: run.events.length,
+  });
+  frames(120);
+  assertEq(JSON.stringify({
+    t: run.t, totalT: run.totalT, inst: run.instability, integ: run.integrity,
+    quakeAt: run.quakeAt, status: run.status, ev: run.events.length,
+  }), before, 'advancing 120 FX frames changed nothing in the run');
+  assert(FX.clock() > 0, 'the FX frame clock advanced');
+
+  return { glyphs: glyphs, frames: frames, cell: cell, palette: palette, run: run, st: st };
+}
+
 // -------------------------------------------------------------------- main
 const SEED = process.env.DC_SEED ? (parseInt(process.env.DC_SEED, 10) | 0) : 1337;
 try {
@@ -1516,6 +1622,7 @@ try {
   chargeSection(SEED + 19);
   endgameSection(SEED + 23);
   engineBarksSection(SEED + 29);
+  fxSection(SEED + 31);
   console.log('PASS integration seed=' + SEED + ' | ' + drivenSummary +
     ' | cadence 16/12/10 | overdrive x2 | damper ok | charge+bronze ok | mantle ok' +
     ' | engine+barks ok | ' + (Date.now() - t0) + 'ms');

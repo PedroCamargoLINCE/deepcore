@@ -22,6 +22,17 @@ if (files.length === 0) {
   console.error('build: no script tags found in index.html');
   process.exit(1);
 }
+// The bundle's script list is index.html's, in its load order. A module that
+// exists on disk but was never wired into the page would silently vanish from
+// dist/ (and only from dist/), so fail loudly instead — this is how js/fx.js
+// and anything after it stays in the single-file build.
+const onDisk = fs.readdirSync(path.join(root, 'js'))
+  .filter((f) => f.endsWith('.js')).map((f) => 'js/' + f).sort();
+const missing = onDisk.filter((f) => files.indexOf(f) < 0);
+if (missing.length) {
+  console.error('build: ' + missing.join(', ') + ' not referenced by index.html');
+  process.exit(1);
+}
 const bundle = files
   .map((f) => '/* ==== ' + f + ' ==== */\n' + read(f))
   .join('\n');
