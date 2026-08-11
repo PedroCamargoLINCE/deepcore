@@ -19,6 +19,20 @@
   const SBC = 50, SCW = 29;          // sidebar content col + width
   const LETTERS = 'abcdefghi';
   const HUB_ART = ['╔═╗', '║D║', '╚═╝'];
+  const EMBER = '#ff7a45';           // v1.1 §E title sweep endpoint (stratum-6 ember)
+
+  // v1.1 §C.2 — compact sidebar glyph per owned meta upgrade: [glyph, color key]
+  const UP_GLYPHS = {
+    m_hull:   ['▐', 'steel'],
+    m_damp:   ['◎', 'green'],
+    m_torque: ['▼', 'amber'],
+    m_scan:   ['╦', 'cyan'],
+    m_salv:   ['⌐', 'orange'],
+    m_stock:  ['▣', 'gray'],
+    m_deep:   ['♦', 'magenta'],
+    m_fix:    ['┼', 'white'],
+    m_schem:  ['≡', 'blue'],
+  };
 
   let canvas = null, ctx = null, dpr = 1, adv = CW; // adv = measured glyph advance
   let frameN = 0;
@@ -145,6 +159,70 @@
       text(Math.max(0, (COLS - ln.length) >> 1), row + i, ln, color);
     }
   }
+  // Uniform left margin for the whole block (keeps internal alignment intact).
+  function blockWidth(lines) {
+    let w = 0;
+    for (let i = 0; i < lines.length; i++) if (lines[i].length > w) w = lines[i].length;
+    return w;
+  }
+  function blockX(lines, width) { return Math.max(0, (width - blockWidth(lines)) >> 1); }
+
+  // ---------------- v1.1 rig portrait / schematic art (defensive) ----------------
+  function composeRigSafe(upgrades) {
+    const A = DC.Art;
+    try {
+      if (A && typeof A.composeRig === 'function') {
+        const l = A.composeRig(upgrades || {});
+        if (Array.isArray(l) && l.length && typeof l[0] === 'string') return l;
+      }
+    } catch (e) { /* art in flux */ }
+    return null;
+  }
+  function schemBadge(id) {
+    const A = DC.Art;
+    const b = A && A.schemBadges && A.schemBadges[id];
+    if (typeof b === 'string' && b.length) return (b + ' ').slice(0, 2);
+    return String(id || '??').slice(2, 4).toUpperCase() || '??';
+  }
+  function schemColor(id, fb) {
+    const A = DC.Art;
+    return resolveColor(A && A.schemColors && A.schemColors[id]) || fb || C.cyan;
+  }
+
+  // ui.flashPart = {id, until} (engine sets on Foundry purchase). Expiry is
+  // tracked locally by object identity so the clock unit `until` uses doesn't
+  // matter: a fresh flashPart blinks its overlay white for ~1.2 s of frames.
+  let flashRef = null, flashF0 = 0;
+  function activeFlash(ui) {
+    const fp = ui && ui.flashPart;
+    if (!fp || !fp.id) { flashRef = null; return null; }
+    if (flashRef !== fp) { flashRef = fp; flashF0 = frameN; }
+    if (frameN - flashF0 > 72) return null;              // ~1.2 s at 60 fps
+    return { id: fp.id, on: ((frameN >> 2) & 1) === 0 }; // ~7.5 Hz blink
+  }
+
+  // Barks epitaph/toast may consume run.rng — cache per run object so a
+  // per-frame redraw never re-rolls (and stays a no-op without js/barks.js).
+  let epiRun = null, epiLines = [], toastRun = null, toastLine = '';
+  function epitaphSafe(run) {
+    if (!run || !DC.Barks || typeof DC.Barks.epitaph !== 'function') return [];
+    if (epiRun === run) return epiLines;
+    let l = [];
+    try { l = DC.Barks.epitaph(run) || []; } catch (e) {}
+    if (typeof l === 'string') l = [l];
+    epiRun = run;
+    epiLines = Array.isArray(l) ? l.slice(0, 2).map(String) : [];
+    return epiLines;
+  }
+  function toastSafe(run) {
+    if (!run || !DC.Barks || typeof DC.Barks.toast !== 'function') return '';
+    if (toastRun === run) return toastLine;
+    let l = '';
+    try { l = DC.Barks.toast(run) || ''; } catch (e) {}
+    toastRun = run;
+    toastLine = typeof l === 'string' ? l : '';
+    return toastLine;
+  }
 
   // ---------------- safe Sim queries (parallel-dev guards) ----------------
   function canPlaceSafe(run, type, x, y, facing) {
@@ -218,7 +296,7 @@
       floorTint = mix(D.TERRAIN.floor.color, accent, 0.25);
     }
     drawMap(run, ui, phase);
-    drawSidebar(run, ui, phase, st);
+    drawSidebar(run, ui, phase, st, state.meta);
     drawHints(run, ui, phase);
     drawForeman(run);
 
@@ -258,6 +336,15 @@
       (((run.gearsFed || 0) < req.gear && (inv.gear || 0) > 0) ||
        ((run.gearsFed || 0) >= req.gear && (run.chargesFed || 0) < req.charge && (inv.charge || 0) > 0));
     const hubRed = run.integrity < 25;
+
+    // v1.1 §C.3 "chromed" tell: machine types buffed by an active schematic
+    // render their anchor letter in COLORS.white.
+    const scs = run.schematics || [];
+    const chromed = {
+      extractor: scs.indexOf('s_extract') >= 0,
+      smelter: scs.indexOf('s_smelt') >= 0 || scs.indexOf('s_coal') >= 0,
+      assembler: scs.indexOf('s_gear') >= 0,
+    };
 
     for (let y = 0; y < D.MAP_H; y++) {
       const row = run.grid[y];
@@ -300,7 +387,8 @@
               const b = D.BUILDINGS[m.type] || D.BUILDINGS.belt;
               if (x === m.x && y === m.y) {
                 ch = b.letter;
-                fg = m.hp === 1 ? (phase ? C.red : b.color) : b.color;
+                const base = chromed[m.type] ? C.white : b.color;
+                fg = m.hp === 1 ? (phase ? C.red : base) : base;
               } else { ch = '▓'; fg = shade(b.color, 0.55); }
               const bad = m.status === 'nofuel' || m.status === 'blocked' || m.status === 'depleted';
               if (bad && phase) {
@@ -353,13 +441,22 @@
   }
   function sideWalls(row) { put(SB, row, '│', C.amberDim); put(SB + SBW - 1, row, '│', C.amberDim); }
 
-  function drawSidebar(run, ui, phase, st) {
+  function drawSidebar(run, ui, phase, st, meta) {
     const req = run.breachReq || { gear: 0, charge: 0 };
     const gGlyph = D.ITEMS.gear.glyph, cGlyph = D.ITEMS.charge.glyph;
     let y = 1;
 
-    // RIG
+    // RIG — owned meta-upgrade glyph strip on the header row (v1.1 §C.2)
+    let edge = y;
     y = sideEdge(y, 'top', 'RIG');
+    const ups = (meta && meta.upgrades) || {};
+    let gx = SB + SBW - 3;
+    for (let i = D.META_UPGRADES.length - 1; i >= 0 && gx > SB + 7; i--) {
+      const id = D.META_UPGRADES[i].id;
+      if (!(ups[id] > 0)) continue;
+      const g = UP_GLYPHS[id] || ['·', 'gray'];
+      put(gx--, edge, g[0], resolveColor(g[1]) || C.amber);
+    }
     sideWalls(y);
     text(SBC, y, 'INTEG', C.gray);
     const ifrac = run.maxIntegrity ? run.integrity / run.maxIntegrity : 0;
@@ -376,8 +473,17 @@
     textR(SB + SBW - 2, y, Math.floor(inst) + '%', ncol);
     y++;
 
-    // DRILL
+    // DRILL — picked-schematic badge strip on the header row (v1.1 §C.3)
+    edge = y;
     y = sideEdge(y, 'sep', 'DRILL');
+    const scs = run.schematics || [];
+    const maxB = 10;                                   // 2 chars each, 20 cols free
+    const first = Math.max(0, scs.length - maxB);      // deep runs: newest badges win
+    let bx = SB + SBW - 2 - Math.min(maxB, scs.length) * 2;
+    for (let i = first; i < scs.length; i++) {
+      text(bx, edge, schemBadge(scs[i]), schemColor(scs[i]));
+      bx += 2;
+    }
     sideWalls(y);
     text(SBC, y, 'GEAR', C.gray);
     bar(SBC + 5, y, 12, req.gear ? run.gearsFed / req.gear : 1, C.amber);
@@ -419,7 +525,12 @@
     y += srows;
 
     // BUILD — one row per tool + demolish; facing arrow in the title
+    edge = y;
     y = sideEdge(y, 'sep', 'BUILD ' + (D.ARROWS[ui.facing || 0] || D.ARROWS[1]));
+    if (ui.laying) {                                   // v1.1 §D belt lay-mode armed
+      const ar = D.ARROWS[ui.facing || 0] || '▸';
+      textR(SB + SBW - 3, edge, 'LAYING ' + ar + ar + ar, phase ? C.white : C.cyan);
+    }
     layout.buildRows = [];
     for (const t of D.BUILD_ORDER) {
       const b = D.BUILDINGS[t];
@@ -497,31 +608,70 @@
     return [{ text: st.tag, color: C.amberDim }];
   }
 
+  // v1.1 §F: row 30 = one condensed hints line (cursor keys included);
+  // rows 31-32 = the Foreman bar. Everything stays left of the sidebar (col 48).
   function drawHints(run, ui, phase) {
-    text(0, 30, '1-5 BUILD  X DEMOLISH  R ROTATE  C OVERDRIVE', C.amberDim);
     const ready = run.status === 'breachReady';
-    text(0, 31, 'D DESCEND', ready ? (phase ? C.green : C.white) : C.amberDim);
-    text(11, 31, 'SPC PAUSE  ESC MENU  H HELP', C.amberDim);
+    const segs = [
+      ['1-5 BLD ', C.amberDim],
+      ['X DEM ', C.amberDim],
+      ['R ROT ', C.amberDim],
+      ['C OD ', C.amberDim],
+      ['↑↓←→ ↵ ', C.amberDim],
+      ['D DESC ', ready ? (phase ? C.green : C.white) : C.amberDim],
+      ['ESC H', C.amberDim],
+    ];
+    let x = 0;
+    for (const s of segs) {
+      if (x + s[0].length > SB - 1) break;
+      text(x, 30, s[0], s[1]);
+      x += s[0].length;
+    }
   }
 
-  // Foreman bar (v1.1 addendum) — only drawn if sim/barks populate run.foreman
+  // Foreman bar (v1.1 §F) — GRIT-tag amber, text cyan, typewriter ~2 chars/tick
+  // from t0, hold to `until`, then 2 s dim fade. Only barks.js populates it.
   function drawForeman(run) {
     const f = run.foreman;
     if (!f || !f.text) return;
     const until = f.until || 0;
-    if (run.totalT > until + 2 * D.TICK_HZ) return;         // faded out
+    if (run.totalT > until + 2 * D.TICK_HZ) return;          // faded out
+    const fading = run.totalT > until;
     const full = String(f.text);
-    const shown = U.clamp((run.totalT - (f.t0 || 0)) * 2, 0, full.length);  // typewriter
-    text(0, 32, 'GRIT ▸', C.amber);
-    text(7, 32, full.slice(0, shown).slice(-41), run.totalT > until ? C.amberDim : C.cyan);
+    const shown = U.clamp(Math.floor((run.totalT - (f.t0 || 0)) * 2), 0, full.length);
+    const w = SB - 1 - 7;                                    // 41 cols per row
+    const s = full.slice(0, shown);
+    text(0, 31, 'GRIT ▸', fading ? C.amberDim : C.amber);
+    text(7, 31, s.slice(0, w), fading ? C.amberDim : C.cyan);
+    if (s.length > w) text(7, 32, s.slice(w, w * 2), fading ? C.amberDim : C.cyan);
   }
 
   // ================= TITLE =================
   function drawTitle(state) {
     const meta = state.meta || {};
     const lines = art('title');
-    drawArt(lines, 1, artColor('title', C.amber));
-    const below = Math.min(1 + lines.length + 1, 24);
+    // Logo rows sweep amber → orange → ember, 3-tone (v1.1 §E): never mono-color.
+    const logoRows = Math.min(5, lines.length);
+    const sweep = [C.amber, C.amber, C.orange, C.orange, EMBER];
+    for (let i = 0; i < logoRows; i++) {
+      const ln = lines[i];
+      text(Math.max(0, (COLS - ln.length) >> 1), 1 + i, ln, sweep[i] || EMBER);
+    }
+    // Under the logo: YOUR rig, owned upgrades visible (v1.1 §C.2). Falls back
+    // to the generic vignette rows of the title art if composeRig is absent.
+    const rig = composeRigSafe(meta.upgrades);
+    let below;
+    if (rig) {
+      const rx = blockX(rig, COLS), ry = 7;
+      for (let i = 0; i < rig.length && ry + i < 24; i++) text(rx, ry + i, rig[i], C.amber);
+      below = Math.min(ry + Math.min(rig.length, 24 - ry) + 1, 24);
+    } else {
+      for (let i = logoRows; i < lines.length; i++) {
+        const ln = lines[i];
+        text(Math.max(0, (COLS - ln.length) >> 1), 1 + i, ln, artColor('title', C.amber));
+      }
+      below = Math.min(1 + lines.length + 1, 24);
+    }
     ctext(below, 'an automated descent toward the core', C.gray);
     ctext(below + 1, 'build the line · feed the drill · keep moving', C.amberDim);
     // menu
@@ -579,18 +729,28 @@
       const sc = D.SCHEMATICS.find(s => s.id === id) || { id: id, name: id, desc: '' };
       const cx = x0 + i * (w + gap);
       box(cx, rowc, w, h, ui.hoverCard === i ? C.white : accent);
-      let yy = rowc + 1;
-      const ic = DC.Art && DC.Art.schemIcons && DC.Art.schemIcons[id];   // v1.1, optional
-      if (Array.isArray(ic)) {
-        const icc = resolveColor(DC.Art.schemColors && DC.Art.schemColors[id]) || C.cyan;
-        for (const ln of ic.slice(0, 5)) text(cx + Math.max(1, (w - ln.length) >> 1), yy++, ln, icc);
-        yy++;
-      } else yy++;
+      // Icon slot: 10x5 schematic icon (v1.1 §C.3) in its thematic color, or a
+      // dim placeholder — the name always lands on the same row either way.
+      const ic = DC.Art && DC.Art.schemIcons && DC.Art.schemIcons[id];
+      if (Array.isArray(ic) && ic.length && typeof ic[0] === 'string') {
+        const icc = schemColor(id);
+        const ir = ic.slice(0, 5);
+        let iy = rowc + 1 + ((5 - ir.length) >> 1);
+        for (const ln of ir) {
+          text(cx + Math.max(1, (w - ln.length) >> 1), iy++, ln.slice(0, w - 2), icc);
+        }
+      } else {
+        const ph = ['┌─┐', '│◇│', '└─┘'];
+        for (let p = 0; p < ph.length; p++) {
+          text(cx + Math.max(1, (w - ph[p].length) >> 1), rowc + 2 + p, ph[p], C.darkgray);
+        }
+      }
+      let yy = rowc + 7;
       for (const ln of wrap(sc.name, w - 4).slice(0, 2)) {
         text(cx + Math.max(1, (w - ln.length) >> 1), yy++, ln, C.white);
       }
       yy++;
-      for (const ln of wrap(sc.desc, w - 4).slice(0, 4)) {
+      for (const ln of wrap(sc.desc, w - 4).slice(0, rowc + 13 - yy)) {
         text(cx + Math.max(1, (w - ln.length) >> 1), yy++, ln, C.gray);
       }
       const key = '[ ' + (i + 1) + ' ]';
@@ -601,32 +761,69 @@
   }
 
   // ================= FOUNDRY =================
+  // v1.1 §C.2: rig portrait left, upgrade list right. On purchase the engine
+  // sets ui.flashPart = {id, until}; that part's overlay cells blink white.
+  function drawRigPortrait(x0, y0, w, upgrades, flash) {
+    const rig = composeRigSafe(upgrades);
+    if (!rig) {
+      const ph = placeholder('rig');
+      for (let i = 0; i < ph.length; i++) {
+        text(x0 + Math.max(0, (w - ph[i].length) >> 1), y0 + 4 + i, ph[i], C.darkgray);
+      }
+      return;
+    }
+    const ox = x0 + Math.max(0, (w - blockWidth(rig)) >> 1);
+    const rows = Math.min(rig.length, 12);
+    for (let i = 0; i < rows; i++) text(ox, y0 + i, rig[i].slice(0, w), C.amber);
+    if (!flash) return;
+    const p = DC.Art && DC.Art.rigParts && DC.Art.rigParts[flash.id];
+    if (p && Array.isArray(p.lines)) {
+      const fc = flash.on ? C.white : C.amberDim;   // hard blink: the part bolts on
+      for (let i = 0; i < p.lines.length; i++) {
+        const ln = p.lines[i];
+        for (let j = 0; j < ln.length; j++) {
+          if (ln[j] !== ' ') put(ox + (p.col || 0) + j, y0 + (p.row || 0) + i, ln[j], fc);
+        }
+      }
+    } else if (flash.on) {
+      // part overlay unknown (art in flux): flash the whole rig instead
+      for (let i = 0; i < rows; i++) text(ox, y0 + i, rig[i].slice(0, w), C.white);
+    }
+  }
+
   function drawFoundry(state) {
     const meta = state.meta || { cores: 0, upgrades: {} };
+    const ui = state.ui || {};
     const lines = art('foundry');
     drawArt(lines, 1, artColor('foundry', C.orange));
-    let y = 1 + lines.length + 1;
-    ctext(y, '◈ ' + (meta.cores || 0) + ' CORES', C.magenta);
-    y += 2;
+    ctext(Math.min(1 + lines.length + 1, 8), '◈ ' + (meta.cores || 0) + ' CORES', C.magenta);
+
+    // left column: the rig, upgrades bolted on
+    const py = 10;
+    box(1, py, 28, 14, C.amberDim, 'YOUR RIG', C.amber);
+    drawRigPortrait(2, py + 1, 26, meta.upgrades, activeFlash(ui));
+
+    // right column: upgrade list (2 rows each: stat line + dim desc)
+    const lx = 31;
     for (let i = 0; i < D.META_UPGRADES.length; i++) {
       const up = D.META_UPGRADES[i];
       const lvl = (meta.upgrades && meta.upgrades[up.id]) || 0;
       const maxed = lvl >= up.max;
       const cost = maxed ? 0 : up.costs[lvl];
       const afford = !maxed && (meta.cores || 0) >= cost;
-      const row = y + i;
-      put(2, row, LETTERS[i], afford ? C.amber : C.darkgray);
-      put(3, row, ')', C.darkgray);
-      text(5, row, U.pad(up.name, 18), maxed ? C.amberDim : afford ? C.white : C.darkgray);
-      if (lvl > 0) text(24, row, '█'.repeat(lvl), C.green);
-      if (lvl < up.max) text(24 + lvl, row, '░'.repeat(up.max - lvl), C.darkgray);
-      text(28, row, lvl + '/' + up.max, C.gray);
-      text(33, row, maxed ? 'MAX ' : U.padL(cost + '◈', 4),
+      const row = py + i * 2;
+      put(lx, row, LETTERS[i], afford ? C.amber : C.darkgray);
+      put(lx + 1, row, ')', C.darkgray);
+      text(lx + 3, row, U.pad(up.name, 17), maxed ? C.amberDim : afford ? C.amber : C.darkgray);
+      if (lvl > 0) text(lx + 21, row, '█'.repeat(lvl), C.green);
+      if (lvl < up.max) text(lx + 21 + lvl, row, '░'.repeat(up.max - lvl), C.darkgray);
+      text(lx + 24, row, lvl + '/' + up.max, C.gray);
+      text(lx + 28, row, maxed ? ' MAX' : U.padL(cost + '◈', 4),
         maxed ? C.amberDim : afford ? C.magenta : shade(C.red, 0.8));
-      text(39, row, up.desc.slice(0, COLS - 40), C.amberDim);
+      text(lx + 3, row + 1, up.desc.slice(0, COLS - lx - 4), C.darkgray);
     }
-    y += D.META_UPGRADES.length + 1;
-    ctext(y, 'lifetime cores ' + (meta.totalCores || 0) + '   runs ' + (meta.runs || 0), C.darkgray);
+
+    ctext(29, 'lifetime cores ' + (meta.totalCores || 0) + '   runs ' + (meta.runs || 0), C.darkgray);
     ctext(31, '[A-I] FORGE UPGRADE      [ESC] RETURN TO SURFACE', C.amber);
   }
 
@@ -653,7 +850,13 @@
   function drawGameover(state, phase) {
     const lines = art('gameover');
     drawArt(lines, 1, artColor('gameover', C.red));
-    statsBlock(Math.min(1 + lines.length + 1, 26), fallbackResult(state.run, false));
+    const y = Math.min(1 + lines.length + 1, 26);
+    statsBlock(y, fallbackResult(state.run, false));
+    // Foreman's last word (v1.1 §F) — only when js/barks.js is loaded
+    const epi = epitaphSafe(state.run);
+    for (let i = 0; i < epi.length && y + 5 + i < 30; i++) {
+      ctext(y + 5 + i, (i === 0 ? 'GRIT ▸ ' : '') + String(epi[i]).slice(0, 70), C.cyan);
+    }
     ctext(31, '[ENTER] RETURN TO THE SURFACE', phase ? C.white : C.amber);
   }
 
@@ -663,6 +866,8 @@
     const y = Math.min(1 + lines.length + 1, 24);
     statsBlock(y, fallbackResult(state.run, true));
     ctext(y + 5, '+' + D.WIN_CORES + ' ◈ CORE BONUS', phase ? C.magenta : shade(C.magenta, 0.6));
+    const tl = toastSafe(state.run);
+    if (tl && y + 7 < 31) ctext(y + 7, 'GRIT ▸ ' + tl.slice(0, 70), C.cyan);
     ctext(31, '[ENTER] ASCEND      [C] CONTINUE INTO THE MANTLE', C.amber);
   }
 
