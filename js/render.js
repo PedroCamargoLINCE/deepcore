@@ -373,6 +373,10 @@
   function drawMap(run, ui, phase) {
     const shaking = ui.shakeUntil && run.t < ui.shakeUntil;
     const xo = shaking ? ((run.t & 1) ? 1 : -1) : 0;
+    // Published for js/fx.js (SPEC3 §A): the map viewport plus the shake
+    // offset, so the overlay lands on the same cells the tiles just did.
+    layout.map = { x: D.MAP_X, y: D.MAP_Y, w: D.MAP_W, h: D.MAP_H, xo: xo };
+    const FX = DC.FX && DC.FX.tile ? DC.FX : null;
     const req = run.breachReq || { gear: 0, charge: 0 };
     const inv = run.inv || {};
     const running = run.status === 'active' || run.status === 'breachReady';
@@ -442,6 +446,12 @@
               }
             }
           }
+        }
+        // SPEC3 §A1: fx.js animates the tile it was about to draw. It reads
+        // only true sim state and returns [ch, fg] (a reused array) or null.
+        if (FX) {
+          const o = FX.tile(run, tile, x, y, ch, fg);
+          if (o) { ch = o[0]; fg = o[1]; }
         }
         put(gc, gr, ch, fg);
       }
@@ -988,8 +998,30 @@
     ctx.restore();
   }
 
+  // ================= fx surface (SPEC3 §A) =================
+  // js/fx.js draws through this, never through a canvas context: it is the
+  // same cell buffer every screen writes into, so the FX pass is simply the
+  // last thing to touch a cell. Read accessors let the overlay recolor what
+  // has already been drawn (the instability border breathe, the pre-collapse
+  // dim, the victory sphere pulse) without knowing how it got there.
+  const surface = {
+    COLS: COLS, ROWS: ROWS,
+    put: put, text: text, ctext: ctext, invertCell: invertCell,
+    ch: function (c, r) {
+      return (r >= 0 && r < ROWS && c >= 0 && c < COLS) ? chB[r][c] : ' ';
+    },
+    fg: function (c, r) {
+      return (r >= 0 && r < ROWS && c >= 0 && c < COLS) ? fgB[r][c] : null;
+    },
+    bg: function (c, r) {
+      return (r >= 0 && r < ROWS && c >= 0 && c < COLS) ? bgB[r][c] : null;
+    },
+    shade: shade, mix: mix, resolve: resolveColor, C: C,
+    layout: null,                        // wired to `layout` below
+  };
   // ================= public API =================
-  const layout = { cards: [], buildRows: [] };
+  const layout = { cards: [], buildRows: [], map: null };
+  surface.layout = layout;
 
   DC.Render = {
     CW: CW, CH: CH,
@@ -1022,11 +1054,23 @@
       adv = (m && m.width) ? m.width : CW;
     },
 
+    // SPEC3 §A test surface: the cell buffer after a frame, so a stub-canvas
+    // frame-advance test can prove an FX row actually landed on a cell.
+    cellAt: function (col, row) {
+      if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return null;
+      return { ch: chB[row][col], fg: fgB[row][col], bg: bgB[row][col] };
+    },
+
     frame: function (state) {
       if (!ctx || !state) return;
       frameN++;
       const phase = Math.floor(frameN / 30) % 2;   // blink phase off the run clock
       clearBuf();
+      // SPEC3 §A: fx.js advances its frame clock and takes its per-frame read
+      // of the world BEFORE anything draws; its overlay lands after everything.
+      if (DC.FX && DC.FX.begin) {
+        try { DC.FX.begin(state, surface); } catch (e) { /* fx never kills a frame */ }
+      }
       try {
         switch (state.screen) {
           case 'run':      drawRun(state); break;
@@ -1041,6 +1085,9 @@
       } catch (e) {
         // never let a render fault kill the loop during parallel development
         text(1, 1, 'RENDER ERROR: ' + (e && e.message ? e.message : e), C.red);
+      }
+      if (DC.FX && DC.FX.frame) {
+        try { DC.FX.frame(state, surface); } catch (e) { /* overlay is optional */ }
       }
       flush();
     },
