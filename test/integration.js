@@ -1502,6 +1502,281 @@ function engineBarksSection(seed) {
 }
 
 // =========================================================================
+// SECTION 10 — M-RECAP: recap card, Daily Shaft, ghost splits
+// The whole brief driven through the REAL engine on stub DOM/rAF/storage:
+// the Daily's seed and naked loadout, splits stamped at descend, the save
+// migration surfacing as ghost rows in the sidebar, the TAB card view, and
+// the clipboard's three outcomes (copied / refused / no clipboard at all).
+// The card is asserted as text AND as cells, because the promise of the
+// feature is that what you see is exactly what you paste.
+// =========================================================================
+function recapSection(seed) {
+  SECTION = 'recap seed=' + seed;
+  require('../js/barks.js');
+  require('../js/render.js');
+  require('../js/engine.js');
+  const B = DC.Barks, R = DC.Render, M = DC.Meta;
+  assert(typeof R.recapText === 'function' && typeof R.recapCard === 'function',
+    'render exports the recap card as text and as rows');
+
+  const handlers = {};
+  const drawn = [];
+  const ctxStub = {
+    fillStyle: '', font: '', textBaseline: '', textAlign: '',
+    setTransform: function () {}, fillRect: function () {},
+    save: function () {}, restore: function () {}, scale: function () {},
+    fillText: function (s) { drawn.push(String(s)); },
+    measureText: function () { return { width: 10 }; },
+  };
+  const canvasStub = {
+    style: {},
+    getContext: function () { return ctxStub; },
+    addEventListener: function (t, fn) { handlers[t] = fn; },
+    getBoundingClientRect: function () {
+      return { left: 0, top: 0, width: D.COLS * 10, height: D.ROWS * 19 };
+    },
+  };
+  global.window = { addEventListener: function (t, fn) { handlers[t] = fn; } };
+  global.document = { getElementById: function () { return canvasStub; } };
+  global.location = { search: '' };            // no ?seed=: normal runs roll one
+  let rafCb = null;
+  global.requestAnimationFrame = function (fn) { rafCb = fn; };
+  const cell = {};                             // the "disk"
+  global.localStorage = {
+    getItem: (k) => (k in cell ? cell[k] : null),
+    setItem: (k, v) => { cell[k] = String(v); },
+  };
+  let captured = null;                         // last clipboard payload
+
+  // the rAF clock must stay monotonic across the whole section (the engine
+  // keeps `lastTime` between frames; a rewound clock yields a negative dt and
+  // the sim silently stops ticking)
+  let now = 1e7;
+  function frames(n) {
+    for (let i = 0; i < n; i++) {
+      now += 1000 / HZ;
+      const cb = rafCb;
+      assert(cb, 'rAF loop stays scheduled');
+      rafCb = null;
+      cb(now);
+    }
+  }
+  function key(k) {
+    handlers.keydown({ key: k, shiftKey: false, preventDefault: function () {} });
+  }
+  function paint() { drawn.length = 0; frames(1); return drawn; }
+  function shown(s) { return drawn.some((x) => x.indexOf(s) >= 0); }
+
+  try {
+    // --- a v1 save on disk: the migration has to survive a real boot -------
+    cell[D.SAVE_KEY] = JSON.stringify({
+      cores: 9, upgrades: { m_stock: 2 }, bestDepth: 3, wins: 0, runs: 4, totalCores: 12,
+    });
+    DC.Engine.start();
+    const st = DC.state;
+    assertEq(st.screen, 'title', 'engine boots to the title with a v1 save');
+    assertEq(st.meta.cores, 9, 'the v1 save loaded');
+    assertEq(st.meta.upgrades.m_stock, 2, 'the v1 loadout loaded');
+    assert(st.meta.bestSplits && st.meta.dailyHistory.length === 0,
+      'the v1 save migrated to the M-RECAP shape');
+    paint();
+    assert(shown('DAILY SHAFT'), 'the title offers the Daily Shaft');
+
+    // --- [T]: today's seed, naked rig, ranked ------------------------------
+    const today = M.dailyKey(Date.now());
+    assertEq(st.today, today, 'the engine stamped the date for render');
+    key('t');
+    const run = st.run;
+    assertEq(st.screen, 'run', 'T starts the Daily Shaft');
+    assertEq(run.seed, M.dailySeed(today), "the Daily's seed is the date hash");
+    assertEq(run.daily.date, today, 'the run is tagged with the date it belongs to');
+    assertEq(run.daily.practice, false, 'the first attempt of a date is ranked');
+    // the Foundry is DISABLED: m_stock 2 would add 40 plates and 8 gears
+    assertEq(run.inv.ironPlate, D.START_STOCK.ironPlate,
+      'the Daily runs a naked rig (m_stock ignored)');
+    assertEq(run.inv.gear, D.START_STOCK.gear, 'no meta gears in the Daily either');
+    assertEq(run.maxIntegrity, D.START_INTEGRITY, 'no meta hull in the Daily either');
+    assert(run.foreman && B.POOLS.dailyStart.indexOf(run.foreman.text) >= 0,
+      'GRIT announces the ranked Daily');
+    assert(Array.isArray(run.splits) && run.splits.length === 0, 'splits start empty');
+    assert(typeof run.startedAt === 'number', 'the run is stamped with a wall clock');
+
+    // --- a cleared stratum stamps one split --------------------------------
+    frames(3);
+    run.gearsFed = run.breachReq.gear;          // scaffold: satisfy the quota
+    frames(1);
+    assertEq(run.status, 'breachReady', 'breach ready');
+    const t1 = run.t;
+    key('d');
+    assertEq(st.screen, 'descend', 'D begins the descent');
+    assertEq(run.splits.length, 1, 'descending stamped one split');
+    assertEq(run.splits[0].depth, 1, 'the split is for the stratum just cleared');
+    assertEq(run.splits[0].sec, t1 / HZ,
+      'the split is the STRATUM clock (run.t), not the run clock');
+    assertEq(run.splits[0].gears, run.breachReq.gear, 'the split carries its feed totals');
+    frames(140);
+    key('1');
+    assertEq(run.depth, 2, 'into stratum 2');
+    assert(run.t < t1, 'the stratum clock reset behind the split');
+
+    // --- abandon: splits and the ranked Daily land in the save -------------
+    key('Escape');
+    key('a');
+    assertEq(st.screen, 'gameover', 'abandoning ends the run');
+    assertEq(M.bestSplit(st.meta, 1), Math.round((t1 / HZ) * 10) / 10,
+      'clearing stratum 1 banked a ghost split');
+    const entry = M.dailyEntry(st.meta, today);
+    assert(entry && entry.depth === 2 && entry.timeSec === run.result.timeSec,
+      'the ranked Daily result was recorded');
+    assert(JSON.parse(cell[D.SAVE_KEY]).dailyHistory.length === 1,
+      'the Daily result was persisted, not just held in memory');
+
+    // --- TAB: the recap card ----------------------------------------------
+    paint();
+    assert(shown('STRATUM REACHED'), 'gameover opens on the stats view');
+    assert(shown('[TAB]'), 'the stats view advertises the card');
+    key('Tab');
+    assertEq(st.ui.recap, true, 'TAB opens the recap card');
+    const card = R.recapCard(st);
+    const txt = R.recapText(st);
+    for (let i = 0; i < card.plain.length; i++) {
+      assertEq(card.plain[i].length, R.CARD_W,
+        'card row ' + i + ' is exactly ' + R.CARD_W + ' columns');
+    }
+    assert(card.rows.length <= D.ROWS - 2, 'the card fits the screen with its footer');
+    assert(txt.indexOf('RUN RECAP') >= 0, 'the card names itself');
+    assert(txt.indexOf('SEED ' + run.seed) >= 0, 'the card carries the seed');
+    assert(txt.indexOf('DAILY SHAFT') >= 0 && txt.indexOf('RANKED') >= 0,
+      'the card marks a ranked Daily');
+    assert(/S1\s+TOPSOIL RIDGE\s+█+/.test(txt), 'the depth chart has a bar per stratum');
+    assert(txt.indexOf('S2 ') >= 0 && txt.indexOf('†') >= 0,
+      'the stratum the run ended in is charted and flagged');
+    assert(txt.indexOf('ABANDONED') >= 0, 'the card states how the run ended');
+    assert(txt.indexOf('PERFORMANCE REVIEW') >= 0, "GRIT's review is on the card");
+    assertEq(R.recapText(st), txt, 'the card is stable across reads (no re-rolled roast)');
+    const review = B.REVIEWS[B.reviewTier(run, run.result)]
+      .map((l) => B.fillReview(l, B.reviewCtx(run, run.result)))
+      .filter((l) => txt.indexOf(l.slice(0, 24)) >= 0);
+    assertEq(review.length, 1, 'the review line on the card comes from the earned tier');
+    paint();
+    assert(shown('RUN RECAP'), 'the card actually landed on the screen');
+    assert(!shown('STRATUM REACHED'), 'the card replaces the stats view');
+    assert(shown('[C] COPY CARD'), 'the card advertises the copy key');
+
+    // --- C: clipboard, and both ways it can fail --------------------------
+    global.navigator = {
+      clipboard: { writeText: function (t) { captured = t; return { catch: function () {} }; } },
+    };
+    key('c');
+    assertEq(captured, txt, 'C copied exactly the card that is on screen');
+    assert(/COPIED/.test(st.ui.copied), 'the copy is confirmed on the card');
+    assertEq(st.screen, 'gameover', 'copying does not leave the screen');
+    global.navigator = {                                   // permission denied
+      clipboard: { writeText: function () { return { catch: function (fn) { fn(new Error('no')); } }; } },
+    };
+    key('c');
+    assert(/REFUSED/.test(st.ui.copied), 'a rejected write leaves a readable notice');
+    global.navigator = {};                                 // file:// has none
+    key('c');
+    assert(/CLIPBOARD/.test(st.ui.copied), 'no clipboard is a notice, not a crash');
+    delete global.navigator;
+    key('c');
+    assert(st.ui.copied && st.ui.copied.length > 0, 'no navigator at all is survivable');
+
+    // --- TAB back, ENTER out ----------------------------------------------
+    key('Tab');
+    assertEq(st.ui.recap, false, 'TAB returns to the stats view');
+    assertEq(st.ui.copied, null, 'the copy notice does not follow you off the card');
+    paint();
+    assert(shown('STRATUM REACHED'), 'the stats view came back');
+    key('Enter');
+    assertEq(st.screen, 'title', 'ENTER returns to the surface');
+    assertEq(st.ui.recap, false, 'the card view is cleared on the way out');
+
+    // --- second attempt today = practice, and it never ranks --------------
+    key('t');
+    const prac = st.run;
+    assertEq(prac.daily.practice, true, 'the day is already ranked: this one is practice');
+    assertEq(prac.seed, M.dailySeed(today), 'practice digs the same shaft');
+    assert(prac.foreman && B.POOLS.dailyPractice.indexOf(prac.foreman.text) >= 0,
+      'GRIT calls it practice');
+
+    // --- ghost splits in the DRILL box ------------------------------------
+    frames(2);
+    const g0 = R.ghostSplit(prac, st.meta);
+    assert(g0 && g0.best === M.bestSplit(st.meta, 1), 'the ghost is your stratum-1 record');
+    assert(g0.delta > 0 && g0.mark === '▲', 'early in the stratum you are ahead of it');
+    assert(shown('BEST '), 'the DRILL box draws the ghost split');
+    prac.t = Math.round((g0.best + 30) * HZ);        // scaffold: fall behind
+    const g1 = R.ghostSplit(prac, st.meta);
+    assertEq(g1.mark, '▼', 'past the record the marker flips');
+    assert(g1.delta < 0, 'and the delta goes negative');
+    assertEq(R.ghostSplit(prac, { bestSplits: {} }), null, 'no record, no ghost row');
+    assertEq(R.ghostSplit(prac, {}), null, 'a v1 profile shows no ghost row');
+
+    // a run with nothing cleared still cards: one partial row, no chart lies
+    const bare = R.recapCard(st).plain.join('\n');
+    assert(/S1\s+TOPSOIL RIDGE[^\n]*†/.test(bare),
+      'a run that cleared nothing charts its one unfinished stratum');
+    key('Escape');
+    key('a');
+    assertEq(M.dailyEntry(st.meta, today).depth, 2,
+      'a practice run never overwrites the ranked result');
+    assertEq(st.meta.dailyHistory.length, 1, 'practice adds no history row');
+    key('Enter');
+
+    // --- victory: C means copy on the card, Mantle on the stats view ------
+    key('Enter');
+    const vr = st.run;
+    assert(vr && vr !== prac, 'a fresh normal run started');
+    assert(vr.inv.ironPlate > D.START_STOCK.ironPlate,
+      'a normal run DOES get the Foundry loadout (the Daily is the exception)');
+    // scaffold: stand the engine on the victory screen with a finished run
+    vr.depth = D.STRATA_COUNT;
+    vr.status = 'won';
+    vr.breaches = D.STRATA_COUNT;
+    vr.splits = [];
+    for (let d = 1; d <= D.STRATA_COUNT; d++) {
+      vr.splits.push({ depth: d, sec: 60 + d * 20, gears: 10 * d, charges: d > 4 ? d : 0 });
+    }
+    vr.result = { depth: D.STRATA_COUNT, breaches: D.STRATA_COUNT, timeSec: 1200,
+                  cores: D.STRATA_COUNT + D.WIN_CORES, won: true };
+    st.screen = 'victory';
+    st.ui.recap = false;
+    st.ui.copied = null;
+    paint();
+    assert(shown('CONTINUE INTO THE MANTLE'), 'the victory stats view offers the Mantle');
+    key('Tab');
+    global.navigator = {
+      clipboard: { writeText: function (t) { captured = t; return { catch: function () {} }; } },
+    };
+    captured = null;
+    key('c');
+    assert(captured && captured.indexOf('CORE BREACHED') >= 0,
+      'C on the victory card copies the win');
+    assertEq(st.screen, 'victory', 'copying did not descend into the Mantle');
+    const wonCard = R.recapCard(st).plain.join('\n');
+    assert(/S8\s+THE CORE GATE/.test(wonCard), 'the winning card charts all eight strata');
+    assert(wonCard.indexOf('†') < 0, 'a completed run has no unfinished stratum');
+    key('Tab');
+    key('c');
+    assertEq(st.screen, 'descend', 'C on the stats view still continues into the Mantle');
+    assertEq(st.ui.recap, false, 'and leaves the card view behind');
+
+    assert(!drawn.some((s) => s.indexOf('RENDER ERROR') >= 0),
+      'no render faults across the recap drive');
+    return card.rows.length;
+  } finally {
+    delete global.window;
+    delete global.document;
+    delete global.location;
+    delete global.requestAnimationFrame;
+    delete global.localStorage;
+    delete global.navigator;
+  }
+}
+
+// =========================================================================
 // SECTION 9 — js/fx.js frame advance (SPEC3 §A, tables A1 + A2)
 // Every row of both tables is an acceptance criterion, so every row gets an
 // assertion here: a state is CONSTRUCTED to make the row's "when" true, the
@@ -2253,9 +2528,10 @@ try {
   chargeSection(SEED + 19);
   endgameSection(SEED + 23);
   engineBarksSection(SEED + 29);
+  const cardRows = recapSection(SEED + 37);
   const fxRows = fxSection(SEED + 31);
   console.log('PASS integration seed=' + SEED + ' | ' + drivenSummary +
-    ' | fx rows ' + fxRows +
+    ' | fx rows ' + fxRows + ' | recap card ' + cardRows + ' rows' +
     ' | cadence 16/12/10 | overdrive x2 | damper ok | charge+bronze ok | mantle ok' +
     ' | engine+barks ok | ' + (Date.now() - t0) + 'ms');
   process.exit(0);
