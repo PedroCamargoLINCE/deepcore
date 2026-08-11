@@ -265,7 +265,9 @@
     if (ch === '!') return null;
 
     let r = null;
-    if (t.machine !== null && t.machine !== undefined && t.machine !== 0) {
+    if (t.machine === 0) {
+      r = hubCell(run, x, y, ch, fg);
+    } else if (t.machine !== null && t.machine !== undefined) {
       r = machineCell(run, t, x, y, ch, fg);
     } else if (t.belt && t.machine === null) {
       r = beltCell(run, t, x, y, ch, fg);
@@ -321,6 +323,46 @@
       const g = D.BUILDINGS.damper.color;
       if (m.fuel > 0) return out(ch, mixOf(shadeOf(g, 0.35), g, breathe(2 * FPS)));
       return out(ch, shadeOf(g, 0.4));
+    }
+    return null;
+  }
+
+  // --- A1: the hub ---------------------------------------------------------
+  // Ring index of each 3x3 cell, clockwise from the top-left, by dy*3+dx.
+  // The center (the 'D') is -1: it answers to the drill, not to the ring.
+  const RING_IDX = [0, 1, 2, 7, -1, 3, 6, 5, 4];
+
+  function hubCell(run, x, y, ch, fg) {
+    const dx = x - run.hub.x, dy = y - run.hub.y;
+    if (dx < 0 || dx > 2 || dy < 0 || dy > 2) return null;
+    const ready = run.status === 'breachReady';
+    // breachReady: the bottom edge turns into an invitation to press D
+    const och = (ready && dy === 2) ? '▼' : ch;
+
+    if (dx === 1 && dy === 1) {
+      if (mem.feeding) return out(och, C.white);      // pulse on the feed tick
+      if (ready) return out(och, mixOf(mem.accent, C.white, breathe(90)));
+      return null;                                     // render's own D handling
+    }
+    const idx = RING_IDX[dy * 3 + dx];
+    // distress beats everything: erratic, not rhythmic — a hash of the frame,
+    // so it is repeatable under test and reads as panic on screen
+    if (run.integrity < 25) {
+      const h = hash(F * 8 + idx);
+      return out(och, h < 0.3 ? C.red : shadeOf(C.red, 0.4 + 0.35 * h));
+    }
+    if (ready) {
+      // the whole 3x3 pulses in the stratum accent; the bottom row sweeps
+      const k = dy === 2 ? breathe(45, dx * 15) : breathe(90, idx * 6);
+      return out(och, mixOf(mem.accent, C.white, k * 0.8));
+    }
+    if (mem.drillActive) {
+      // marching ants, clockwise, twice as fast on overdrive
+      const step = (F / (run.overdrive ? 3 : 6)) | 0;
+      const d = ((step - idx) % 8 + 8) % 8;
+      if (d === 0) return out(och, C.white);
+      if (d === 1) return out(och, mixOf(C.amber, C.white, 0.45));
+      return out(och, shadeOf(C.amber, 0.7));
     }
     return null;
   }

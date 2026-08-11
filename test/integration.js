@@ -1515,7 +1515,8 @@ function engineBarksSection(seed) {
 // name — this is the regression net for the whole animation layer.
 const FX_ROWS_A1 = [
   'extractor.mining', 'extractor.depleted', 'smelter.fire', 'smelter.cold',
-  'assembler.spin', 'damper.breathe', 'belt.march', 'belt.jam', 'belt.smear',
+  'assembler.spin', 'damper.breathe', 'hub.drill', 'hub.breachReady',
+  'hub.distress', 'belt.march', 'belt.jam', 'belt.smear',
 ];
 const FX_ROWS_A2 = [];
 
@@ -1749,6 +1750,66 @@ function fxSection(seed) {
   assert(palette(dx2, dy2, 90).length >= 5,
     'a fueled damper breathes green on a slow sine');
   row('damper.breathe');
+
+  // ---- A1: the hub — marching ants, the breach invite, distress ----------
+  run.inv.gear = (run.inv.gear || 0) + 12;    // scaffold: keep the drill fed
+  frames(1);
+  assert(FX.mem().drillActive, 'the drill is consuming');
+  function edgeChanges(n) {                   // color changes on one border cell
+    let last = null, changes = 0;
+    for (let i = 0; i < n; i++) {
+      frames(1);
+      const c = cell(hx, hy).fg;
+      if (last !== null && c !== last) changes++;
+      last = c;
+    }
+    return changes;
+  }
+  const slow = edgeChanges(96);               // 96 frames = 2 full ant laps
+  assert(slow >= 5, 'the hub border runs a marching-ants wave while feeding (' +
+    slow + ' changes)');
+  S.toggleOverdrive(run);
+  assert(run.overdrive, 'scaffold: overdrive engaged');
+  const fast = edgeChanges(96);
+  assert(fast >= slow * 2 - 1, 'the wave runs twice as fast on overdrive (' + slow +
+    ' -> ' + fast + ')');
+  S.toggleOverdrive(run);
+  row('hub.drill');
+
+  // The D pulses white on the tick the drill actually feeds. Sampled only on
+  // feed ticks whose run.t phase is 0 — that is a frame where render's own
+  // drill-active blink draws amber, so a white D can only be the FX pulse.
+  let pulsed = false, sampled = false;
+  for (let i = 0; i < 4 * D.DRILL_PERIOD && !pulsed; i++) {
+    S.tick(run);
+    const fd = run._feed;
+    const fed = fd.length && fd[fd.length - 1].t === run.t;
+    frames(1);
+    if (fed && Math.floor(run.t / 4) % 2 === 0) {
+      sampled = true;
+      if (cell(hx + 1, hy + 1).fg === D.COLORS.white) pulsed = true;
+    }
+  }
+  assert(sampled, 'scaffold: the drill fed at least once off render\'s blink phase');
+  assert(pulsed, 'the D pulses white on a feed tick');
+
+  const st0 = run.status;
+  run.status = 'breachReady';                 // scaffold: skip the whole economy
+  frames(1);
+  assertEq(cell(hx, hy + 2).ch, '▼', 'breachReady sweeps ▼ along the hub bottom row');
+  assertEq(cell(hx + 2, hy + 2).ch, '▼', 'all three bottom cells invite the D key');
+  assert(palette(hx, hy, 60).length >= 4, 'the whole 3x3 pulses in the stratum accent');
+  run.status = st0;
+  row('hub.breachReady');
+
+  const integ0 = run.integrity;
+  run.integrity = 12;                         // scaffold: a rig about to fail
+  const panic = palette(hx + 1, hy, 40);
+  assert(panic.length >= 4, 'the border flickers erratically under 25 integrity');
+  assert(panic.every(function (c) { return c !== D.COLORS.amber; }),
+    'a distressed border is red, never the amber wave');
+  run.integrity = integ0;
+  row('hub.distress');
 
   // ---- the hard constraint: FX never writes back into the sim ------------
   const before = JSON.stringify({
