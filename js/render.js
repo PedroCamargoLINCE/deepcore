@@ -861,6 +861,8 @@
     }
     const ox = x0 + Math.max(0, (w - blockWidth(rig)) >> 1);
     const rows = Math.min(rig.length, 12);
+    // published for fx.js: the spark burst goes off around the bolted part
+    layout.foundryRig = { x: ox, y: y0, w: blockWidth(rig), h: rows };
     for (let i = 0; i < rows; i++) text(ox, y0 + i, rig[i].slice(0, w), C.amber);
     if (!flash) return;
     const p = DC.Art && DC.Art.rigParts && DC.Art.rigParts[flash.id];
@@ -944,12 +946,15 @@
   function drawGameover(state, phase) {
     const lines = art('gameover');
     drawArt(lines, 1, artColor('gameover', C.red));
+    layout.artBlock = { row: 1, h: lines.length };   // fx: dust motes drift here
     const y = Math.min(1 + lines.length + 1, 26);
     statsBlock(y, fallbackResult(state.run, false));
-    // Foreman's last word (v1.1 §F) — only when js/barks.js is loaded
+    // Foreman's last word (v1.1 §F) — only when js/barks.js is loaded.
+    // SPEC3 §A2: it types out at half GRIT speed. Funerals are slower.
     const epi = epitaphSafe(state.run);
     for (let i = 0; i < epi.length && y + 5 + i < 30; i++) {
-      ctext(y + 5 + i, (i === 0 ? 'GRIT ▸ ' : '') + String(epi[i]).slice(0, 70), C.cyan);
+      ctext(y + 5 + i, (i === 0 ? 'GRIT ▸ ' : '') +
+        fxTyped('epitaph' + i, String(epi[i]).slice(0, 70), 8), C.cyan);
     }
     ctext(31, '[ENTER] RETURN TO THE SURFACE', phase ? C.white : C.amber);
   }
@@ -957,11 +962,12 @@
   function drawVictory(state, phase) {
     const lines = art('victory');
     drawArt(lines, 1, artColor('victory', C.magmaHot));
+    layout.artBlock = { row: 1, h: lines.length };   // fx: the core sphere pulses
     const y = Math.min(1 + lines.length + 1, 24);
     statsBlock(y, fallbackResult(state.run, true));
     ctext(y + 5, '+' + D.WIN_CORES + ' ◈ CORE BONUS', phase ? C.magenta : shade(C.magenta, 0.6));
     const tl = toastSafe(state.run);
-    if (tl && y + 7 < 31) ctext(y + 7, 'GRIT ▸ ' + tl.slice(0, 70), C.cyan);
+    if (tl && y + 7 < 31) ctext(y + 7, 'GRIT ▸ ' + fxTyped('toast', tl.slice(0, 70), 14), C.cyan);
     ctext(31, '[ENTER] ASCEND      [C] CONTINUE INTO THE MANTLE', C.amber);
   }
 

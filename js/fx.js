@@ -613,7 +613,103 @@
     }
     if (screen === 'title') drawTitle(state, surf);
     if (screen === 'descend') drawCrack(surf);
+    if (screen === 'foundry') foundrySparks(state, surf);
+    if (screen === 'victory') drawCore(surf);
+    if (screen === 'gameover') drawMotes(surf);
+    if (screen === 'run') drawSmoke(state, surf);
     drawParts(surf, screen);
+  }
+
+  // --- A2: the foundry spark burst -----------------------------------------
+  // The part is already blinking white (render, v1.1 §C.2); this is the
+  // wrench landing on it. Keyed on ui.flashPart identity, exactly as render
+  // keys its blink, so one purchase is one burst.
+  let flashRef = null;
+  function foundrySparks(state, surf) {
+    const fp = state.ui && state.ui.flashPart;
+    if (!fp || !fp.id) { flashRef = null; return; }
+    if (flashRef === fp) return;
+    flashRef = fp;
+    const L = surf.layout && surf.layout.foundryRig;
+    const p = DC.Art && DC.Art.rigParts && DC.Art.rigParts[fp.id];
+    if (!L) return;
+    const px = L.x + (p ? (p.col || 0) : (L.w >> 1));
+    const py = L.y + (p ? (p.row || 0) : (L.h >> 1));
+    const pw = p && p.lines ? p.lines[0].length : 3;
+    const ph = p && p.lines ? p.lines.length : 1;
+    const n = 5 + ((rand() * 3) | 0);              // 5-7 sparks
+    for (let i = 0; i < n; i++) {
+      const a = rand() * Math.PI * 2;
+      spawn({
+        screen: 'foundry',
+        x: px + rand() * pw, y: py + rand() * ph,
+        vx: Math.cos(a) * 0.06, vy: Math.sin(a) * 0.04,
+        ch: rand() < 0.5 ? '*' : "'",
+        col: rand() < 0.5 ? C.white : C.amber,
+        life: Math.round(1.2 * FPS),
+      });
+    }
+  }
+
+  // --- A2: the core pulses, then rings on GRIT's last character ------------
+  // The victory art is a shading function of distance from the sphere center;
+  // this gives that function a phase, and the toast's final character sends
+  // one bright ring out through it.
+  const CORE_RAMP = [C.magmaHot, C.magma, C.orange, C.amber];
+  function drawCore(surf) {
+    const A = surf.layout && surf.layout.artBlock;
+    if (!A) return;
+    const cy = A.row + (A.h >> 1), cx = (D.COLS / 2) | 0;
+    const rx = 28, ry = A.h / 2;
+    const ph = (F / 24) | 0;
+    const done = typedDone('toast');
+    const ring = done ? (F - done) / 40 : -1;      // expands over ~0.7s
+    for (let r = A.row; r < A.row + A.h && r < D.ROWS; r++) {
+      for (let c = 0; c < D.COLS; c++) {
+        if (surf.ch(c, r) === ' ') continue;
+        const dx = (c - cx) / rx, dy = (r - cy) / ry;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (ring >= 0 && ring <= 1.4 && Math.abs(d - ring) < 0.09) {
+          surf.put(c, r, surf.ch(c, r), C.white);
+          continue;
+        }
+        surf.put(c, r, surf.ch(c, r), CORE_RAMP[(Math.floor(d * 4) + ph) & 3]);
+      }
+    }
+  }
+
+  // --- A2: dust settling over the collapsed rig ----------------------------
+  function drawMotes(surf) {
+    const A = surf.layout && surf.layout.artBlock;
+    if (F % 12) return;
+    const top = A ? A.row : 1, h = A ? A.h : 14;
+    spawn({
+      screen: 'gameover',
+      x: 6 + rand() * (D.COLS - 12), y: top,
+      vx: 0, vy: 0.06 + rand() * 0.05,
+      ch: '·', col: C.darkgray,
+      life: Math.round((h + 4) / 0.08),
+      clip: { x: 0, y: top, w: D.COLS, h: h + 4 },
+    });
+  }
+
+  // --- A2: GRIT's smoke break ----------------------------------------------
+  // Pause for more than 30s and smoke curls in from the bottom-left corner,
+  // one cell per 5s, capped at 30 — right where his tag sits.
+  let pauseF0 = 0;
+  function drawSmoke(state, surf) {
+    const paused = !!(state.ui && state.ui.paused);
+    if (!paused) { pauseF0 = 0; return; }
+    if (!pauseF0) { pauseF0 = F; return; }
+    const held = F - pauseF0;
+    if (held < 30 * FPS) return;
+    const n = Math.min(30, 1 + Math.floor((held - 30 * FPS) / (5 * FPS)));
+    for (let k = 0; k < n; k++) {
+      const c = Math.round(k * 0.7 + hash(k * 13) * 2);
+      const r = D.ROWS - 1 - Math.round(k * 0.55 + hash(k * 29) * 2);
+      if (c < 0 || c >= D.COLS || r < 0 || r >= D.ROWS) continue;
+      surf.put(c, r, '░', k > n - 4 ? C.gray : shadeOf(C.gray, 0.55));
+    }
   }
 
   // --- A2: typewriters and the depth odometer ------------------------------
