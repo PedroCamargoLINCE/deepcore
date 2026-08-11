@@ -91,6 +91,10 @@ Everything runs on plain `node` — no test runner, no install:
   consistency against `data.js`
 - `node test/rig_test.js` — rig portrait composition (art.js overlays)
 - `node test/balance.js` — multi-seed balance sweep against the SPEC §12 targets
+  (read its footer: it measures a scripted bot on a naked rig by default, and
+  says which target is checked under which Foundry loadout)
+- `node tools/ab.js '<js mutating D>'` — run that sweep against a tuning without
+  editing `data.js`, e.g. `node tools/ab.js 'D.RECIPES.gear.ticks = 18'`
 - `node tools/build.js` — bundle into `dist/deepcore.html`
 
 `js/data.js` is the balance source of truth; the in-game field manual composes

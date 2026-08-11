@@ -45,8 +45,18 @@ node test/barks_test.js     # GRIT's line corpus + voice lint
 node test/rig_test.js       # rig portrait composition
 node test/balance.js        # multi-seed balance sweep vs SPEC.md §12 targets
 node tools/build.js         # bundle -> dist/deepcore.html
+node tools/ab.js '<patch>'  # A/B a data.js tuning through the sweep, no edit
 ```
 Test knobs: `DC_SEED=<n>`, `DC_DEBUG=1`, `DC_TRACE=1`.
+Sweep knobs: `DC_BAL_META`, `DC_BAL_SEEDS`, `DC_BAL_POLICIES`, `DC_BAL_BUDGET`,
+`DC_BAL_CAPMIN`.
+
+**Read `test/balance.js`'s footer before trusting its table.** It measures a
+scripted bot, defaults to a naked (no-Foundry) rig, and maps each SPEC §12
+target to the loadout it is actually checked under. The bot losing every naked
+run is the intended shape of run one, not a balance bug — and its own ceiling
+is the tier-2 chain, so `no-breach` stalls at s5+ mean the bot failed rather
+than the stratum being unbeatable. Never tune `data.js` against those.
 
 ## Status
 
