@@ -325,7 +325,7 @@ effects from `DC.DATA.SCHEMATICS` ids. Stack multiplicatively where both exist
 ```js
 DC.Sim.newRun(metaEffects, seed) -> run     // builds mods, stock, integrity; calls startStratum
 DC.Sim.startStratum(run)                    // generates map for run.depth, resets t,
-                                            // instability (-40 carryover, min 0), gearsFed/chargesFed,
+                                            // instability (-45 carryover, min 0), gearsFed/chargesFed,
                                             // breachReq, machines (hub only), reveal
 DC.Sim.tick(run)
 DC.Sim.canPlace(run, type, x, y, facing) -> { ok, reason }
@@ -356,7 +356,7 @@ DC.Sim.msg(run, text, color)                // push to messages, cap 40
 ones: s_extract, s_smelt, s_plate, s_veins).
 
 Descent carry-over: `inv` carries; machines are lost (salvage refunds a fraction of
-their build cost first); instability drops by 40 (min 0); integrity carries.
+their build cost first); instability drops by 45 (min 0); integrity carries.
 
 ---
 

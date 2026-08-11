@@ -204,7 +204,7 @@
 
   // ---------------- hazard tuning ----------------
   D.QUAKE = {
-    startInst: 22,     // no quakes below this instability
+    startInst: 25,     // no quakes below this instability
     jitter: 0.35,      // ± fraction on interval
     collapseIvl: 9,    // seconds between quakes at instability 100 ("collapse")
     tiles: (inst, depth) => 2 + Math.floor(inst / 30) + Math.floor(depth / 3),
@@ -244,13 +244,13 @@
   // ---------------- meta upgrades (Foundry) ----------------
   D.META_UPGRADES = [
     { id: 'm_stock',  name: 'Deeper Stores',     max: 2, costs: [2, 4],
-      desc: '+20 iron plates, +4 gears at run start (per level).' },
+      desc: '+20 plates & +4 gears at start (per lvl).' },
     { id: 'm_hull',   name: 'Reinforced Hull',   max: 2, costs: [3, 6],
       desc: '+25 max integrity (per level).' },
     { id: 'm_damp',   name: 'Gyro Dampers',      max: 2, costs: [4, 8],
       desc: 'Instability rises 12% slower (per level).' },
     { id: 'm_torque', name: 'Drill Torque',      max: 2, costs: [4, 8],
-      desc: 'Drill consumes & breaches 12% faster (per level).' },
+      desc: 'Drill feeds & breaches 12% faster/lvl.' },
     { id: 'm_fix',    name: 'Field Kits',        max: 1, costs: [3],
       desc: 'Repairs cost 1 plate instead of 2.' },
     { id: 'm_scan',   name: 'Prospector Array',  max: 1, costs: [5],
@@ -258,7 +258,7 @@
     { id: 'm_salv',   name: 'Salvage Rig',       max: 1, costs: [6],
       desc: 'Descending refunds 40% of built machines.' },
     { id: 'm_deep',   name: 'Deep Stock',        max: 1, costs: [6],
-      desc: 'Start with +10 copper plates and 2 core charges.' },
+      desc: 'Start with +10 copper plates, 2 charges.' },
     { id: 'm_schem',  name: 'Schematic Library', max: 1, costs: [8],
       desc: 'Choose from 4 schematics instead of 3.' },
   ];

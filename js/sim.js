@@ -116,7 +116,7 @@
     run.grid = gen.grid;
     run.hub = gen.hub;
     run.t = 0;
-    run.instability = Math.max(0, run.instability - 40);
+    run.instability = Math.max(0, run.instability - 45);
     run.gearsFed = 0;
     run.chargesFed = 0;
     run.breachReq = {
