@@ -17,9 +17,22 @@
         chains feed the assembler. Without it every plate becomes a gear and
         the rig arrives at stratum 2 unable to afford a smelter — which is a
         bot defect, not a balance signal.
-     3. Depth play: charge tier at depth >= 5 (charge assembler fed by copper +
-        crystal + coal), schematic priority, overdrive heuristic, scrap before
-        descending (DEMOLISH_REFUND back into the pocket).
+     3. Depth play it needs to reach stratum 8 at all: a second gear assembler
+        (one caps at 1 gear / 2.75s), dampers from stratum 2, a charge factory
+        placed so a crystal extractor feeds it directly, schematic priority,
+        overdrive, and scrapping the base before descending.
+
+   What it reports per run: per-stratum breach and leave times, integrity and
+   instability at each descent, plate reserve, live dampers, death depth and
+   cause, quake/magma damage split, cores. Stalled strata print the build
+   stages they reached ([c1+b2+asm+a2...]) so a bad row can be read as "the bot
+   could not plan X" rather than "the balance is wrong".
+
+   KNOWN BOT CEILING: the stratum-5 charge factory (crystal + coal + a copper
+   smelter, all belted into one assembler) fails to plan on roughly a third of
+   maps and shows up as `no-breach` with a `cu2X`/`cryX` stage count. Those
+   rows are a planner limit, not a balance signal — treat win rates as a LOWER
+   bound on competent human play.
 
    Two pacing policies:
      standard — descends as soon as the next base is affordable
@@ -161,7 +174,7 @@ function mkBot(run) {
       }
       return top;
     }
-    for (const [k, into] of goalMap) {
+    for (const k of goalMap.keys()) {
       const p = k.split(',');
       const x = +p[0], y = +p[1], t = T(x, y);
       if (!passable(t, k, blocked)) continue;
@@ -169,7 +182,6 @@ function mkBot(run) {
       if (dm.has(k) && dm.get(k) <= c) continue;
       dm.set(k, c);
       hpush({ k, x, y, d: c });
-      if (into) { /* goalMap already carries the footprint cell */ }
     }
     while (heap.length) {
       const cur = hpop();
@@ -763,12 +775,6 @@ function mkBot(run) {
       }
     }
     return null;
-  }
-
-  // Where the charge factory should live: on the crystals.
-  function crystalSite() {
-    const t = oreTilesSorted('crystal', hubCenter());
-    return t.length ? { x: t[0].x, y: t[0].y } : null;
   }
 
   function scrapAll() {
