@@ -94,12 +94,29 @@ for (const k in B.META_LINES) allLines.push([k, B.META_LINES[k]]);
 for (const c in B.EPITAPHS)
   for (const pair of B.EPITAPHS[c]) for (const l of pair) allLines.push(['epitaph:' + c, l]);
 for (const l of B.TOASTS) allLines.push(['toast', l]);
+// M-RECAP: GRIT's Performance Review is authored content like everything
+// above it, so it joins the corpus the width / duplicate / guardrail lints
+// run over. Lines carry {tokens}; they are measured filled, worst-case.
+const REVIEW_TIERS = ['shallow', 'mid', 'deep', 'win', 'mantle'];
+const REVIEW_TOKENS = ['depth', 'time', 'min', 'plates', 'gears', 'charges',
+                       'cores', 'breaches', 'schems'];
+const REVIEW_WORST = {
+  depth: '999', time: '999:59', min: '999', plates: '9999', gears: '9999',
+  charges: '9999', cores: '9999', breaches: '999', schems: '99',
+};
 for (const [tag, l] of allLines) {
   assertEq(typeof l, 'string', 'line in ' + tag + ' is a string');
   assert(l.length > 0 && l.length <= 70,
     'line in ' + tag + ' within 70 chars (' + l.length + '): ' + l);
 }
 assert(allLines.length >= 120, '>= 120 lines total (got ' + allLines.length + ')');
+// Review lines join the corpus AFTER the width loop: they are measured in the
+// 'review' section instead, with their {tokens} filled (a raw line carrying
+// '{plates}' is 5 columns longer than the '212' the card actually prints).
+// They go in RAW — filling them here would make every line sharing a token
+// share a fake content word and poison the overlap lint below.
+for (const t of REVIEW_TIERS)
+  for (const l of B.REVIEWS[t]) allLines.push(['review:' + t, l]);
 
 // line text -> trigger id (for classifying what the drive fired)
 const TRIG_OF = {};
@@ -303,6 +320,88 @@ SECTION = 'toast';
   const run = S.newRun(defEffects(), 14);
   const t = B.toast(run);
   assert(B.TOASTS.indexOf(t) >= 0, 'toast comes from the victory toast pool');
+}
+
+// ------------------------------- M-RECAP: GRIT's Performance Review pools
+// The recap card's payload. Contracts: five outcome tiers, >= 10 lines each,
+// every line still <= 70 columns once its {tokens} are filled with the worst
+// case the game can produce, no unknown token (a typo'd {plate} would render
+// as literal braces on the card), the tier a run earns is the tier the line
+// comes from, and the roll is deterministic on run.rng like every other bark.
+SECTION = 'review';
+let REVIEW_N = 0;
+{
+  for (const fn of ['review', 'reviewTier', 'reviewCtx', 'fillReview'])
+    assertEq(typeof B[fn], 'function', 'DC.Barks.' + fn + ' is a function');
+  for (const t of REVIEW_TIERS) {
+    const pool = B.REVIEWS[t];
+    assert(Array.isArray(pool), 'review tier "' + t + '" has a pool');
+    assert(pool.length >= 10, 'review tier "' + t + '" has >= 10 lines (got ' +
+      pool.length + ')');
+    for (const l of pool) {
+      REVIEW_N++;
+      const filled = B.fillReview(l, REVIEW_WORST);
+      assert(filled.length <= 70, 'review line fits 70 cols filled (' +
+        filled.length + '): ' + filled);
+      assert(!/[{}]/.test(filled), 'review line uses only known tokens: ' + l);
+      const toks = l.match(/\{(\w+)\}/g) || [];
+      for (const tk of toks) {
+        assert(REVIEW_TOKENS.indexOf(tk.slice(1, -1)) >= 0,
+          'review token ' + tk + ' is a real context key: ' + l);
+      }
+    }
+  }
+  assertEq(Object.keys(B.REVIEWS).length, REVIEW_TIERS.length,
+    'no review tier ships without a test contract');
+
+  // tier selection: shallow / mid / deep / win / mantle
+  const cases = [
+    [1, false, false, 'shallow'], [2, false, false, 'shallow'],
+    [3, false, false, 'mid'], [5, false, false, 'mid'],
+    [6, false, false, 'deep'], [8, false, false, 'deep'],
+    [8, true, false, 'win'], [11, true, true, 'mantle'], [11, false, true, 'mantle'],
+  ];
+  for (const [depth, won, mantle, tier] of cases) {
+    const run = S.newRun(defEffects(), 100 + depth);
+    run.depth = depth; run.mantle = mantle;
+    assertEq(B.reviewTier(run, { depth: depth, won: won }), tier,
+      'depth ' + depth + ' won=' + won + ' mantle=' + mantle + ' reviews as ' + tier);
+    const line = B.review(run, { depth: depth, won: won, timeSec: 600, cores: 4 });
+    const pool = B.REVIEWS[tier].map(l => B.fillReview(l, B.reviewCtx(run,
+      { depth: depth, won: won, timeSec: 600, cores: 4 })));
+    assert(pool.indexOf(line) >= 0, 'review line came from the ' + tier + ' pool');
+    assert(!/[{}]/.test(line), 'review line is fully substituted: ' + line);
+  }
+
+  // context: run totals span strata (gearsFed resets every stratum, splits do
+  // not), and the hoarding joke needs the plates that were still banked
+  {
+    const run = S.newRun(defEffects(), 777);
+    run.splits = [{ depth: 1, sec: 100, gears: 20, charges: 0 },
+                  { depth: 2, sec: 130, gears: 28, charges: 3 }];
+    run.gearsFed = 7; run.chargesFed = 1; run.inv.ironPlate = 212;
+    run.schematics = ['s_extract', 's_damp'];
+    const ctx = B.reviewCtx(run, { depth: 3, won: false, timeSec: 245, cores: 2, breaches: 2 });
+    assertEq(ctx.gears, 55, 'review gear total sums the splits plus this stratum');
+    assertEq(ctx.charges, 4, 'review charge total sums the splits plus this stratum');
+    assertEq(ctx.plates, 212, 'review reads the plates still banked');
+    assertEq(ctx.time, '4:05', 'review formats the run time');
+    assertEq(ctx.min, 4, 'review rounds the run to whole minutes');
+    assertEq(ctx.schems, 2, 'review counts the schematics taken');
+    // no splits at all (a run that died in stratum 1) still reads clean
+    const bare = S.newRun(defEffects(), 778);
+    bare.gearsFed = 3;
+    assertEq(B.reviewCtx(bare, { depth: 1, won: false, timeSec: 0 }).gears, 3,
+      'review context works with no splits recorded');
+    assertEq(B.reviewCtx(bare, {}).min, 1, 'a sub-minute run still reads as 1 min');
+  }
+
+  // determinism: same seed, same roll — the card must not re-roll per frame
+  {
+    const a = S.newRun(defEffects(), 4242), b = S.newRun(defEffects(), 4242);
+    const res = { depth: 4, won: false, timeSec: 500, cores: 3 };
+    assertEq(B.review(a, res), B.review(b, res), 'review is deterministic on run.rng');
+  }
 }
 
 // ------------------------------------------- CX-07: no duplicate punchlines
@@ -675,6 +774,7 @@ SECTION = 'prose-panels';
 
 console.log('PASS barks | categories ' + CATALOG.length +
   ' | lines ' + allLines.length +
+  ' | reviews ' + REVIEW_N + ' in ' + REVIEW_TIERS.length + ' tiers' +
   ' | drive triggers ' + trigs.size + ' (' + Array.from(trigs).sort().join(',') + ')' +
   ' | barks in drive ' + d1.lines.length +
   ' | worst line overlap ' + DUP_WORST.toFixed(2) + '/' + DUP_MAX.toFixed(2) +
