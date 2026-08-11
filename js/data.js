@@ -247,6 +247,12 @@
     hubBurn: 1,        // integrity per burn period if magma touches hub
   };
   D.OVERDRIVE = { drillMult: 2, instMult: 1.6 };
+  // Instability refunded on descent. It was a bare literal in sim.js
+  // startStratum AND a second bare literal in art.js's manual — the exact
+  // shape of CX-02 (manual said 40, sim vented 45). It lives here now and is
+  // read by BOTH consumers, so the two can never drift again; test/barks_test
+  // asserts sim.js references this key rather than a number.
+  D.DESCEND_VENT = 45;
 
   // ---------------- run start ----------------
   D.START_STOCK = { ironPlate: 40, gear: 8 };
