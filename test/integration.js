@@ -1516,7 +1516,9 @@ function engineBarksSection(seed) {
 const FX_ROWS_A1 = [
   'extractor.mining', 'extractor.depleted', 'smelter.fire', 'smelter.cold',
   'assembler.spin', 'damper.breathe', 'hub.drill', 'hub.breachReady',
-  'hub.distress', 'belt.march', 'belt.jam', 'belt.smear',
+  'hub.distress', 'belt.march', 'belt.jam', 'belt.smear', 'magma.breathe',
+  'magma.spark', 'crystal.glint', 'chasm.shimmer', 'rubble.jitter', 'dig.wipe',
+  'reveal.front', 'cursor.laytail', 'grit.ember',
 ];
 const FX_ROWS_A2 = [];
 
@@ -1579,6 +1581,11 @@ function fxSection(seed) {
     for (let i = 0; i < n; i++) { S.tick(run); frames(1); seen[cell(x, y).ch] = 1; }
     return Object.keys(seen);
   }
+
+  // Arriving in a stratum reveals a whole disc at once, so the reveal-front
+  // row (below) sweeps the entire opening view. Let that settle before
+  // measuring anything else.
+  frames(2 * FX.FPS + 4);
 
   // ---- A1: belts (empty) — the arrow dim-pulse marches downstream --------
   const bx = hx - 2, by = hy + 2;            // inside the 7x7 hub clearing
@@ -1810,6 +1817,157 @@ function fxSection(seed) {
     'a distressed border is red, never the amber wave');
   run.integrity = integ0;
   row('hub.distress');
+
+  // ---- A1: the world — magma, crystal, chasm, rubble, digs, the front ----
+  // a bare revealed floor tile, well clear of everything built so far
+  function bareFloor(n) {
+    const found = [];
+    for (let y = 1; y < D.MAP_H - 1 && found.length < n; y++) {
+      for (let x = 1; x < D.MAP_W - 1 && found.length < n; x++) {
+        const t = run.grid[y][x];
+        if (t.revealed && t.t === 'floor' && !t.ore && !t.rubble && !t.belt &&
+            t.machine === null && t.digT === 0) found.push({ x: x, y: y });
+      }
+    }
+    return found;
+  }
+  const bare = bareFloor(8);
+  assert(bare.length >= 6, 'scaffold: bare floor tiles to dress');
+
+  const mg = bare[0], mg2 = bare[1];
+  run.grid[mg.y][mg.x].t = 'magma';            // scaffold: pour magma
+  run.grid[mg2.y][mg2.x].t = 'magma';
+  const mgch = glyphs(mg.x, mg.y, 40);
+  assert(mgch.indexOf('≈') >= 0 && mgch.indexOf('~') >= 0,
+    'magma swaps ≈ / ~ (got ' + mgch.join('') + ')');
+  assert(palette(mg.x, mg.y, 40).length >= 3, 'magma cycles 3 ember colors');
+  let offset = false;
+  for (let i = 0; i < 20 && !offset; i++) {
+    frames(1);
+    if (cell(mg.x, mg.y).ch !== cell(mg2.x, mg2.y).ch ||
+        cell(mg.x, mg.y).fg !== cell(mg2.x, mg2.y).fg) offset = true;
+  }
+  assert(offset, 'each magma tile carries its own (x*7+y*13)%3 phase');
+  row('magma.breathe');
+
+  // magma burning a machine: a one-tick spark on the contact edge
+  run.magmaCap = 40;                           // scaffold: enable the burn pass
+  const burn = { x: smx, y: smy + 2 };         // directly under the smelter
+  if (run.grid[burn.y] && run.grid[burn.y][burn.x] &&
+      run.grid[burn.y][burn.x].machine === null) {
+    run.grid[burn.y][burn.x].t = 'magma';      // scaffold: magma at the wall
+    let sparked = false;
+    for (let i = 0; i < D.MAGMA.burnPeriod * 2 && !sparked; i++) {
+      S.tick(run); frames(1);
+      if (cell(smx, smy + 1).ch === '*' || cell(smx + 1, smy + 1).ch === '*') sparked = true;
+    }
+    assert(sparked, 'magma damaging a machine flashes * at the contact edge');
+    row('magma.spark');
+    run.grid[burn.y][burn.x].t = 'floor';      // scaffold: put the fire out
+  }
+
+  const cr = bare[2];
+  run.grid[cr.y][cr.x].ore = 'crystal';        // scaffold: seed a crystal vein
+  run.grid[cr.y][cr.x].oreAmt = 60;
+  let glinted = false;
+  for (let i = 0; i < 5 * FX.FPS && !glinted; i++) {
+    frames(1);
+    if (cell(cr.x, cr.y).fg === D.COLORS.white) glinted = true;
+  }
+  assert(glinted, 'a visible crystal glints white about every 4s');
+  row('crystal.glint');
+
+  const chm = bare[3];
+  run.grid[chm.y][chm.x].t = 'chasm';           // scaffold: open a chasm
+  assertEq(palette(chm.x, chm.y, 90).length, 2, 'a chasm shimmers dim/dimmer');
+  row('chasm.shimmer');
+
+  const rb = bare[4];
+  run.grid[rb.y][rb.x].rubble = true;           // scaffold: drop debris
+  const jit = glyphs(rb.x, rb.y, 60);
+  assert(jit.indexOf('%') >= 0 && jit.indexOf(D.RUBBLE_GLYPH) >= 0,
+    'fresh rubble jitters ☼ / % (got ' + jit.join('') + ')');
+  frames(2 * FX.FPS);
+  assertEq(glyphs(rb.x, rb.y, 20).join(''), D.RUBBLE_GLYPH, 'then it settles still');
+  row('rubble.jitter');
+
+  // a dig wipes ▓▒░· as digT runs down
+  let rock = null;
+  for (let y = 1; y < D.MAP_H - 1 && !rock; y++) {
+    for (let x = 1; x < D.MAP_W - 1 && !rock; x++) {
+      const t = run.grid[y][x];
+      if (t.revealed && t.t === 'rock' && t.digT === 0) rock = { x: x, y: y };
+    }
+  }
+  assert(rock, 'scaffold: a revealed rock tile to excavate');
+  assert(S.demolishAt(run, rock.x, rock.y).ok, 'scaffold: excavation started');
+  const wipe = {};
+  while (run.grid[rock.y][rock.x].digT > 0) { S.tick(run); frames(1); wipe[cell(rock.x, rock.y).ch] = 1; }
+  const wipeSeen = Object.keys(wipe);
+  assert(wipeSeen.length >= 3 && wipeSeen.every(function (c) { return '▓▒░·'.indexOf(c) >= 0; }),
+    'the dig wipes ▓▒░· in proportion to digT (got ' + wipeSeen.join('') + ')');
+  row('dig.wipe');
+
+  // the reveal front: a tile entering scan pulses '·', then holds brighter
+  let dark = null;
+  for (let y = 1; y < D.MAP_H - 1 && !dark; y++) {
+    for (let x = 1; x < D.MAP_W - 1 && !dark; x++) if (!run.grid[y][x].revealed) dark = { x: x, y: y };
+  }
+  assert(dark, 'scaffold: an unrevealed tile');
+  run.grid[dark.y][dark.x].revealed = true;     // scaffold: the scan reaches it
+  frames(1);
+  assertEq(cell(dark.x, dark.y).ch, '·', 'the newest reveal ring pulses ·');
+  frames(12);
+  const lit = cell(dark.x, dark.y);
+  frames(2 * FX.FPS);
+  const settled = cell(dark.x, dark.y);
+  assert(lit.fg !== settled.fg, 'the newest ring holds one shade brighter for 2s');
+  row('reveal.front');
+
+  // ---- A1: the lay-mode comet tail ---------------------------------------
+  const lay = bareFloor(30).filter(function (p) { return p.y === bare[5].y; }).slice(0, 4);
+  if (lay.length >= 3) {
+    st.ui.laying = true;
+    st.ui.tool = 'belt';
+    frames(1);                                  // FX snapshots the belt layer
+    for (let i = 0; i < 3; i++) assert(S.place(run, 'belt', lay[i].x, lay[i].y, 1),
+      'scaffold: gesture belt ' + i);
+    frames(1);
+    const t0c = cell(lay[2].x, lay[2].y).fg, t2c = cell(lay[0].x, lay[0].y).fg;
+    assert(t0c !== t2c, 'the comet tail fades from the newest belt back');
+    st.ui.laying = false;
+    st.ui.tool = null;
+    frames(1);
+    assert(cell(lay[2].x, lay[2].y).fg !== t0c, 'the tail clears when the gesture ends');
+    row('cursor.laytail');
+  }
+
+  // ---- A1: GRIT's cigarette ember ----------------------------------------
+  run.foreman = { text: 'Line looks like my ex: backed up and expensive.',
+                  t0: run.totalT, until: run.totalT + 7 * HZ };   // scaffold
+  frames(1);
+  assertEq(R.cellAt(6, 31).ch, '°', "an ember burns after GRIT's tag while he talks");
+  function emberChanges(n) {
+    let last = null, ch = 0;
+    for (let i = 0; i < n; i++) {
+      frames(1);
+      const c = R.cellAt(6, 31).fg;
+      if (last !== null && c !== last) ch++;
+      last = c;
+    }
+    return ch;
+  }
+  const calm = emberChanges(60);
+  const st1 = run.status;
+  run.status = 'breachReady';                   // scaffold: a priority moment
+  const agitated = emberChanges(60);
+  assert(agitated > calm, 'the ember flickers faster on priority barks (' + calm +
+    ' -> ' + agitated + ')');
+  run.status = st1;
+  run.foreman = null;
+  frames(1);
+  assert(R.cellAt(6, 31).ch !== '°', 'the ember goes out when the bar clears');
+  row('grit.ember');
 
   // ---- the hard constraint: FX never writes back into the sim ------------
   const before = JSON.stringify({

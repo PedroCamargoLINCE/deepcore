@@ -264,15 +264,79 @@
     // the status '!' marker (nofuel/blocked/depleted) always stays on top
     if (ch === '!') return null;
 
+    // magma eating a machine: a one-tick spark at the contact edge, over
+    // whatever that cell was drawing
+    const sparks = mem.sparks;
+    for (let k = 0; k < sparks.length; k++) {
+      if (sparks[k].x === x && sparks[k].y === y && sparks[k].t === run.t) {
+        return out('*', C.magmaHot);
+      }
+    }
+
     let r = null;
     if (t.machine === 0) {
       r = hubCell(run, x, y, ch, fg);
     } else if (t.machine !== null && t.machine !== undefined) {
       r = machineCell(run, t, x, y, ch, fg);
-    } else if (t.belt && t.machine === null) {
+    } else if (t.belt) {
       r = beltCell(run, t, x, y, ch, fg);
+    } else {
+      r = worldCell(run, t, x, y, ch, fg);
     }
-    return r;
+    return revealFront(x, y, r, ch, fg);
+  }
+
+  // --- A1: the reveal front ------------------------------------------------
+  // The sonar made visible, on top of whatever the tile is: the instant a
+  // tile enters scan it pulses as a faint '·' ring, then holds one shade
+  // brighter for 2s while the front moves on.
+  const RING_FRAMES = 8;
+  function revealFront(x, y, r, ch, fg) {
+    const st = mem.rev[y * W + x];
+    if (!st) return r;
+    const age = F - st;
+    if (age > 2 * FPS) return r;
+    if (age < RING_FRAMES) return out('·', shadeOf(C.cyan, 0.55));
+    const cch = r ? r[0] : ch, cfg = r ? r[1] : fg;
+    return out(cch, mixOf(cfg, C.white, 0.3));
+  }
+
+  // --- A1: the world -------------------------------------------------------
+  const DIG_CH = ['▓', '▒', '░', '·'];        // the excavation wipe
+  const MAGMA_CH = ['≈', '~'];
+  const MAGMA_COL = [C.magma, C.magmaHot, '#d8451f'];   // 3-color ember cycle
+
+  function worldCell(run, t, x, y, ch, fg) {
+    const i = y * W + x;
+    // an excavation in progress wipes ▓▒░· down to bare floor
+    if (t.digT > 0) {
+      const total = t.t === 'rock' ? D.DIG_ROCK : D.DIG_RUBBLE;
+      const done = 1 - U.clamp(t.digT / total, 0, 1);
+      return out(DIG_CH[U.clamp(Math.floor(done * 4), 0, 3)], C.gray);
+    }
+    // debris that lands: rubble jitters for 2s, then settles still
+    if (t.rubble) {
+      const st = mem.rub[i];
+      if (st && F - st < 2 * FPS) {
+        return out((((F / 6) | 0) & 1) ? '%' : D.RUBBLE_GLYPH, C.gray);
+      }
+      return null;
+    }
+    if (t.t === 'magma') {
+      const off = (x * 7 + y * 13) % 3;       // per-tile phase: it breathes
+      const p4 = (F / (FPS / 4)) | 0;
+      return out(MAGMA_CH[(p4 + off) & 1], MAGMA_COL[(p4 + off) % 3]);
+    }
+    if (t.t === 'chasm') {
+      // depth shimmer: dim/dimmer, offset down the column
+      const p = ((((F / 30) | 0) + y) & 1);
+      const base = D.TERRAIN.chasm.color;
+      return out(ch, p ? shadeOf(base, 0.6) : base);
+    }
+    if (t.ore === 'crystal' && mem.glint && mem.glint.i === i && F < mem.glint.until) {
+      return out(ch, C.white);                // one crystal catches the light
+    }
+    return null;
   }
 
   // --- A1: machines --------------------------------------------------------
@@ -378,6 +442,15 @@
   function beltCell(run, t, x, y, ch, fg) {
     const b = t.belt;
     const i = y * W + x;
+    // the comet tail on a lay gesture: the last 3 belts you put down stay
+    // bright, newest brightest, so the line you are drawing reads as a stroke
+    const tail = mem.tail;
+    for (let k = 0; k < tail.length; k++) {
+      if (tail[k].x === x && tail[k].y === y) {
+        const age = tail.length - 1 - k;      // 0 = the one just laid
+        return out(ch, mixOf(C.cyan, C.white, 0.8 - age * 0.25));
+      }
+    }
     if (b.item) {
       // "the spit": for 2 ticks after an extractor produces, the ore sitting
       // on its output tile renders bright white — you see the machine WORK.
@@ -407,7 +480,23 @@
     const run = state && state.run;
     if (run && mem && mem.grid === run.grid && state.screen === 'run') {
       drawSmears(run, surf);
+      drawEmber(run, surf);
     }
+  }
+
+  // --- A1: GRIT's cigarette ------------------------------------------------
+  // An ember after the 'GRIT ▸' tag, glowing while he talks. render draws the
+  // tag in cols 0..5 and the line from col 7, so col 6 is his cigarette.
+  // "Priority bark" is read off the run, not off the bark: GRIT flickers fast
+  // exactly when the situation is one of Barks' priority triggers.
+  function drawEmber(run, surf) {
+    const f = run.foreman;
+    if (!f || !f.text) return;
+    if (run.totalT > (f.until || 0) + 2 * HZ) return;   // the bar has faded out
+    const agitated = run.status === 'breachReady' || run.status === 'dead' ||
+      run.status === 'won' || (run.instability || 0) >= 99;
+    const on = agitated ? ((((F / 4) | 0) & 1) === 0) : breathe(90) > 0.45;
+    surf.put(6, 31, '°', on ? C.orange : shadeOf(C.orange, 0.4));
   }
 
   // --- A1: the one-frame motion smear (drawn as an overlay so it survives
