@@ -740,10 +740,13 @@
     // to the generic vignette rows of the title art if composeRig is absent.
     const rig = composeRigSafe(meta.upgrades);
     let below;
+    layout.title = { rig: null, enter: null };
     if (rig) {
       const rx = blockX(rig, COLS), ry = 7;
       for (let i = 0; i < rig.length && ry + i < 24; i++) text(rx, ry + i, rig[i], C.amber);
       below = Math.min(ry + Math.min(rig.length, 24 - ry) + 1, 24);
+      // published for fx.js: the drill string idles inside this block
+      layout.title.rig = { x: rx, y: ry, w: blockWidth(rig), h: Math.min(rig.length, 24 - ry) };
     } else {
       for (let i = logoRows; i < lines.length; i++) {
         const ln = lines[i];
@@ -762,6 +765,7 @@
     let tot = 0;
     for (const s of segs) tot += s[0].length;
     let x = (COLS - tot) >> 1;
+    layout.title.enter = { col: x, row: 28, len: segs[0][0].length };  // it breathes
     for (const s of segs) { text(x, 28, s[0], s[1]); x += s[0].length; }
     // meta stats footer
     put(2, 31, '◈', C.magenta);
@@ -783,13 +787,17 @@
     if (anim < animLen || !run || !run.pendingOffers) {
       ui.descendAnim = anim + 1;                  // render advances the anim counter (SPEC §7)
       ctext(2, '»» DESCENDING ««', C.amber);
-      ctext(4, 'STRATUM ' + target + ' — ' + nst.name, accent);
+      // SPEC3 §A2 interstitial: the name types itself in the accent while the
+      // odometer rolls its digits down to the depth you are arriving at.
+      ctext(4, fxTyped('descend', 'STRATUM ' + target + ' — ' + nst.name, 24), accent);
       const fi = Math.min(Math.floor(anim / 10), frames.length - 1);
       const fh = frames[fi].length;
       drawArt(frames[fi], 7, artColor('descent', C.orange));
       const d0 = (target - 1) * D.DEPTH_M;
-      const dm = Math.min(target * D.DEPTH_M, d0 + Math.floor((anim / animLen) * D.DEPTH_M));
-      ctext(Math.min(ROWS - 2, 8 + fh + 1), 'DEPTH -' + dm + 'm', C.gray);
+      const prog = animLen ? anim / animLen : 1;
+      const dm = Math.min(target * D.DEPTH_M, d0 + Math.floor(prog * D.DEPTH_M));
+      ctext(Math.min(ROWS - 2, 8 + fh + 1),
+        'DEPTH -' + fxOdometer('descend', target * D.DEPTH_M, prog, String(dm)) + 'm', C.gray);
       return;
     }
 
@@ -1019,6 +1027,18 @@
     shade: shade, mix: mix, resolve: resolveColor, C: C,
     layout: null,                        // wired to `layout` below
   };
+  // Strings fx.js animates in place (SPEC3 §A2 typewriters and the descent
+  // odometer). Without js/fx.js loaded these are the plain values, so every
+  // screen still reads correctly on its own.
+  function fxTyped(key, str, cps) {
+    str = String(str);
+    if (!DC.FX || !DC.FX.typed) return str;
+    try { return DC.FX.typed(key, str, cps); } catch (e) { return str; }
+  }
+  function fxOdometer(key, value, prog, plain) {
+    if (!DC.FX || !DC.FX.odometer) return plain;
+    try { return DC.FX.odometer(key, value, prog); } catch (e) { return plain; }
+  }
   // ================= public API =================
   const layout = { cards: [], buildRows: [], map: null };
   surface.layout = layout;
