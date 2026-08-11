@@ -1501,6 +1501,743 @@ function engineBarksSection(seed) {
   delete global.requestAnimationFrame;
 }
 
+// =========================================================================
+// SECTION 9 — js/fx.js frame advance (SPEC3 §A, tables A1 + A2)
+// Every row of both tables is an acceptance criterion, so every row gets an
+// assertion here: a state is CONSTRUCTED to make the row's "when" true, the
+// renderer is advanced frame by frame on a stub canvas, and the cell buffer
+// is read back through DC.Render.cellAt to prove the choreography landed on
+// the right cell. The sim is only ever driven through its public API — FX
+// itself must never write to run/ui, which the guards below also check.
+// =========================================================================
+// The SPEC3 §A rows that have landed, in table order. Every row named here
+// must still fire under a constructed state or the section fails with its
+// name — this is the regression net for the whole animation layer.
+const FX_ROWS_A1 = [
+  'extractor.mining', 'extractor.depleted', 'smelter.fire', 'smelter.cold',
+  'assembler.spin', 'damper.breathe', 'hub.drill', 'hub.breachReady',
+  'hub.distress', 'belt.march', 'belt.jam', 'belt.smear', 'magma.breathe',
+  'magma.spark', 'crystal.glint', 'chasm.shimmer', 'rubble.jitter', 'dig.wipe',
+  'reveal.front', 'cursor.laytail', 'grit.ember',
+];
+const FX_ROWS_A2 = [
+  'quake.debris', 'collapse.dread', 'instability.border', 'breach.crack',
+  'descent.interstitial', 'title.embers', 'foundry.sparks', 'victory.pulse',
+  'gameover.motes', 'pause.smoke',
+];
+
+function fxSection(seed) {
+  SECTION = 'fx seed=' + seed;
+  require('../js/fx.js');
+  require('../js/render.js');
+  const FX = DC.FX, R = DC.Render;
+  const covered = {};
+  function row(id) { covered[id] = 1; }
+  assert(FX && FX.begin && FX.tile && FX.frame, 'DC.FX exposes begin/tile/frame');
+  assert(typeof R.cellAt === 'function', 'render exports the cellAt test surface');
+
+  const ctxStub = {
+    fillStyle: '', font: '', textBaseline: '', textAlign: '',
+    setTransform: function () {}, fillRect: function () {},
+    save: function () {}, restore: function () {}, scale: function () {},
+    fillText: function () {}, measureText: function () { return { width: 10 }; },
+  };
+  R.init({ style: {}, getContext: function () { return ctxStub; } });
+
+  const run = S.newRun(defEffects(), seed);
+  const st = {
+    screen: 'run', meta: DC.Meta.newProfile(), run: run,
+    ui: { tool: null, facing: 1, hover: null, cursor: { x: 0, y: 0 },
+          dragging: false, dragLast: null, laying: false, paused: false,
+          descendAnim: 0, shakeUntil: 0, flash: null },
+  };
+  const hx = run.hub.x, hy = run.hub.y;
+  st.ui.cursor = { x: hx + 1, y: hy + 1 };
+
+  function frames(n) { for (let i = 0; i < n; i++) R.frame(st); }
+  // first placeable footprint near the hub — the 7x7 clearing is guaranteed
+  // floor but procgen decides what else is free, so nothing is hardcoded
+  function spot(type) {
+    for (let y = hy - 5; y <= hy + 6; y++) {
+      for (let x = hx - 5; x <= hx + 6; x++) {
+        if (S.canPlace(run, type, x, y, 1).ok) return { x: x, y: y };
+      }
+    }
+    return null;
+  }
+  function cell(x, y) { return R.cellAt(D.MAP_X + x, D.MAP_Y + y); }
+  // distinct fg colors a cell takes across n frames (no sim ticks)
+  function palette(x, y, n) {
+    const seen = {};
+    for (let i = 0; i < n; i++) { frames(1); seen[cell(x, y).fg] = 1; }
+    return Object.keys(seen);
+  }
+  function glyphs(x, y, n) {
+    const seen = {};
+    for (let i = 0; i < n; i++) { frames(1); seen[cell(x, y).ch] = 1; }
+    return Object.keys(seen);
+  }
+  // Same, but ticking the sim once per frame the way the engine loop does.
+  // render's own '!' status blink is phased on run.t (not on the frame
+  // clock), so a frames-only sample can sit inside one blink half forever.
+  function glyphsLive(x, y, n) {
+    const seen = {};
+    for (let i = 0; i < n; i++) { S.tick(run); frames(1); seen[cell(x, y).ch] = 1; }
+    return Object.keys(seen);
+  }
+
+  // Arriving in a stratum reveals a whole disc at once, so the reveal-front
+  // row (below) sweeps the entire opening view. Let that settle before
+  // measuring anything else.
+  frames(2 * FX.FPS + 4);
+
+  // ---- A1: belts (empty) — the arrow dim-pulse marches downstream --------
+  const bx = hx - 2, by = hy + 2;            // inside the 7x7 hub clearing
+  assert(S.place(run, 'belt', bx, by, 1), 'scaffold: belt placed east of the hub');
+  frames(1);
+  const beltCell = cell(bx, by);
+  assertEq(beltCell.ch, D.ARROWS[1], 'empty belt still draws its travel arrow');
+  // the ramp has 3 steps and the phase advances every 2 ticks: over 6 ticks a
+  // fixed cell must show more than one brightness, or nothing is flowing
+  const beltShades = {};
+  for (let i = 0; i < 8; i++) { S.tick(run); S.tick(run); frames(1); beltShades[cell(bx, by).fg] = 1; }
+  assert(Object.keys(beltShades).length >= 3,
+    'empty belt arrow pulses through its 3-step brightness ramp (got ' +
+    Object.keys(beltShades).length + ')');
+  row('belt.march');
+
+  // ---- A1: belt item jammed > 2s shivers ---------------------------------
+  // a belt aimed into the hub's own wall of rock: nothing can accept the item
+  const jx = hx - 3, jy = hy + 3;
+  assert(S.place(run, 'belt', jx, jy, 3), 'scaffold: dead-end belt placed');
+  run.grid[jy][jx].belt.item = 'ironPlate';   // scaffold: hand an item to the belt
+  frames(1);
+  const held0 = Object.keys(palette(jx, jy, 20));
+  assertEq(held0.length, 1, 'a fresh item on a belt does not shiver yet');
+  for (let i = 0; i < 2 * HZ + 2; i++) S.tick(run);
+  assert(run.grid[jy][jx].belt.item === 'ironPlate', 'the jammed item really is stuck');
+  const held1 = Object.keys(palette(jx, jy, 20));
+  assertEq(held1.length, 2, 'a jam over 2s shivers between its color and dim');
+  row('belt.jam');
+
+  // ---- A1: belt item on move tick leaves a one-frame bright smear --------
+  const sx = hx - 2, sy = hy - 2;
+  assert(S.place(run, 'belt', sx, sy, 1), 'scaffold: smear belt A');
+  assert(S.place(run, 'belt', sx + 1, sy, 1), 'scaffold: smear belt B');
+  run.grid[sy][sx].belt.item = 'gear';
+  frames(1);                                  // FX snapshots the item at A
+  while (run.grid[sy][sx].belt.item) S.tick(run);
+  assertEq(run.grid[sy][sx + 1].belt.item, 'gear', 'the item advanced one belt');
+  frames(1);
+  const smear = cell(sx, sy);
+  assertEq(smear.ch, D.ITEMS.gear.glyph, 'the departed cell draws the item glyph');
+  assert(smear.fg !== D.ITEMS.gear.color, 'the smear is brighter than the item');
+  frames(1);
+  assertEq(cell(sx, sy).ch, D.ARROWS[1], 'the smear lasts exactly one frame');
+  row('belt.smear');
+
+  // ---- A1: extractor — the piston stroke, the spit, the dead pump --------
+  // any revealed vein on the map — how far the procgen put it from the hub is
+  // not this test's business
+  let ore = null;
+  for (let y = 1; y < D.MAP_H - 1 && !ore; y++) {
+    for (let x = 1; x < D.MAP_W - 1 && !ore; x++) {
+      const t = run.grid[y][x];
+      if (t.revealed && t.ore && t.oreAmt > 0 && t.machine === null && !t.belt &&
+          t.t === 'floor') ore = { x: x, y: y };
+    }
+  }
+  assert(ore, 'scaffold: a revealed ore tile to mine');
+  run.inv.ironPlate += 40;                    // scaffold: pay for the test rig
+  assert(S.place(run, 'extractor', ore.x, ore.y, 1), 'scaffold: extractor on the vein');
+  S.tick(run);
+  const exM = run.machines[run.grid[ore.y][ore.x].machine];
+  assertEq(exM.status, 'ok', 'the extractor is actively mining');
+  const pump = glyphs(ore.x, ore.y, 40);
+  assert(pump.indexOf('E') >= 0 && pump.indexOf('╪') >= 0 && pump.indexOf('╫') >= 0,
+    'a mining extractor cycles E ╪ E ╫ (got ' + pump.join('') + ')');
+  row('extractor.mining');
+
+  // the spit: a belt on the output tile shows the fresh ore bright-white
+  const ot = { x: ore.x + 1, y: ore.y };
+  if (run.grid[ot.y][ot.x].t === 'floor' && run.grid[ot.y][ot.x].machine === null) {
+    assert(S.place(run, 'belt', ot.x, ot.y, 1), 'scaffold: belt on the output tile');
+    let spat = false;
+    for (let i = 0; i < 6 * HZ && !spat; i++) {
+      S.tick(run); frames(1);
+      const c = cell(ot.x, ot.y);
+      if (c.ch === D.ORE_GLYPHS[run.grid[ore.y][ore.x].ore].glyph || c.ch === '•') {
+        if (c.fg === D.COLORS.white) spat = true;
+      }
+    }
+    assert(spat, 'each ore produced renders bright-white on the output tile');
+  }
+
+  run.grid[ore.y][ore.x].oreAmt = 0;          // scaffold: work the vein out
+  S.tick(run);
+  assertEq(exM.status, 'depleted', 'the vein is depleted');
+  // a 1x1's status '!' lands on the anchor itself, so this cell alternates
+  // between render's marker and the decaying pump — both must be present
+  const dead = glyphsLive(ore.x, ore.y, 40);
+  assert(dead.indexOf('×') >= 0, 'a depleted extractor shows × on alternate phases (got ' +
+    dead.join('') + ')');
+  assert(dead.indexOf('!') >= 0, "the depleted '!' marker still gets its half of the blink");
+  frames(1);
+  assert(cell(ore.x, ore.y).fg !== D.COLORS.amber, 'the dead pump decays out of amber');
+  row('extractor.depleted');
+
+  // ---- A1: smelter — the furnace breathes fire, goes cold without coal ----
+  const smSpot = spot('smelter');
+  assert(smSpot, 'scaffold: a free 2x2 for the smelter');
+  const smx = smSpot.x, smy = smSpot.y;
+  assert(S.place(run, 'smelter', smx, smy, 1), 'scaffold: smelter placed');
+  const sm = run.machines[run.grid[smy][smx].machine];
+  sm.input.ironOre = 4; sm.input.coal = 2;    // scaffold: feed it by hand
+  S.tick(run);
+  assert(sm.job, 'the smelter is crafting');
+  const fire = glyphs(smx, smy + 1, 30);
+  assert(fire.indexOf('▓') >= 0 && fire.indexOf('▒') >= 0 && fire.indexOf('░') >= 0,
+    'a fueled smelter breathes ▓▒░ (got ' + fire.join('') + ')');
+  const emberCols = palette(smx, smy + 1, 30);
+  assert(emberCols.indexOf(D.COLORS.magma) >= 0 && emberCols.indexOf(D.COLORS.orange) >= 0 &&
+    emberCols.indexOf(D.COLORS.amber) >= 0, 'the fire rolls magma -> orange -> amber');
+  frames(1);
+  assert(cell(smx, smy).ch === D.BUILDINGS.smelter.letter, 'the S anchor stays steady');
+  assert(cell(smx + 1, smy).ch !== cell(smx, smy + 1).ch ||
+    cell(smx + 1, smy).fg !== cell(smx, smy + 1).fg,
+    'fire cells are phase-offset from each other');
+  row('smelter.fire');
+
+  sm.job = null; sm.progress = 0;             // scaffold: starve it of coal
+  sm.input.coal = 0; sm.fuel = 0; sm.input.ironOre = 2;
+  S.tick(run);
+  assertEq(sm.status, 'nofuel', 'the smelter is out of coal');
+  frames(1);
+  assertEq(cell(smx, smy + 1).ch, '░', 'a cold smelter shows ░');
+  assertEq(cell(smx, smy + 1).fg, D.COLORS.darkgray, 'a cold smelter is darkgray');
+  const bang = glyphsLive(smx + 1, smy, 20);
+  assert(bang.indexOf('!') >= 0, "the existing '!' blink stays on top of the cold fire");
+  row('smelter.cold');
+
+  // ---- A1: assembler — meshed gears, and a spin on the recipe switch ------
+  const asSpot = spot('assembler');
+  assert(asSpot, 'scaffold: a free 2x2 for the assembler');
+  const ax = asSpot.x, ay = asSpot.y;
+  assert(S.place(run, 'assembler', ax, ay, 1), 'scaffold: assembler placed');
+  const asm = run.machines[run.grid[ay][ax].machine];
+  asm.input.ironPlate = 4;                    // scaffold: feed it by hand
+  S.tick(run);
+  assert(asm.job, 'the assembler is crafting');
+  const gears = glyphs(ax + 1, ay, 30);
+  assert(gears.indexOf('¤') >= 0 && gears.indexOf('☼') >= 0,
+    'a crafting assembler spins ¤ ☼ (got ' + gears.join('') + ')');
+  const r0 = asm.recipe;
+  S.clickTile(run, ax, ay);
+  assert(asm.recipe !== r0, 'scaffold: the recipe switched');
+  frames(1);
+  assertEq(cell(ax + 1, ay).fg, D.COLORS.white,
+    'a recipe switch acknowledges with one bright full-speed spin');
+  frames(FX.FPS);
+  assert(cell(ax + 1, ay).fg !== D.COLORS.white, 'the acknowledgment spin ends');
+  row('assembler.spin');
+
+  // ---- A1: damper — a calm green heartbeat, flat when unfueled ------------
+  run.inv.copperPlate = (run.inv.copperPlate || 0) + 4;   // scaffold: afford it
+  const dSpot = spot('damper');
+  assert(dSpot, 'scaffold: a free tile for the damper');
+  const dx2 = dSpot.x, dy2 = dSpot.y;
+  assert(S.place(run, 'damper', dx2, dy2, 1), 'scaffold: damper placed');
+  const dmp = run.machines[run.grid[dy2][dx2].machine];
+  S.tick(run);
+  assertEq(dmp.status, 'nofuel', 'an unfed damper reads nofuel');
+  const flat = {};
+  for (let i = 0; i < 40; i++) {
+    S.tick(run); frames(1);                   // tick: render's '!' is run.t-phased
+    const c = cell(dx2, dy2);
+    if (c.ch !== '!') flat[c.fg] = 1;
+  }
+  assertEq(Object.keys(flat).length, 1, 'an unfueled damper sits at one flat dim color');
+  dmp.input.coal = 2;                         // scaffold: hand it a lump of coal
+  S.tick(run);
+  assert(dmp.fuel > 0, 'the damper is burning');
+  assert(palette(dx2, dy2, 90).length >= 5,
+    'a fueled damper breathes green on a slow sine');
+  row('damper.breathe');
+
+  // ---- A1: the hub — marching ants, the breach invite, distress ----------
+  run.inv.gear = (run.inv.gear || 0) + 12;    // scaffold: keep the drill fed
+  frames(1);
+  assert(FX.mem().drillActive, 'the drill is consuming');
+  function edgeChanges(n) {                   // color changes on one border cell
+    let last = null, changes = 0;
+    for (let i = 0; i < n; i++) {
+      frames(1);
+      const c = cell(hx, hy).fg;
+      if (last !== null && c !== last) changes++;
+      last = c;
+    }
+    return changes;
+  }
+  const slow = edgeChanges(96);               // 96 frames = 2 full ant laps
+  assert(slow >= 5, 'the hub border runs a marching-ants wave while feeding (' +
+    slow + ' changes)');
+  S.toggleOverdrive(run);
+  assert(run.overdrive, 'scaffold: overdrive engaged');
+  const fast = edgeChanges(96);
+  assert(fast >= slow * 2 - 1, 'the wave runs twice as fast on overdrive (' + slow +
+    ' -> ' + fast + ')');
+  S.toggleOverdrive(run);
+  row('hub.drill');
+
+  // The D pulses white on the tick the drill actually feeds. Sampled only on
+  // feed ticks whose run.t phase is 0 — that is a frame where render's own
+  // drill-active blink draws amber, so a white D can only be the FX pulse.
+  let pulsed = false, sampled = false;
+  for (let i = 0; i < 4 * D.DRILL_PERIOD && !pulsed; i++) {
+    S.tick(run);
+    const fd = run._feed;
+    const fed = fd.length && fd[fd.length - 1].t === run.t;
+    frames(1);
+    if (fed && Math.floor(run.t / 4) % 2 === 0) {
+      sampled = true;
+      if (cell(hx + 1, hy + 1).fg === D.COLORS.white) pulsed = true;
+    }
+  }
+  assert(sampled, 'scaffold: the drill fed at least once off render\'s blink phase');
+  assert(pulsed, 'the D pulses white on a feed tick');
+
+  const st0 = run.status;
+  run.status = 'breachReady';                 // scaffold: skip the whole economy
+  frames(1);
+  assertEq(cell(hx, hy + 2).ch, '▼', 'breachReady sweeps ▼ along the hub bottom row');
+  assertEq(cell(hx + 2, hy + 2).ch, '▼', 'all three bottom cells invite the D key');
+  assert(palette(hx, hy, 60).length >= 4, 'the whole 3x3 pulses in the stratum accent');
+  run.status = st0;
+  row('hub.breachReady');
+
+  const integ0 = run.integrity;
+  run.integrity = 12;                         // scaffold: a rig about to fail
+  const panic = palette(hx + 1, hy, 40);
+  assert(panic.length >= 4, 'the border flickers erratically under 25 integrity');
+  assert(panic.every(function (c) { return c !== D.COLORS.amber; }),
+    'a distressed border is red, never the amber wave');
+  run.integrity = integ0;
+  row('hub.distress');
+
+  // ---- A1: the world — magma, crystal, chasm, rubble, digs, the front ----
+  // a bare revealed floor tile, well clear of everything built so far
+  function bareFloor(n) {
+    const found = [];
+    for (let y = 1; y < D.MAP_H - 1 && found.length < n; y++) {
+      for (let x = 1; x < D.MAP_W - 1 && found.length < n; x++) {
+        const t = run.grid[y][x];
+        if (t.revealed && t.t === 'floor' && !t.ore && !t.rubble && !t.belt &&
+            t.machine === null && t.digT === 0) found.push({ x: x, y: y });
+      }
+    }
+    return found;
+  }
+  const bare = bareFloor(8);
+  assert(bare.length >= 6, 'scaffold: bare floor tiles to dress');
+
+  const mg = bare[0], mg2 = bare[1];
+  run.grid[mg.y][mg.x].t = 'magma';            // scaffold: pour magma
+  run.grid[mg2.y][mg2.x].t = 'magma';
+  const mgch = glyphs(mg.x, mg.y, 40);
+  assert(mgch.indexOf('≈') >= 0 && mgch.indexOf('~') >= 0,
+    'magma swaps ≈ / ~ (got ' + mgch.join('') + ')');
+  assert(palette(mg.x, mg.y, 40).length >= 3, 'magma cycles 3 ember colors');
+  let offset = false;
+  for (let i = 0; i < 20 && !offset; i++) {
+    frames(1);
+    if (cell(mg.x, mg.y).ch !== cell(mg2.x, mg2.y).ch ||
+        cell(mg.x, mg.y).fg !== cell(mg2.x, mg2.y).fg) offset = true;
+  }
+  assert(offset, 'each magma tile carries its own (x*7+y*13)%3 phase');
+  row('magma.breathe');
+
+  // magma burning a machine: a one-tick spark on the contact edge
+  run.magmaCap = 40;                           // scaffold: enable the burn pass
+  const burn = { x: smx, y: smy + 2 };         // directly under the smelter
+  if (run.grid[burn.y] && run.grid[burn.y][burn.x] &&
+      run.grid[burn.y][burn.x].machine === null) {
+    run.grid[burn.y][burn.x].t = 'magma';      // scaffold: magma at the wall
+    let sparked = false;
+    for (let i = 0; i < D.MAGMA.burnPeriod * 2 && !sparked; i++) {
+      S.tick(run); frames(1);
+      if (cell(smx, smy + 1).ch === '*' || cell(smx + 1, smy + 1).ch === '*') sparked = true;
+    }
+    assert(sparked, 'magma damaging a machine flashes * at the contact edge');
+    row('magma.spark');
+    run.grid[burn.y][burn.x].t = 'floor';      // scaffold: put the fire out
+  }
+
+  const cr = bare[2];
+  run.grid[cr.y][cr.x].ore = 'crystal';        // scaffold: seed a crystal vein
+  run.grid[cr.y][cr.x].oreAmt = 60;
+  let glinted = false;
+  for (let i = 0; i < 5 * FX.FPS && !glinted; i++) {
+    frames(1);
+    if (cell(cr.x, cr.y).fg === D.COLORS.white) glinted = true;
+  }
+  assert(glinted, 'a visible crystal glints white about every 4s');
+  row('crystal.glint');
+
+  const chm = bare[3];
+  run.grid[chm.y][chm.x].t = 'chasm';           // scaffold: open a chasm
+  assertEq(palette(chm.x, chm.y, 90).length, 2, 'a chasm shimmers dim/dimmer');
+  row('chasm.shimmer');
+
+  const rb = bare[4];
+  run.grid[rb.y][rb.x].rubble = true;           // scaffold: drop debris
+  const jit = glyphs(rb.x, rb.y, 60);
+  assert(jit.indexOf('%') >= 0 && jit.indexOf(D.RUBBLE_GLYPH) >= 0,
+    'fresh rubble jitters ☼ / % (got ' + jit.join('') + ')');
+  frames(2 * FX.FPS);
+  assertEq(glyphs(rb.x, rb.y, 20).join(''), D.RUBBLE_GLYPH, 'then it settles still');
+  row('rubble.jitter');
+
+  // a dig wipes ▓▒░· as digT runs down
+  let rock = null;
+  for (let y = 1; y < D.MAP_H - 1 && !rock; y++) {
+    for (let x = 1; x < D.MAP_W - 1 && !rock; x++) {
+      const t = run.grid[y][x];
+      if (t.revealed && t.t === 'rock' && t.digT === 0) rock = { x: x, y: y };
+    }
+  }
+  assert(rock, 'scaffold: a revealed rock tile to excavate');
+  assert(S.demolishAt(run, rock.x, rock.y).ok, 'scaffold: excavation started');
+  const wipe = {};
+  while (run.grid[rock.y][rock.x].digT > 0) { S.tick(run); frames(1); wipe[cell(rock.x, rock.y).ch] = 1; }
+  const wipeSeen = Object.keys(wipe);
+  assert(wipeSeen.length >= 3 && wipeSeen.every(function (c) { return '▓▒░·'.indexOf(c) >= 0; }),
+    'the dig wipes ▓▒░· in proportion to digT (got ' + wipeSeen.join('') + ')');
+  row('dig.wipe');
+
+  // the reveal front: a tile entering scan pulses '·', then holds brighter
+  let dark = null;
+  for (let y = 1; y < D.MAP_H - 1 && !dark; y++) {
+    for (let x = 1; x < D.MAP_W - 1 && !dark; x++) if (!run.grid[y][x].revealed) dark = { x: x, y: y };
+  }
+  assert(dark, 'scaffold: an unrevealed tile');
+  run.grid[dark.y][dark.x].revealed = true;     // scaffold: the scan reaches it
+  frames(1);
+  assertEq(cell(dark.x, dark.y).ch, '·', 'the newest reveal ring pulses ·');
+  frames(12);
+  const lit = cell(dark.x, dark.y);
+  frames(2 * FX.FPS);
+  const settled = cell(dark.x, dark.y);
+  assert(lit.fg !== settled.fg, 'the newest ring holds one shade brighter for 2s');
+  row('reveal.front');
+
+  // ---- A1: the lay-mode comet tail ---------------------------------------
+  const lay = bareFloor(30).filter(function (p) { return p.y === bare[5].y; }).slice(0, 4);
+  if (lay.length >= 3) {
+    st.ui.laying = true;
+    st.ui.tool = 'belt';
+    frames(1);                                  // FX snapshots the belt layer
+    for (let i = 0; i < 3; i++) assert(S.place(run, 'belt', lay[i].x, lay[i].y, 1),
+      'scaffold: gesture belt ' + i);
+    frames(1);
+    const t0c = cell(lay[2].x, lay[2].y).fg, t2c = cell(lay[0].x, lay[0].y).fg;
+    assert(t0c !== t2c, 'the comet tail fades from the newest belt back');
+    st.ui.laying = false;
+    st.ui.tool = null;
+    frames(1);
+    assert(cell(lay[2].x, lay[2].y).fg !== t0c, 'the tail clears when the gesture ends');
+    row('cursor.laytail');
+  }
+
+  // ---- A1: GRIT's cigarette ember ----------------------------------------
+  run.foreman = { text: 'Line looks like my ex: backed up and expensive.',
+                  t0: run.totalT, until: run.totalT + 7 * HZ };   // scaffold
+  frames(1);
+  assertEq(R.cellAt(6, 31).ch, '°', "an ember burns after GRIT's tag while he talks");
+  function emberChanges(n) {
+    let last = null, ch = 0;
+    for (let i = 0; i < n; i++) {
+      frames(1);
+      const c = R.cellAt(6, 31).fg;
+      if (last !== null && c !== last) ch++;
+      last = c;
+    }
+    return ch;
+  }
+  const calm = emberChanges(60);
+  const st1 = run.status;
+  run.status = 'breachReady';                   // scaffold: a priority moment
+  const agitated = emberChanges(60);
+  assert(agitated > calm, 'the ember flickers faster on priority barks (' + calm +
+    ' -> ' + agitated + ')');
+  run.status = st1;
+  run.foreman = null;
+  frames(1);
+  assert(R.cellAt(6, 31).ch !== '°', 'the ember goes out when the bar clears');
+  row('grit.ember');
+
+  // ---- A2: the quake — debris rains through the map box ------------------
+  function countCh(chars, x0, y0, w, h) {
+    let n = 0;
+    for (let r = y0; r < y0 + h; r++) {
+      for (let c = x0; c < x0 + w; c++) {
+        const cc = R.cellAt(c, r);
+        if (cc && chars.indexOf(cc.ch) >= 0) n++;
+      }
+    }
+    return n;
+  }
+  // the engine drains run.events before render ever sees them, so the signal
+  // that survives is ui.shakeUntil rising — drive it exactly as afterTick does
+  st.ui.shakeUntil = run.t + 4;
+  frames(1);
+  let debris = 0;
+  for (let i = 0; i < 3 * (FX.FPS / HZ); i++) {
+    frames(1);
+    debris = Math.max(debris, countCh(".'", D.MAP_X, D.MAP_Y, D.MAP_W, D.MAP_H) );
+  }
+  assert(debris >= 6, 'a quake rains debris through the map box (peak ' + debris + ')');
+  frames(3 * (FX.FPS / HZ) + 4);
+  st.ui.shakeUntil = 0;
+  row('quake.debris');
+
+  // the same moment seen only through a peeked (never drained) event queue
+  S.tick(run);                                // a fresh tick to dedupe against
+  const evLen = run.events.length;
+  run.events.push({ type: 'quake', t: run.totalT, data: { dmg: 5 } });
+  frames(2);
+  assert(countCh(".'", D.MAP_X, D.MAP_Y, D.MAP_W, D.MAP_H) >= 6,
+    'a quake event in the queue rains debris too');
+  assertEq(run.events.length, evLen + 1,
+    'FX peeked run.events and left every entry for the engine to drain');
+  frames(3 * (FX.FPS / HZ) + 4);
+
+  // ---- A2: pre-collapse dread — the lights flicker before the hit --------
+  const inst0 = run.instability, qa0 = run.quakeAt;
+  run.instability = 99.5;                     // scaffold: terminal instability
+  run.quakeAt = run.t + 6;                    // scaffold: a scheduled collapse
+  frames(1);
+  const bright = cell(hx, hy + 4).fg;
+  run.quakeAt = run.t + 1;                    // scaffold: 1 tick out
+  frames(1);
+  const dimmed = cell(hx, hy + 4).fg;
+  assert(bright !== dimmed, 'the map dims one step in the 2 ticks before a collapse');
+  row('collapse.dread');
+
+  // ---- A2: the map border breathes red over 80 instability ---------------
+  run.quakeAt = qa0;
+  run.instability = 85;                       // scaffold
+  const borderCols = {};
+  for (let i = 0; i < 90; i++) { frames(1); borderCols[R.cellAt(24, 2).fg] = 1; }
+  assert(Object.keys(borderCols).length >= 4,
+    'the map border breathes red at high instability');
+  run.instability = inst0;
+  frames(1);
+  row('instability.border');
+
+  // ---- A2: the breach crack radiates from the hub ------------------------
+  st.screen = 'descend';
+  st.ui.descendAnim = 0;
+  frames(2);
+  const cracked = countCh('/\\─│', hx - 6 + D.MAP_X, hy - 6 + D.MAP_Y, 13, 13);
+  assert(cracked >= 8, 'pressing D cracks white glass out from the hub (' + cracked + ')');
+  frames(6 * (FX.FPS / HZ) + 2);
+  assert(countCh('/\\', 0, 0, D.COLS, D.ROWS) === 0, 'the crack clears into the descent');
+  st.screen = 'run';
+  frames(1);
+  row('breach.crack');
+
+  // ---- A2: the descent interstitial — name types, odometer rolls ---------
+  st.screen = 'descend';
+  st.ui.descendAnim = 0;
+  run.pendingOffers = null;                   // scaffold: hold on the animation
+  frames(2);
+  const nameRow = function () {
+    let s = '';
+    for (let c = 0; c < D.COLS; c++) s += R.cellAt(c, 4).ch;
+    return s.replace(/\s+$/, '').replace(/^\s+/, '');
+  };
+  const early = nameRow();
+  frames(40);
+  const later = nameRow();
+  assert(later.length > early.length, 'the stratum name typewriters in (' +
+    early.length + ' -> ' + later.length + ' chars)');
+  assert(later.indexOf('STRATUM ' + (run.depth + 1)) >= 0,
+    'and it names the stratum it is taking you to (' + later + ')');
+  // the odometer: digits roll before they settle
+  const depthRow = function () {
+    for (let r = 0; r < D.ROWS; r++) {
+      let s = '';
+      for (let c = 0; c < D.COLS; c++) s += R.cellAt(c, r).ch;
+      if (s.indexOf('DEPTH -') >= 0) return s.trim();
+    }
+    return '';
+  };
+  const spun = {};
+  for (let i = 0; i < 40; i++) { frames(1); spun[depthRow()] = 1; }
+  assert(Object.keys(spun).length >= 3, 'the depth odometer spins its digits');
+  st.ui.descendAnim = 10000;                  // scaffold: run the animation out
+  frames(2);
+  const settledRow = depthRow();
+  assert(settledRow.indexOf('-' + (run.depth + 1) * D.DEPTH_M + 'm') >= 0,
+    'the odometer settles on the depth you are arriving at (' + settledRow + ')');
+  row('descent.interstitial');
+  st.screen = 'run';
+  st.ui.descendAnim = 0;
+  frames(1);
+
+  // ---- A2: the title screen — embers, drill churn, breathing ENTER -------
+  st.screen = 'title';
+  frames(1);
+  const T = R.layout.title;
+  assert(T && T.enter, 'render publishes the title layout for fx');
+  const logo = {};
+  for (let r = 1; r <= 5; r++) for (let c = 0; c < D.COLS; c++) {
+    const cc = R.cellAt(c, r);
+    if (cc.ch !== ' ') logo[cc.fg] = 1;
+  }
+  assert(Object.keys(logo).length >= 3, 'the logo keeps its 3-tone sweep');
+  const motes0 = countCh(".·", 0, 20, D.COLS, 12);
+  frames(240);
+  let motesPeak = 0;
+  for (let i = 0; i < 60; i++) { frames(1); motesPeak = Math.max(motesPeak, countCh(".·", 0, 12, D.COLS, 18)); }
+  assert(motesPeak > motes0, 'embers rise behind the rig (' + motes0 + ' -> ' + motesPeak + ')');
+  if (T.rig) {
+    let churn = null;
+    for (let r = 8; r < T.rig.h && !churn; r++) {
+      for (let c = 0; c < T.rig.w && !churn; c++) {
+        if (R.cellAt(T.rig.x + c, T.rig.y + r).ch === '║' ||
+            R.cellAt(T.rig.x + c, T.rig.y + r).ch === '╫') churn = { c: T.rig.x + c, r: T.rig.y + r };
+      }
+    }
+    assert(churn, 'scaffold: the drill string is on screen');
+    const churned = {};
+    for (let i = 0; i < 40; i++) { frames(1); churned[R.cellAt(churn.c, churn.r).ch] = 1; }
+    assert(churned['║'] && churned['╫'], 'the drill string idles on a 2-frame churn');
+  }
+  const enterCols = {};
+  for (let i = 0; i < 120; i++) { frames(1); enterCols[R.cellAt(T.enter.col, T.enter.row).fg] = 1; }
+  assert(Object.keys(enterCols).length >= 4, 'PRESS ENTER breathes');
+  row('title.embers');
+  st.screen = 'run';
+  frames(1);
+
+  // ---- A2: the foundry spark burst ---------------------------------------
+  st.screen = 'foundry';
+  st.meta.cores = 20;
+  frames(2);
+  const sparks0 = countCh("*'", 0, 8, 32, 18);
+  st.ui.flashPart = { id: 'm_hull', until: 0 };   // exactly what the engine sets
+  let sparks1 = 0;
+  for (let i = 0; i < 40; i++) { frames(1); sparks1 = Math.max(sparks1, countCh("*'", 0, 8, 32, 18)); }
+  assert(sparks1 > sparks0, 'a purchase throws sparks around the bolted part (' +
+    sparks0 + ' -> ' + sparks1 + ')');
+  frames(2 * FX.FPS);
+  assertEq(countCh("*'", 0, 8, 32, 18), sparks0, 'the sparks burn out');
+  st.ui.flashPart = null;
+  row('foundry.sparks');
+
+  // ---- A2: victory — the core pulses, the toast rings --------------------
+  run.result = { depth: 8, breaches: 8, timeSec: 900, cores: 18, won: true };
+  st.screen = 'victory';
+  frames(1);
+  const A = R.layout.artBlock;
+  assert(A && A.h > 6, 'render publishes the victory art block for fx');
+  function coreRow() {
+    const seen = {};
+    for (let c = 0; c < D.COLS; c++) {
+      const cc = R.cellAt(c, A.row + (A.h >> 1));
+      if (cc.ch !== ' ') seen[cc.fg] = 1;
+    }
+    return Object.keys(seen);
+  }
+  assert(coreRow().length >= 2, 'the core sphere shades by distance');
+  // one cell of the sphere must travel the shading ramp: the shading function
+  // now takes a phase, so a fixed cell changes color over time
+  const midRow = A.row + (A.h >> 1);
+  let probe = -1;
+  for (let c = 20; c < 60 && probe < 0; c++) if (R.cellAt(c, midRow).ch !== ' ') probe = c;
+  assert(probe >= 0, 'scaffold: a sphere cell to watch');
+  const corePhases = {};
+  for (let i = 0; i < 120; i++) { frames(1); corePhases[R.cellAt(probe, midRow).fg] = 1; }
+  assert(Object.keys(corePhases).length >= 2, 'and the shading pulses on a phase');
+  // GRIT's toast types at 14 chars/s, so the ring is a few hundred frames out
+  let ringed = false;
+  for (let i = 0; i < 600 && !ringed; i++) {
+    frames(1);
+    let whites = 0;
+    for (let r = A.row; r < A.row + A.h; r++) {
+      for (let c = 0; c < D.COLS; c++) if (R.cellAt(c, r).fg === D.COLORS.white) whites++;
+    }
+    if (whites >= 6) ringed = true;
+  }
+  assert(ringed, 'the finished toast sends one bright ring through the sphere');
+  row('victory.pulse');
+
+  // ---- A2: gameover — dust motes and a slow epitaph ----------------------
+  run.result = { depth: 4, breaches: 3, timeSec: 400, cores: 3, won: false };
+  st.screen = 'gameover';
+  frames(2);
+  const dust0 = countCh('·', 0, 1, D.COLS, 20);
+  let dust1 = 0;
+  for (let i = 0; i < 300; i++) { frames(1); dust1 = Math.max(dust1, countCh('·', 0, 1, D.COLS, 20)); }
+  assert(dust1 > dust0, 'dust motes drift down over the collapsed rig (' +
+    dust0 + ' -> ' + dust1 + ')');
+  row('gameover.motes');
+
+  // ---- A2: GRIT's smoke break --------------------------------------------
+  st.screen = 'run';
+  st.ui.paused = true;
+  frames(2);
+  assertEq(countCh('░', 0, 24, 24, 9), 0, 'no smoke in the first seconds of a pause');
+  frames(31 * FX.FPS);
+  const smoke1 = countCh('░', 0, 20, 26, 13);
+  assert(smoke1 >= 1, 'after 30s paused, smoke curls in from the corner');
+  frames(20 * FX.FPS);
+  const smoke2 = countCh('░', 0, 20, 26, 13);
+  assert(smoke2 > smoke1, 'and it keeps curling, a cell at a time (' + smoke1 +
+    ' -> ' + smoke2 + ')');
+  st.ui.paused = false;
+  frames(2);
+  assertEq(countCh('░', 0, 20, 26, 13), 0, 'un-pausing clears the smoke');
+  row('pause.smoke');
+
+  // ---- the hard constraint: FX never writes back into the sim ------------
+  st.screen = 'run';
+  st.ui.paused = false;
+  frames(1);
+  // determinism: the animation layer owns a private PRNG, so a frame must
+  // never draw a number out of run.rng (that would make what the player sees
+  // change what the run does)
+  const realRng = run.rng;
+  let rngCalls = 0;
+  run.rng = function () { rngCalls++; return realRng(); };
+  frames(90);
+  run.rng = realRng;
+  assertEq(rngCalls, 0, 'FX drew ' + rngCalls + ' numbers from run.rng (must be 0)');
+
+  const before = JSON.stringify({
+    t: run.t, totalT: run.totalT, inst: run.instability, integ: run.integrity,
+    quakeAt: run.quakeAt, status: run.status, ev: run.events.length,
+  });
+  frames(120);
+  assertEq(JSON.stringify({
+    t: run.t, totalT: run.totalT, inst: run.instability, integ: run.integrity,
+    quakeAt: run.quakeAt, status: run.status, ev: run.events.length,
+  }), before, 'advancing 120 FX frames changed nothing in the run');
+  assert(FX.clock() > 0, 'the FX frame clock advanced');
+
+  // SPEC3 §A has 21 rows in table A1 and 10 in table A2, and every one of
+  // them is an acceptance criterion — pin the counts so a row cannot quietly
+  // drop out of the list instead of being fixed.
+  assertEq(FX_ROWS_A1.length, 21, 'table A1 has 21 rows');
+  assertEq(FX_ROWS_A2.length, 10, 'table A2 has 10 rows');
+  const all = FX_ROWS_A1.concat(FX_ROWS_A2);
+  const missing = all.filter(function (id) { return !covered[id]; });
+  assert(missing.length === 0, 'SPEC3 §A rows with no frame-advance proof: ' +
+    missing.join(', '));
+  return all.length;
+}
+
 // -------------------------------------------------------------------- main
 const SEED = process.env.DC_SEED ? (parseInt(process.env.DC_SEED, 10) | 0) : 1337;
 try {
@@ -1516,7 +2253,9 @@ try {
   chargeSection(SEED + 19);
   endgameSection(SEED + 23);
   engineBarksSection(SEED + 29);
+  const fxRows = fxSection(SEED + 31);
   console.log('PASS integration seed=' + SEED + ' | ' + drivenSummary +
+    ' | fx rows ' + fxRows +
     ' | cadence 16/12/10 | overdrive x2 | damper ok | charge+bronze ok | mantle ok' +
     ' | engine+barks ok | ' + (Date.now() - t0) + 'ms');
   process.exit(0);

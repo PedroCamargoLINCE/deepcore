@@ -373,6 +373,10 @@
   function drawMap(run, ui, phase) {
     const shaking = ui.shakeUntil && run.t < ui.shakeUntil;
     const xo = shaking ? ((run.t & 1) ? 1 : -1) : 0;
+    // Published for js/fx.js (SPEC3 §A): the map viewport plus the shake
+    // offset, so the overlay lands on the same cells the tiles just did.
+    layout.map = { x: D.MAP_X, y: D.MAP_Y, w: D.MAP_W, h: D.MAP_H, xo: xo };
+    const FX = DC.FX && DC.FX.tile ? DC.FX : null;
     const req = run.breachReq || { gear: 0, charge: 0 };
     const inv = run.inv || {};
     const running = run.status === 'active' || run.status === 'breachReady';
@@ -442,6 +446,12 @@
               }
             }
           }
+        }
+        // SPEC3 §A1: fx.js animates the tile it was about to draw. It reads
+        // only true sim state and returns [ch, fg] (a reused array) or null.
+        if (FX) {
+          const o = FX.tile(run, tile, x, y, ch, fg);
+          if (o) { ch = o[0]; fg = o[1]; }
         }
         put(gc, gr, ch, fg);
       }
@@ -730,10 +740,13 @@
     // to the generic vignette rows of the title art if composeRig is absent.
     const rig = composeRigSafe(meta.upgrades);
     let below;
+    layout.title = { rig: null, enter: null };
     if (rig) {
       const rx = blockX(rig, COLS), ry = 7;
       for (let i = 0; i < rig.length && ry + i < 24; i++) text(rx, ry + i, rig[i], C.amber);
       below = Math.min(ry + Math.min(rig.length, 24 - ry) + 1, 24);
+      // published for fx.js: the drill string idles inside this block
+      layout.title.rig = { x: rx, y: ry, w: blockWidth(rig), h: Math.min(rig.length, 24 - ry) };
     } else {
       for (let i = logoRows; i < lines.length; i++) {
         const ln = lines[i];
@@ -752,6 +765,7 @@
     let tot = 0;
     for (const s of segs) tot += s[0].length;
     let x = (COLS - tot) >> 1;
+    layout.title.enter = { col: x, row: 28, len: segs[0][0].length };  // it breathes
     for (const s of segs) { text(x, 28, s[0], s[1]); x += s[0].length; }
     // meta stats footer
     put(2, 31, '◈', C.magenta);
@@ -773,13 +787,17 @@
     if (anim < animLen || !run || !run.pendingOffers) {
       ui.descendAnim = anim + 1;                  // render advances the anim counter (SPEC §7)
       ctext(2, '»» DESCENDING ««', C.amber);
-      ctext(4, 'STRATUM ' + target + ' — ' + nst.name, accent);
+      // SPEC3 §A2 interstitial: the name types itself in the accent while the
+      // odometer rolls its digits down to the depth you are arriving at.
+      ctext(4, fxTyped('descend', 'STRATUM ' + target + ' — ' + nst.name, 24), accent);
       const fi = Math.min(Math.floor(anim / 10), frames.length - 1);
       const fh = frames[fi].length;
       drawArt(frames[fi], 7, artColor('descent', C.orange));
       const d0 = (target - 1) * D.DEPTH_M;
-      const dm = Math.min(target * D.DEPTH_M, d0 + Math.floor((anim / animLen) * D.DEPTH_M));
-      ctext(Math.min(ROWS - 2, 8 + fh + 1), 'DEPTH -' + dm + 'm', C.gray);
+      const prog = animLen ? anim / animLen : 1;
+      const dm = Math.min(target * D.DEPTH_M, d0 + Math.floor(prog * D.DEPTH_M));
+      ctext(Math.min(ROWS - 2, 8 + fh + 1),
+        'DEPTH -' + fxOdometer('descend', target * D.DEPTH_M, prog, String(dm)) + 'm', C.gray);
       return;
     }
 
@@ -843,6 +861,8 @@
     }
     const ox = x0 + Math.max(0, (w - blockWidth(rig)) >> 1);
     const rows = Math.min(rig.length, 12);
+    // published for fx.js: the spark burst goes off around the bolted part
+    layout.foundryRig = { x: ox, y: y0, w: blockWidth(rig), h: rows };
     for (let i = 0; i < rows; i++) text(ox, y0 + i, rig[i].slice(0, w), C.amber);
     if (!flash) return;
     const p = DC.Art && DC.Art.rigParts && DC.Art.rigParts[flash.id];
@@ -926,12 +946,15 @@
   function drawGameover(state, phase) {
     const lines = art('gameover');
     drawArt(lines, 1, artColor('gameover', C.red));
+    layout.artBlock = { row: 1, h: lines.length };   // fx: dust motes drift here
     const y = Math.min(1 + lines.length + 1, 26);
     statsBlock(y, fallbackResult(state.run, false));
-    // Foreman's last word (v1.1 §F) — only when js/barks.js is loaded
+    // Foreman's last word (v1.1 §F) — only when js/barks.js is loaded.
+    // SPEC3 §A2: it types out at half GRIT speed. Funerals are slower.
     const epi = epitaphSafe(state.run);
     for (let i = 0; i < epi.length && y + 5 + i < 30; i++) {
-      ctext(y + 5 + i, (i === 0 ? 'GRIT ▸ ' : '') + String(epi[i]).slice(0, 70), C.cyan);
+      ctext(y + 5 + i, (i === 0 ? 'GRIT ▸ ' : '') +
+        fxTyped('epitaph' + i, String(epi[i]).slice(0, 70), 8), C.cyan);
     }
     ctext(31, '[ENTER] RETURN TO THE SURFACE', phase ? C.white : C.amber);
   }
@@ -939,11 +962,12 @@
   function drawVictory(state, phase) {
     const lines = art('victory');
     drawArt(lines, 1, artColor('victory', C.magmaHot));
+    layout.artBlock = { row: 1, h: lines.length };   // fx: the core sphere pulses
     const y = Math.min(1 + lines.length + 1, 24);
     statsBlock(y, fallbackResult(state.run, true));
     ctext(y + 5, '+' + D.WIN_CORES + ' ◈ CORE BONUS', phase ? C.magenta : shade(C.magenta, 0.6));
     const tl = toastSafe(state.run);
-    if (tl && y + 7 < 31) ctext(y + 7, 'GRIT ▸ ' + tl.slice(0, 70), C.cyan);
+    if (tl && y + 7 < 31) ctext(y + 7, 'GRIT ▸ ' + fxTyped('toast', tl.slice(0, 70), 14), C.cyan);
     ctext(31, '[ENTER] ASCEND      [C] CONTINUE INTO THE MANTLE', C.amber);
   }
 
@@ -988,8 +1012,42 @@
     ctx.restore();
   }
 
+  // ================= fx surface (SPEC3 §A) =================
+  // js/fx.js draws through this, never through a canvas context: it is the
+  // same cell buffer every screen writes into, so the FX pass is simply the
+  // last thing to touch a cell. Read accessors let the overlay recolor what
+  // has already been drawn (the instability border breathe, the pre-collapse
+  // dim, the victory sphere pulse) without knowing how it got there.
+  const surface = {
+    COLS: COLS, ROWS: ROWS,
+    put: put, text: text, ctext: ctext, invertCell: invertCell,
+    ch: function (c, r) {
+      return (r >= 0 && r < ROWS && c >= 0 && c < COLS) ? chB[r][c] : ' ';
+    },
+    fg: function (c, r) {
+      return (r >= 0 && r < ROWS && c >= 0 && c < COLS) ? fgB[r][c] : null;
+    },
+    bg: function (c, r) {
+      return (r >= 0 && r < ROWS && c >= 0 && c < COLS) ? bgB[r][c] : null;
+    },
+    shade: shade, mix: mix, resolve: resolveColor, C: C,
+    layout: null,                        // wired to `layout` below
+  };
+  // Strings fx.js animates in place (SPEC3 §A2 typewriters and the descent
+  // odometer). Without js/fx.js loaded these are the plain values, so every
+  // screen still reads correctly on its own.
+  function fxTyped(key, str, cps) {
+    str = String(str);
+    if (!DC.FX || !DC.FX.typed) return str;
+    try { return DC.FX.typed(key, str, cps); } catch (e) { return str; }
+  }
+  function fxOdometer(key, value, prog, plain) {
+    if (!DC.FX || !DC.FX.odometer) return plain;
+    try { return DC.FX.odometer(key, value, prog); } catch (e) { return plain; }
+  }
   // ================= public API =================
-  const layout = { cards: [], buildRows: [] };
+  const layout = { cards: [], buildRows: [], map: null };
+  surface.layout = layout;
 
   DC.Render = {
     CW: CW, CH: CH,
@@ -1022,11 +1080,23 @@
       adv = (m && m.width) ? m.width : CW;
     },
 
+    // SPEC3 §A test surface: the cell buffer after a frame, so a stub-canvas
+    // frame-advance test can prove an FX row actually landed on a cell.
+    cellAt: function (col, row) {
+      if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return null;
+      return { ch: chB[row][col], fg: fgB[row][col], bg: bgB[row][col] };
+    },
+
     frame: function (state) {
       if (!ctx || !state) return;
       frameN++;
       const phase = Math.floor(frameN / 30) % 2;   // blink phase off the run clock
       clearBuf();
+      // SPEC3 §A: fx.js advances its frame clock and takes its per-frame read
+      // of the world BEFORE anything draws; its overlay lands after everything.
+      if (DC.FX && DC.FX.begin) {
+        try { DC.FX.begin(state, surface); } catch (e) { /* fx never kills a frame */ }
+      }
       try {
         switch (state.screen) {
           case 'run':      drawRun(state); break;
@@ -1041,6 +1111,9 @@
       } catch (e) {
         // never let a render fault kill the loop during parallel development
         text(1, 1, 'RENDER ERROR: ' + (e && e.message ? e.message : e), C.red);
+      }
+      if (DC.FX && DC.FX.frame) {
+        try { DC.FX.frame(state, surface); } catch (e) { /* overlay is optional */ }
       }
       flush();
     },
