@@ -17,6 +17,7 @@
   let awardedCores = 0;      // cores already banked (mantle-death delta support)
   let breachFlashed = false; // breach-ready banner shown for this stratum
   let helpFrom = 'title';    // screen to return to from help
+  let recapFrom = 'gameover';// screen to return to from the recap card
   let gesture = {};          // "x,y" -> true: belts placed in the current drag/lay gesture
 
   // ---------------- startup ----------------
@@ -51,8 +52,7 @@
         cursor: { x: (D.MAP_W / 2) | 0, y: (D.MAP_H / 2) | 0 },
         dragging: false, dragLast: null, laying: false,
         paused: false, descendAnim: 0, shakeUntil: 0, flash: null,
-        // M-RECAP: the end-screen card view (TAB) and its clipboard notice.
-        recap: false, copied: null,
+        copied: null,          // M-RECAP: the recap card's clipboard notice
       },
     };
     window.addEventListener('keydown', onKey);
@@ -200,7 +200,7 @@
     ui.tool = null; ui.facing = 1; ui.hover = null;
     ui.dragging = false; ui.dragLast = null; ui.laying = false;
     ui.paused = false; ui.descendAnim = 0; ui.shakeUntil = 0; ui.flash = null;
-    ui.recap = false; ui.copied = null;
+    ui.copied = null;
     gesture = {};
     centerCursor(st);
     arriveFlash(st);
@@ -262,13 +262,17 @@
 
   // ---------------- recap card (M-RECAP) ----------------
 
+  // The card is its own screen rather than a flag on gameover/victory: the FX
+  // layer scopes its particles and colour passes by screen id, so a distinct
+  // id is what keeps the gameover dust and the victory core-pulse off the
+  // card without either module knowing about the other.
   function toggleRecap(st) {
-    st.ui.recap = !st.ui.recap;
+    if (st.screen === 'recap') st.screen = recapFrom || 'gameover';
+    else { recapFrom = st.screen; st.screen = 'recap'; }
     st.ui.copied = null;
   }
 
   function leaveEndScreen(st) {
-    st.ui.recap = false;
     st.ui.copied = null;
     st.run = null;
     st.screen = 'title';
@@ -419,23 +423,26 @@
         break;
       case 'gameover':
         if (k === 'Tab') toggleRecap(st);
-        else if (lk === 'c' && st.ui.recap) copyRecap(st);
         else if (k === 'Escape' || k === 'Enter') leaveEndScreen(st);
         else handled = false;
         break;
       case 'victory':
-        // On the recap card C copies it; on the stats view C still continues
-        // into the Mantle. One key, two views, no ambiguity on screen — both
-        // footers say which one they mean.
         if (k === 'Tab') toggleRecap(st);
-        else if (lk === 'c' && st.ui.recap) copyRecap(st);
         else if (k === 'Escape' || k === 'Enter') leaveEndScreen(st);
         else if (lk === 'c' && st.run) {
           DC.Sim.continueIntoMantle(st.run);
-          st.ui.recap = false; st.ui.copied = null;
+          st.ui.copied = null;
           st.ui.descendAnim = 0;
           st.screen = 'descend';
         } else handled = false;
+        break;
+      // M-RECAP: the card. C copies it here; on the victory stats view C still
+      // means the Mantle, and both footers say which one they mean.
+      case 'recap':
+        if (k === 'Tab') toggleRecap(st);
+        else if (lk === 'c') copyRecap(st);
+        else if (k === 'Escape' || k === 'Enter') leaveEndScreen(st);
+        else handled = false;
         break;
       default:
         handled = false;
