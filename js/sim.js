@@ -663,7 +663,8 @@
 
   function toggleOverdrive(run) {
     run.overdrive = !run.overdrive;
-    msg(run, run.overdrive ? '≫ OVERDRIVE engaged — the rig howls.' : 'Overdrive disengaged.',
+    // CX-08: '»' (U+00BB) — '≫' (U+226B) is the one glyph DejaVu Sans Mono lacks.
+    msg(run, run.overdrive ? '» OVERDRIVE engaged — the rig howls.' : 'Overdrive disengaged.',
         run.overdrive ? D.COLORS.red : D.COLORS.gray);
   }
 
@@ -732,6 +733,52 @@
   }
 
   // ---------------- tooltip (§5.9) ----------------
+  // M-POLISH/CX-04: the SCAN panel is 29 columns of content and render clips
+  // hard, so EVERY line describeTile can emit must already fit in 29 chars —
+  // no mid-word truncation. SCAN_W mirrors render.js SCW; the probe in
+  // test/ (and the audit below) keeps them honest.
+  const SCAN_W = 29;
+
+  // Short item labels for tight panels. Prefers data.js's `short:` field
+  // (M-POLISH/CX-11, landing in parallel) and falls back to this table, so the
+  // strings fit whether or not that field exists yet. A `short` longer than 10
+  // chars is ignored — it would blow the 29-col budget.
+  const ITEM_SHORT = {
+    ironOre: 'iron ore', copperOre: 'cu ore', coal: 'coal', crystal: 'crystal',
+    ironPlate: 'iron plt', copperPlate: 'cu plate', gear: 'gear', charge: 'charge',
+  };
+  function itemShort(id) {
+    const it = D.ITEMS[id];
+    const s = it && it.short;
+    if (typeof s === 'string' && s.length > 0 && s.length <= 10) return s;
+    return ITEM_SHORT[id] || (it && it.name) || String(id);
+  }
+
+  // Input-buffer line, packed to fit SCAN_W: entries are dropped from the end
+  // with a "+N" marker rather than cut mid-word. `skip` drops items already
+  // reported elsewhere (coal lives on the smelter/damper fuel line).
+  function bufferLine(m, skip) {
+    const keys = Object.keys(m.input).filter(k => m.input[k] > 0 && k !== skip);
+    if (!keys.length) return null;
+    const ent = keys.map(k => m.input[k] + ' ' + itemShort(k));
+    for (let n = ent.length; n > 0; n--) {
+      const more = ent.length - n;
+      const s = 'in: ' + ent.slice(0, n).join(', ') + (more ? ' +' + more : '');
+      if (s.length <= SCAN_W) return s;
+    }
+    return 'in: ' + keys.length + ' kinds';   // pathological names: still whole words
+  }
+
+  function fuelLine(run, m) {
+    const coal = m.input.coal || 0;
+    const tail = coal > 0 ? ' (+' + coal + ' coal)' : '';
+    // CX-09: same field, different units — say which. Smelter fuel counts
+    // smelts remaining; damper fuel is raw ticks, shown as seconds of venting.
+    if (m.type === 'damper')
+      return 'fuel: ' + Math.ceil(m.fuel / HZ) + 's venting' + tail;
+    return 'fuel: ' + m.fuel + (m.fuel === 1 ? ' smelt' : ' smelts') + tail;
+  }
+
   function describeTile(run, x, y) {
     const t = tileAt(run, x, y);
     if (!t) return [];
@@ -751,37 +798,38 @@
                color: m.status === 'ok' ? D.COLORS.green
                     : m.status === 'idle' ? D.COLORS.gray : D.COLORS.red });
       if (m.hp === 1)
-        L.push({ text: 'damaged — click: repair (' + run.mods.repairCost + ' plate)', color: D.COLORS.red });
+        L.push({ text: 'damaged — click to repair ' + run.mods.repairCost + D.ITEMS.ironPlate.glyph,
+                 color: D.COLORS.red });
       if (m.type === 'assembler') {
         const out = Object.keys(D.RECIPES[m.recipe || 'gear'].out)[0];
-        L.push({ text: 'recipe: ' + D.ITEMS[out].name + ' (click cycles)', color: D.COLORS.blue });
+        L.push({ text: 'recipe: ' + D.ITEMS[out].name, color: D.COLORS.blue });
+        L.push({ text: 'click: cycle recipe', color: D.COLORS.amberDim });
       }
       if (m.type === 'smelter' || m.type === 'damper')
-        L.push({ text: 'fuel ' + m.fuel + ((m.input.coal || 0) > 0 ? ' (+' + m.input.coal + ' coal)' : ''),
-                 color: D.COLORS.orange });
+        L.push({ text: fuelLine(run, m), color: D.COLORS.orange });
       if (m.type === 'extractor') {
         const ot = tileAt(run, m.x, m.y);
         if (ot && ot.ore)
           L.push({ text: D.ITEMS[ot.ore].name + ' — ' + ot.oreAmt + ' left', color: D.ORE_GLYPHS[ot.ore].color });
       }
-      const buf = Object.keys(m.input).filter(k => m.input[k] > 0)
-        .map(k => m.input[k] + ' ' + D.ITEMS[k].name).join(', ');
-      if (buf) L.push({ text: 'buffer: ' + buf, color: D.COLORS.gray });
+      // coal is already reported by the fuel line on the machines that burn it
+      const buf = bufferLine(m, (m.type === 'smelter' || m.type === 'damper') ? 'coal' : null);
+      if (buf) L.push({ text: buf, color: D.COLORS.gray });
       return L.slice(0, 5);
     }
     if (t.belt) {
       L.push({ text: 'belt ' + D.ARROWS[t.belt.dir] +
-               (t.belt.item ? ' — carrying ' + D.ITEMS[t.belt.item].name : ''), color: D.COLORS.cyan });
+               (t.belt.item ? ' carries ' + itemShort(t.belt.item) : ''), color: D.COLORS.cyan });
       return L;
     }
     if (t.digT > 0) return [{ text: 'excavating — ' + Math.ceil(t.digT / HZ) + 's', color: D.COLORS.amber }];
-    if (t.rubble) return [{ text: 'rubble — demolish (X) to clear', color: D.COLORS.gray }];
+    if (t.rubble) return [{ text: 'rubble — (X) to clear', color: D.COLORS.gray }];
     if (t.ore) {
       L.push({ text: D.ITEMS[t.ore].name + ' vein — ' + t.oreAmt, color: D.ORE_GLYPHS[t.ore].color });
       L.push({ text: 'place an extractor here', color: D.COLORS.amberDim });
       return L;
     }
-    if (t.t === 'rock') return [{ text: 'rock — demolish (X) to excavate', color: D.COLORS.rock }];
+    if (t.t === 'rock') return [{ text: 'rock — (X) to excavate', color: D.COLORS.rock }];
     if (t.t === 'obsidian') return [{ text: 'obsidian — impassable glass', color: D.COLORS.magenta }];
     if (t.t === 'chasm') return [{ text: 'chasm — a long way down', color: D.COLORS.blue }];
     if (t.t === 'magma') return [{ text: 'magma — it spreads', color: D.COLORS.magma }];
@@ -795,5 +843,7 @@
     beginDescent: beginDescent, continueIntoMantle: continueIntoMantle,
     applySchematic: applySchematic, abandon: abandon,
     describeTile: describeTile, feedRate: feedRate, msg: msg,
+    // shared with render.js (STOCK column, CX-11); SCAN_W is the tooltip budget
+    itemShort: itemShort, SCAN_W: SCAN_W,
   };
 })();
