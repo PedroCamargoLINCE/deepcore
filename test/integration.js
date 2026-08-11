@@ -753,7 +753,7 @@ function drivenRun(seed) {
     assertEq(run.pendingOffers, null, 'pendingOffers cleared');
     assertEq(run.gearsFed, 0, 'gearsFed reset');
     assertEq(run.chargesFed, 0, 'chargesFed reset');
-    assertEq(run.instability, Math.max(0, preInstab - 40), 'instability -40 carryover (min 0)');
+    assertEq(run.instability, Math.max(0, preInstab - 45), 'instability -45 carryover (min 0)');
     if (pick === 's_plate') {
       assertEq(run.maxIntegrity, preMax + 20, 's_plate adds +20 max integrity');
       assertEq(run.integrity, Math.min(run.maxIntegrity, preIntegrity + 20),
@@ -1179,7 +1179,7 @@ function endgameSection(seed) {
     'depth 9 breachReq.gear from mantleStratum');
   assertEq(run.breachReq.charge, Math.ceil(ms.breach.charge * run.mods.breachMult),
     'depth 9 breachReq.charge from mantleStratum');
-  assertEq(run.instability, Math.max(0, preInstab - 40), 'instability vented into the Mantle');
+  assertEq(run.instability, Math.max(0, preInstab - 45), 'instability vented into the Mantle');
   // the mantle map simulates cleanly
   for (let i = 0; i < 40 * 1; i++) S.tick(run);
   assertEq(run.status, 'active', 'mantle stratum ticks without incident');
