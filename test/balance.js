@@ -241,6 +241,7 @@ function mkBot(run) {
       const t = T(tx, ty);
       if (!t || !t.revealed || t.machine !== null || t.belt) return false;
       if (reserved.has(key(tx, ty))) return false;
+      if (t.ore && t.oreAmt > 0) return false;   // never pave a live vein
       if (t.t === 'floor' && !t.rubble) continue;
       if (!allowDig) return false;
       if (t.t !== 'floor' && t.t !== 'rock') return false;   // chasm/magma/obsidian
@@ -345,9 +346,12 @@ function mkBot(run) {
   // A "chain" = smelter + ore extractor (+ coal extractor) + belts, output
   // belted into `sinkGoals` (the hub for a banking chain, an assembler
   // perimeter for a feeding chain).
-  const SITE_LIMIT = 10, FACING_LIMIT = 2;
-  function planChain(oreId, sinkGoals, noCoal, sinkTag) {
-    const hubC = hubCenter();
+  const SITE_LIMIT = 12, FACING_LIMIT = 2;
+  // `anchor` is where the chain wants to live — the rig for a banking chain,
+  // the machine it feeds for a remote one. Anchoring on the hub for a charge
+  // factory out on the crystals plans 20-belt runs nobody can pay for.
+  function planChain(oreId, sinkGoals, noCoal, sinkTag, anchor) {
+    const hubC = anchor || hubCenter();
     const oreAll = oreTilesSorted(oreId, hubC);
     const coalAll = noCoal ? [] : oreTilesSorted('coal', hubC);
     if (!oreAll.length || (!noCoal && !coalAll.length)) return null;
@@ -493,6 +497,9 @@ function mkBot(run) {
     }
   }
   bot.reservePads = reservePads;
+  // Held pads block belt routing right where the base is densest; let them go
+  // the moment the last assembler that wanted one is up.
+  function releasePads() { reserved = new Set(); pads.length = 0; }
 
   // Claim a reserved pad: place the assembler, belt the feed chains in.
   function installOnPad(feedChains) {
@@ -518,8 +525,11 @@ function mkBot(run) {
           r = fieldPath(fld, ch.out.x, ch.out.y);
         }
         ch.outBelts.length = 0;
-        if (r) { buildBeltLine(r.path, r.into, ch.outBelts); ch.sink = 'asm'; fed = true; }
+        // a half-built belt run (dig failed / out of plates) is NOT a feed:
+        // claiming it starves the assembler with no watchdog
+        if (r && buildBeltLine(r.path, r.into, ch.outBelts)) { ch.sink = 'asm'; fed = true; }
         else {                                                  // fall back: bank
+          ch.outBelts.length = 0;
           const rh = fieldPath(buildField(hubGoals(), new Set()), ch.out.x, ch.out.y);
           if (rh) buildBeltLine(rh.path, rh.into, ch.outBelts);
           ch.sink = 'hub';
@@ -531,9 +541,17 @@ function mkBot(run) {
     return null;
   }
 
-  function installAssembler(feedChains) {
-    const onPad = installOnPad(feedChains);
-    if (onPad) return onPad;
+  // opts: { pad:false } to skip the rig-side pads, { near:{x,y}, radius:n } to
+  // anchor the search somewhere else (the charge assembler wants to sit on the
+  // crystals, not in the belt jam around the rig).
+  function installAssembler(feedChains, opts) {
+    opts = opts || {};
+    if (opts.pad !== false) {
+      const onPad = installOnPad(feedChains);
+      if (onPad) return onPad;
+    }
+    const anchor = opts.near || hubCenter();
+    const radius = opts.radius || 12;
     asmFail.site = asmFail.route = asmFail.cost = 0;
     for (const c of feedChains) retireBelts(c.outBelts);
     const hx = run.hub.x, hy = run.hub.y;
@@ -547,14 +565,14 @@ function mkBot(run) {
     const generic = [];
     for (let y = 1; y < D.MAP_H - 2; y++) {
       for (let x = 1; x < D.MAP_W - 2; x++) {
-        if (dist({ x: x + 0.5, y: y + 0.5 }, hubC) > 12) continue;
+        if (dist({ x: x + 0.5, y: y + 0.5 }, anchor) > radius) continue;
         if (!siteFree(x, y, 2, 2, true)) continue;   // filter BEFORE slicing:
         generic.push({ x, y, f: -1 });               // the nearest tiles are
       }                                              // the hub and its base
     }
-    generic.sort((a, b) => dist(a, hubC) - dist(b, hubC));
+    generic.sort((a, b) => dist(a, anchor) - dist(b, anchor));
     const hubFld = buildField(hubGoals(), new Set());
-    const list = cands.concat(generic.slice(0, 80));
+    const list = (opts.pad === false ? [] : cands).concat(generic.slice(0, 80));
     for (let phase = 0; phase < 2; phase++)
     for (const c of list) {
       const facings = c.f >= 0 ? [c.f] : [0, 1, 2, 3];
@@ -631,16 +649,19 @@ function mkBot(run) {
   }
 
   // Route a raw-ore extractor line into an existing footprint.
+  const feedFail = {};
+  bot.feedFail = feedFail;
   function addOreFeed(oreId, fp) {
+    const bump = (k) => { feedFail[oreId + k] = (feedFail[oreId + k] || 0) + 1; };
     const tiles = oreTilesSorted(oreId, { x: fp[0].x, y: fp[0].y });
-    if (!tiles.length) return false;
+    if (!tiles.length) { bump('-none'); return false; }
     const plan = planExtractor(tiles, fp, new Set());
-    if (!plan) return false;
+    if (!plan) { bump('-noroute'); return false; }
     const cost = D.BUILDINGS.extractor.cost.ironPlate +
       (run.mods.beltFree ? 0 : plan.path.length);
-    if (cost + 2 > inv('ironPlate')) return false;
-    if (!placeMachine('extractor', plan.tile.x, plan.tile.y, plan.facing)) return false;
-    if (plan.path.length && !buildBeltLine(plan.path, plan.into, null)) return false;
+    if (cost + 2 > inv('ironPlate')) { bump('-poor'); return false; }
+    if (!placeMachine('extractor', plan.tile.x, plan.tile.y, plan.facing)) { bump('-place'); return false; }
+    if (plan.path.length && !buildBeltLine(plan.path, plan.into, null)) { bump('-belt'); return false; }
     chains.push({ fp, out: null, outBelts: [],
       feeders: [{ oreId, x: plan.tile.x, y: plan.tile.y }] });
     return true;
@@ -673,6 +694,81 @@ function mkBot(run) {
       }
     }
     return false;
+  }
+
+  // Re-point a live chain's output at `fp`. Retiring its belts first frees the
+  // very tiles that were fencing the target in, which is why this succeeds
+  // where planning a whole new chain does not.
+  function rerouteChain(ch, fp) {
+    if (!ch.out) return false;
+    const smelt = T(ch.fp[0].x, ch.fp[0].y);
+    if (!smelt || smelt.machine === null) return false;
+    retireBelts(ch.outBelts);
+    ch.outBelts.length = 0;
+    const fpSet = new Set(fp.map((c) => key(c.x, c.y)));
+    const goals = perimMap(fp);
+    const r = fieldPath(buildField(goals, fpSet), ch.out.x, ch.out.y);
+    if (r && !crosses(r.path, fpSet) && buildBeltLine(r.path, r.into, ch.outBelts)) {
+      ch.sink = 'asm';
+      for (const b of ch.outBelts) b.retired = false;
+      return true;
+    }
+    ch.outBelts.length = 0;                        // put it back on the rig
+    const rh = fieldPath(buildField(hubGoals(), new Set()), ch.out.x, ch.out.y);
+    if (rh) buildBeltLine(rh.path, rh.into, ch.outBelts);
+    for (const b of ch.outBelts) b.retired = false;
+    ch.sink = 'hub';
+    return false;
+  }
+
+  // The charge factory, built the only way that reliably works: pick the pad
+  // so a crystal extractor's OUTPUT TILE lands inside the assembler footprint
+  // (direct feed, zero belts), then belt the output to the rig. Routing a
+  // crystal line to an assembler chosen first fails on ~1 map in 3.
+  function installChargeFactory() {
+    const hubFld = buildField(hubGoals(), new Set());
+    const crystals = oreTilesSorted('crystal', hubCenter());
+    const offs = [{ dx: 0, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: -1 }, { dx: -1, dy: -1 }];
+    for (const ct of crystals.slice(0, 10)) {
+      for (let ef = 0; ef < 4; ef++) {
+        const o = outputTile(ct.x, ct.y, 1, 1, ef);
+        for (const off of offs) {
+          const x = o.x + off.dx, y = o.y + off.dy;
+          if (!siteFree(x, y, 2, 2, true)) continue;
+          const fp = rect(x, y, 2, 2);
+          const fpSet = new Set(fp.map((c) => key(c.x, c.y)));
+          for (let f = 0; f < 4; f++) {
+            const out = outputTile(x, y, 2, 2, f);
+            const oT = T(out.x, out.y);
+            let route = null;
+            if (oT && oT.machine === 0) route = { path: [], into: null };
+            else {
+              const r = fieldPath(hubFld, out.x, out.y);
+              if (!r || crosses(r.path, fpSet) || r.path.some((c) => c.x === ct.x && c.y === ct.y)) continue;
+              route = r;
+            }
+            const belts = run.mods.beltFree ? 0 : route.path.length;
+            if (D.BUILDINGS.assembler.cost.ironPlate + belts +
+                D.BUILDINGS.extractor.cost.ironPlate + 2 > inv('ironPlate')) continue;
+            if (!digIfNeeded(fp)) continue;
+            if (!placeMachine('assembler', x, y, f)) continue;
+            if (route.path.length) buildBeltLine(route.path, route.into, null);
+            if (!placeMachine('extractor', ct.x, ct.y, ef)) {
+              S.demolishAt(run, x, y);
+              continue;
+            }
+            return { x, y, facing: f, fp };
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  // Where the charge factory should live: on the crystals.
+  function crystalSite() {
+    const t = oreTilesSorted('crystal', hubCenter());
+    return t.length ? { x: t[0].x, y: t[0].y } : null;
   }
 
   function scrapAll() {
@@ -733,6 +829,7 @@ function mkBot(run) {
       }
     };
     const finish = () => {
+      for (const k in feedFail) if (feedFail[k]) st.st[k] = feedFail[k];
       st.tLeave = Math.round(run.t / HZ);
       st.integEnd = Math.max(0, Math.ceil(run.integrity));
       st.instEnd = Math.round(run.instability);
@@ -743,7 +840,9 @@ function mkBot(run) {
     };
     const alive = () => run.status !== 'dead' && run.totalT < capTotalT && !outOfTime();
 
-    reservePads(run.breachReq.charge > 0 ? 2 : 1);   // gears (+ charges at 5+)
+    // charge assemblers build out on the crystals, so pads are gear-only
+    const wantPads = 1 + (run.breachReq.gear >= BOT.asm2GearReq ? 1 : 0);
+    reservePads(wantPads);
     tickN(48, false);                        // scan opens past guaranteed veins
 
     // phase 1: the banking chain (smelter -> hub: plates for the next base)
@@ -766,17 +865,19 @@ function mkBot(run) {
     // the SECOND chain goes up BEFORE the assembler, because installing the
     // assembler converts chain 1's plate stream into gears and plate income
     // would otherwise be zero forever — no rebuilds, no next base.
-    let asm = null, asmTries = 0;
+    let asm = null, asmTries = 0, asm2g = null, asm2gFeed = null;
     let bank2 = null, bank2Tries = 0, feedChain = null;
     let cuChain = null, cuTries = 0;
     let asm2 = null;
     const asm2Feeds = { crystal: false, coal: false, copper: false };
-    let iter = 0;
+    let iter = 0, lastGearProg = -1, lastGearT = 0;
     while (run.status === 'active' && run.t < capT && alive()) {
       tickN(16, true);
       iter++;
       driveOverdrive();
       trace();
+      const gearProg = run.gearsFed + inv('gear');
+      if (gearProg > lastGearProg) { lastGearProg = gearProg; lastGearT = run.t; }
       if (iter % 2 !== 0) continue;          // planning is heavy; throttle it
       if (!asm && !bank2 && bank2Tries < 6 && inv('ironPlate') >= BOT.bank2Gate) {
         const p = planChain('ironOre', hubGoals(), false);
@@ -786,7 +887,7 @@ function mkBot(run) {
       }
       if (!asm && (bank2 || bank2Tries >= 6) && inv('ironPlate') >= BOT.asmGate(depth)) {
         asm = installAssembler([c1]);        // c1 switches from banking to feeding
-        if (asm) st.st.asm = 1;
+        if (asm) { st.st.asm = 1; if (wantPads < 2) releasePads(); }
         if (!asm && ++asmTries >= 8) {
           st.stall = 'no-asm(site' + asmFail.site + '/route' + asmFail.route +
                      '/cost' + asmFail.cost + ')';
@@ -799,27 +900,40 @@ function mkBot(run) {
       // outranks everything except being alive.
       if (run.breachReq.charge > 0) {
         if (!asm2 && inv('ironPlate') >= BOT.chargeAsmGate) {
-          asm2 = installAssembler([]);
-          if (asm2) { setRecipe(asm2, 'charge'); st.st.a2 = 1; }
+          releasePads();                       // charges outrank a spare pad
+          asm2 = installChargeFactory();
+          if (asm2) {
+            setRecipe(asm2, 'charge');
+            asm2Feeds.crystal = true;          // the extractor feeds it directly
+            st.st.a2 = 1;
+          } else {
+            asm2 = installAssembler([], { pad: false, radius: 16 });
+            if (asm2) { setRecipe(asm2, 'charge'); st.st.a2b = 1; }
+            else st.st.a2X = (st.st.a2X || 0) + 1;
+          }
           continue;
         }
         if (asm2 && !asm2Feeds.crystal) {
           asm2Feeds.crystal = addOreFeed('crystal', asm2.fp);
-          if (asm2Feeds.crystal) st.st.cry = 1;
+          if (asm2Feeds.crystal) st.st.cry = 1; else st.st.cryX = (st.st.cryX || 0) + 1;
           continue;
         }
         if (asm2 && !asm2Feeds.coal) {
           asm2Feeds.coal = addOreFeed('coal', asm2.fp);
-          if (asm2Feeds.coal) st.st.cl = 1;
+          if (asm2Feeds.coal) st.st.cl = 1; else st.st.clX = (st.st.clX || 0) + 1;
           continue;
         }
-        if (asm2 && !asm2Feeds.copper && inv('ironPlate') >= BOT.copperGate) {
-          const p = planChain('copperOre', perimMap(asm2.fp), false);
-          if (p && bot.chainCost(p) + 6 <= inv('ironPlate')) {
-            asm2Feeds.copper = !!buildChain(p, 'copperOre');
+        if (asm2 && !asm2Feeds.copper) {
+          if (inv('ironPlate') >= BOT.copperGate) {
+            const p = planChain('copperOre', perimMap(asm2.fp), false, 'asm',
+                                { x: asm2.x + 0.5, y: asm2.y + 0.5 });
+            if (p && bot.chainCost(p) <= inv('ironPlate')) {
+              asm2Feeds.copper = !!buildChain(p, 'copperOre');
+            }
             if (asm2Feeds.copper) st.st.cu2 = 1;
+            else st.st.cu2X = (st.st.cu2X || 0) + 1;
           }
-          continue;
+          if (!asm2Feeds.copper && (st.st.cu2X || 0) < BOT.chargeTries) continue;
         }
       }
       // copper stock, then dampers: instability control pays for the whole
@@ -833,14 +947,46 @@ function mkBot(run) {
       }
       if (depth >= 2 && damperCount() < D.DAMPER_MAX &&
           inv('ironPlate') >= BOT.damperGate && buildDamper()) continue;
+      // a SECOND gear assembler: one caps out at 1 gear / 3.5s, which cannot
+      // pay a 60+ gear breach bill inside a stratum's instability budget
+      if (!asm2g && run.breachReq.gear >= BOT.asm2GearReq &&
+          inv('ironPlate') >= BOT.asm2Gate) {
+        asm2g = installAssembler([]);
+        if (asm2g) { setRecipe(asm2g, 'gear'); st.st.a2g = 1; releasePads(); }
+        else st.st.a2gX = (st.st.a2gX || 0) + 1;
+        continue;
+      }
+      if (asm2g && !asm2gFeed && inv('ironPlate') >= BOT.feedGate) {
+        const p = planChain('ironOre', perimMap(asm2g.fp), false, 'asm',
+                            { x: asm2g.x + 0.5, y: asm2g.y + 0.5 });
+        if (p && bot.chainCost(p) + 6 <= inv('ironPlate')) {
+          asm2gFeed = buildChain(p, 'ironOre');
+          if (asm2gFeed) st.st.f2 = 1;
+        }
+        continue;
+      }
       // a third chain into the assembler when the gear bill is big — or a
       // first one, if the install could not route the original chain in
-      const starving = !chains.some((ch) => ch.sink === 'asm');
+      // Trust nothing: if fed gears + banked gears have not moved in a while
+      // and the breach still wants gears, the line is broken however it looks.
+      const starving = !chains.some((ch) => ch.sink === 'asm') ||
+        (run.gearsFed < run.breachReq.gear && run.t - lastGearT > BOT.starveSec * HZ);
+      if (starving) {
+        // cheapest fix first: re-point a banking chain at the assembler
+        let fixed = false;
+        for (const ch of chains) {
+          if (ch.sink === 'asm' || !ch.out) continue;
+          if (rerouteChain(ch, asm.fp)) { fixed = true; st.st.rr = (st.st.rr || 0) + 1; break; }
+        }
+        if (fixed) { lastGearT = run.t; continue; }
+      }
       if (!feedChain && (starving ||
           (run.breachReq.gear >= BOT.feedGearReq && inv('ironPlate') >= BOT.feedGate))) {
-        const p = planChain('ironOre', perimMap(asm.fp), false, 'asm');
+        const p = planChain('ironOre', perimMap(asm.fp), false, 'asm',
+                            { x: asm.x + 0.5, y: asm.y + 0.5 });
         if (p && bot.chainCost(p) + 8 <= inv('ironPlate')) feedChain = buildChain(p, 'ironOre');
-        if (feedChain) st.st.f = 1;
+        if (feedChain) { st.st.f = 1; lastGearT = run.t; }
+        else st.st.fX = (st.st.fX || 0) + 1;
         continue;
       }
     }
@@ -879,10 +1025,13 @@ const BOT = {
   asmGate: (depth) => (depth === 1 ? 20 : 20),
   bank2Gate: 38,                  // plates before the second banking chain
   feedGearReq: 40, feedGate: 46,  // third chain, straight into the assembler
-  descendReserve: 40,             // standard leaves once the next base is paid for
+  descendReserve: 65,             // standard leaves once the next base is paid for
   descendWaitSec: 90, panicInst: 78,
   camperLinger: 1.5,              // camper leaves at 1.5x its breach-ready time
   copperStock: 8, damperGate: 30, // copper bank + plate floor for a damper pair
+  asm2GearReq: 40, asm2Gate: 40,  // second gear assembler once the bill is big
+  chargeTries: 10,                // give up re-planning a charge feed after this
+  starveSec: 50,                  // no gear progress this long => the line is dead
   chargeAsmGate: 26, copperGate: 40,
   pickOrder: ['s_plate', 's_damp', 's_drill', 's_charge', 's_extract', 's_smelt',
               's_veins', 's_salvage', 's_coal', 's_survey', 's_over',
@@ -993,7 +1142,8 @@ for (const policy of policies) {
       's' + s.depth + ':' + (s.tBreach == null ? (s.stall ? 'X' : '--') : s.tBreach) +
       '>' + s.tLeave + '(' + s.integEnd + ',' + s.instEnd + ',' + s.platesEnd +
       (s.damp ? ',v' + s.damp : '') + ')' +
-      (s.tBreach == null ? '[' + (Object.keys(s.st).join('+') || 'nothing') + ']' : '')).join(' ');
+      (s.tBreach == null ? '[' + (Object.keys(s.st).map((k) =>
+        s.st[k] > 1 ? k + '*' + s.st[k] : k).join('+') || 'nothing') + ']' : '')).join(' ');
     console.log(pad(r.outcome, 8) + padL(mmss(r.totalSec), 6) + padL(r.cores, 6) +
       padL(r.minInteg, 5) + '  ' + pad(r.cause, 22) + per);
   }

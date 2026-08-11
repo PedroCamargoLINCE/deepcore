@@ -128,10 +128,10 @@
                  cost: { ironPlate: 8 },  color: D.COLORS.amber, period: 16,
                  desc: 'Place on an ore vein. Mines 1 ore / 2s to its output side.' },
     smelter:   { name: 'smelter',   key: '3', letter: 'S', w: 2, h: 2, hp: 2,
-                 cost: { ironPlate: 12 }, color: D.COLORS.orange,
+                 cost: { ironPlate: 10 }, color: D.COLORS.orange,
                  desc: 'Smelts ore into plates. Burns 1 coal per 3 smelts.' },
     assembler: { name: 'assembler', key: '4', letter: 'A', w: 2, h: 2, hp: 2,
-                 cost: { ironPlate: 14 }, color: D.COLORS.blue,
+                 cost: { ironPlate: 12 }, color: D.COLORS.blue,
                  desc: 'Crafts drill gears / core charges. Click to switch recipe.' },
     damper:    { name: 'damper',    key: '5', letter: 'V', w: 1, h: 1, hp: 2,
                  cost: { ironPlate: 8, copperPlate: 2 }, color: D.COLORS.green,
@@ -147,13 +147,18 @@
   D.DEMOLISH_REFUND = 0.5;   // fraction of cost refunded
 
   // ---------------- recipes ----------------
+  // Tick counts set the whole economy's tempo: one smelter = 0.5 plate/s,
+  // one assembler = 1 gear / 2.75s. A chain (smelter + 2 extractors + belts,
+  // ~32 plates) now pays for itself in ~64s, so building one INSIDE a stratum
+  // is worth doing — at ticks 20/28 it barely broke even before the stratum
+  // ended, which is what made stratum 2 a coin flip. (Balance pass, M-POLISH.)
   D.RECIPES = {
-    smeltIron:   { in: { ironOre: 1 },   out: { ironPlate: 1 },   ticks: 20, fuel: true },
-    smeltCopper: { in: { copperOre: 1 }, out: { copperPlate: 1 }, ticks: 20, fuel: true },
-    gear:        { in: { ironPlate: 2 }, out: { gear: 1 },        ticks: 28 },
-    bronzeGear:  { in: { ironPlate: 1, copperPlate: 1 }, out: { gear: 2 }, ticks: 28,
+    smeltIron:   { in: { ironOre: 1 },   out: { ironPlate: 1 },   ticks: 16, fuel: true },
+    smeltCopper: { in: { copperOre: 1 }, out: { copperPlate: 1 }, ticks: 16, fuel: true },
+    gear:        { in: { ironPlate: 2 }, out: { gear: 1 },        ticks: 22 },
+    bronzeGear:  { in: { ironPlate: 1, copperPlate: 1 }, out: { gear: 2 }, ticks: 22,
                    requires: 's_gear' },  // only with Bronze Gearworks schematic
-    charge:      { in: { crystal: 1, copperPlate: 1, coal: 2 }, out: { charge: 1 }, ticks: 40 },
+    charge:      { in: { crystal: 1, copperPlate: 1, coal: 2 }, out: { charge: 1 }, ticks: 32 },
   };
   D.SMELTER_RECIPES = ['smeltIron', 'smeltCopper'];   // auto-picked by available input
   D.ASSEMBLER_RECIPES = ['gear', 'bronzeGear', 'charge']; // click cycles unlocked ones
@@ -161,39 +166,50 @@
   // ---------------- strata ----------------
   // instabRate: instability per second. quakeBase: seconds between quakes (jittered).
   // ores: relative weights for vein type rolls. nodes: vein blob count.
+  // Balance pass (M-POLISH, measured with test/balance.js — 14 seeds x 2
+  // policies). Three families of change, all for the same reason: at the old
+  // numbers instability outran the drill. Every stratum starts at
+  // (previous - 45), so a stratum that costs more than 45 instability
+  // ratchets the run toward permanent collapse; at 0.45-0.90/s it cost 80-180
+  // and NO seed survived stratum 2 with a naked rig.
+  //   instabRate  -35% across the board  (0.29 .. 0.59)
+  //   breach.gear cut where it outran a two-assembler base (deep strata -27%)
+  //   crystal weight raised on 5-8: charges gate the breach there and 12% of
+  //     stratum-5 maps rolled NO crystal vein at all (see notes: mapgen only
+  //     guarantees iron + coal)
   D.STRATA = [
     { name: 'TOPSOIL RIDGE',      tag: 'loose earth, old roots',      accent: '#c9a86a',
       ores: { ironOre: 0.55, coal: 0.45 },                      nodes: 9,
       rich: [60, 100],  breach: { gear: 20, charge: 0 },
-      instabRate: 0.45, quakeBase: 34, features: {} },
+      instabRate: 0.29, quakeBase: 34, features: {} },
     { name: 'SANDSTONE DRIFTS',   tag: 'the wind is buried here',     accent: '#d98e4a',
       ores: { ironOre: 0.40, coal: 0.33, copperOre: 0.27 },     nodes: 10,
-      rich: [70, 110],  breach: { gear: 30, charge: 0 },
-      instabRate: 0.50, quakeBase: 32, features: {} },
+      rich: [70, 110],  breach: { gear: 28, charge: 0 },
+      instabRate: 0.33, quakeBase: 32, features: {} },
     { name: 'KARST HOLLOWS',      tag: 'water carved these graves',   accent: '#5fb8a5',
       ores: { ironOre: 0.34, coal: 0.30, copperOre: 0.36 },     nodes: 10,
-      rich: [70, 120],  breach: { gear: 42, charge: 0 },
-      instabRate: 0.55, quakeBase: 30, features: { chasms: 3 } },
+      rich: [70, 120],  breach: { gear: 36, charge: 0 },
+      instabRate: 0.36, quakeBase: 30, features: { chasms: 3 } },
     { name: 'GRANITE ROOT',       tag: 'the mountain’s spine',        accent: '#8a9bb5',
       ores: { ironOre: 0.46, coal: 0.28, copperOre: 0.26 },     nodes: 11,
-      rich: [90, 150],  breach: { gear: 58, charge: 0 },
-      instabRate: 0.60, quakeBase: 27, features: { chasms: 2 } },
+      rich: [90, 150],  breach: { gear: 46, charge: 0 },
+      instabRate: 0.39, quakeBase: 29, features: { chasms: 2 } },
     { name: 'GLOWDEEP GALLERIES', tag: 'something down here shines',  accent: '#c77dff',
-      ores: { ironOre: 0.32, coal: 0.26, copperOre: 0.26, crystal: 0.16 }, nodes: 12,
-      rich: [90, 150],  breach: { gear: 55, charge: 8 },
-      instabRate: 0.66, quakeBase: 25, features: { chasms: 2 } },
+      ores: { ironOre: 0.28, coal: 0.26, copperOre: 0.20, crystal: 0.26 }, nodes: 12,
+      rich: [90, 150],  breach: { gear: 46, charge: 6 },
+      instabRate: 0.43, quakeBase: 28, features: { chasms: 2 } },
     { name: 'MAGMA FRINGE',       tag: 'the planet’s blood runs close', accent: '#ff7a45',
-      ores: { ironOre: 0.30, coal: 0.24, copperOre: 0.24, crystal: 0.22 }, nodes: 12,
-      rich: [100, 160], breach: { gear: 65, charge: 14 },
-      instabRate: 0.72, quakeBase: 22, features: { chasms: 1, magma: 3 } },
+      ores: { ironOre: 0.27, coal: 0.25, copperOre: 0.20, crystal: 0.28 }, nodes: 12,
+      rich: [100, 160], breach: { gear: 54, charge: 10 },
+      instabRate: 0.47, quakeBase: 26, features: { chasms: 1, magma: 3 } },
     { name: 'OBSIDIAN WARRENS',   tag: 'glass walls, no echoes',      accent: '#9a6ae0',
-      ores: { ironOre: 0.30, coal: 0.24, copperOre: 0.22, crystal: 0.24 }, nodes: 13,
-      rich: [100, 170], breach: { gear: 78, charge: 20 },
-      instabRate: 0.80, quakeBase: 20, features: { magma: 2, obsidian: true } },
+      ores: { ironOre: 0.26, coal: 0.24, copperOre: 0.20, crystal: 0.30 }, nodes: 13,
+      rich: [100, 170], breach: { gear: 62, charge: 14 },
+      instabRate: 0.52, quakeBase: 24, features: { magma: 2, obsidian: true } },
     { name: 'THE CORE GATE',      tag: 'it knows you are coming',     accent: '#ffd23d',
-      ores: { ironOre: 0.30, coal: 0.24, copperOre: 0.20, crystal: 0.26 }, nodes: 14,
-      rich: [110, 180], breach: { gear: 110, charge: 30 },
-      instabRate: 0.90, quakeBase: 17, features: { chasms: 2, magma: 3, obsidian: true } },
+      ores: { ironOre: 0.25, coal: 0.24, copperOre: 0.19, crystal: 0.32 }, nodes: 14,
+      rich: [110, 180], breach: { gear: 80, charge: 20 },
+      instabRate: 0.59, quakeBase: 22, features: { chasms: 2, magma: 3, obsidian: true } },
   ];
   // The Mantle: endless strata 9+ (k = depth - 8)
   D.mantleStratum = function (depth) {
@@ -202,21 +218,26 @@
       name: 'THE MANTLE ' + '†'.repeat(Math.min(k, 6)),  // † marks
       tag: 'there was never a bottom',
       accent: '#e04555',
-      ores: { ironOre: 0.28, coal: 0.24, copperOre: 0.20, crystal: 0.28 },
+      ores: { ironOre: 0.25, coal: 0.24, copperOre: 0.19, crystal: 0.32 },
       nodes: 14, rich: [110 + 10 * k, 180 + 15 * k],
-      breach: { gear: 110 + 22 * k, charge: 30 + 8 * k },
-      instabRate: 0.9 + 0.12 * k, quakeBase: Math.max(10, 17 - k),
+      breach: { gear: 80 + 16 * k, charge: 20 + 6 * k },
+      instabRate: 0.59 + 0.08 * k, quakeBase: Math.max(13, 22 - k),
       features: { chasms: 2, magma: 3 + Math.min(k, 4), obsidian: true },
     };
   };
 
   // ---------------- hazard tuning ----------------
+  // integrityDmg softened (depth 0.8 -> 0.6, inst /30 -> /35) and quakeBase
+  // flattened in the deep strata (see STRATA): a stratum-8 quake used to hit
+  // for 11 every 17s, which spent a full 100-integrity rig in ~80s no matter
+  // how well the base was played. startInst is deliberately UNCHANGED at 25 —
+  // it is the number the manual quotes (CX-03).
   D.QUAKE = {
     startInst: 25,     // no quakes below this instability
     jitter: 0.35,      // ± fraction on interval
     collapseIvl: 9,    // seconds between quakes at instability 100 ("collapse")
     tiles: (inst, depth) => 2 + Math.floor(inst / 30) + Math.floor(depth / 3),
-    integrityDmg: (inst, depth) => 2 + Math.floor(depth * 0.8) + Math.floor(inst / 30),
+    integrityDmg: (inst, depth) => 2 + Math.floor(depth * 0.6) + Math.floor(inst / 35),
   };
   D.MAGMA = {
     period: 48,        // ticks between spread rolls (6s)
