@@ -23,6 +23,7 @@ with `git add -A`).
 | M-GRITPLUS | barks.js, art.js, engine.js (420 buffer), render.js (tint) |
 | M-WONDERS | map.js, sim.js, data.js (additive), render.js, barks.js |
 | M-EVENTS | **new js/events.js**, sim.js, engine.js, meta.js, render.js, barks.js, art.js |
+| M-HIRES | render.js (**metrics/scaling — the whole file's coordinate basis**), style.css, art.js (rasterizer), engine.js (resize), vendor/, tools/build.js |
 
 **Rules that follow from the table:**
 
@@ -46,10 +47,19 @@ with `git add -A`).
 |---|---|---|---|
 | 1 | ~~M-POLISH (alone, on master)~~ ✅ **merged 2026-08-11** | — | — |
 | 2 | M-ANIM-1 + M-ANIM-2 | M-RECAP | M-MANUAL |
+| 2.5 | **M-HIRES** (alone — see below) | — | — |
 | 3 | M-CORELORE + M-GRITPLUS | M-WONDERS | — |
 | 4 | M-EVENTS (big) | — | — |
 | 5 | M-MANTLE + M-SCHEMS2 | M-TIER2 | — |
 | 6 | M-WORMS | M-ACHIEVE + M-RIGSKINS | M-SOUND |
+
+**Why M-HIRES runs alone at 2.5:** it turns `render.js`'s `CW`/`CH` from
+constants into runtime values — the coordinate basis every other draw path is
+written against. Anything editing `render.js` concurrently merges badly, and
+anything merged *after* it needs its new metrics anyway. Run it in its own
+wave, with nothing beside it. It slots after Wave 2 only because Wave 2 was
+already dispatched; on a clean board it would be worth doing first, since
+"the game fills my monitor" is the most visible single change left.
 
 Model/effort per worker: **Opus 5, effort `xhigh`**. Use `ultracode` only for
 **M-POLISH** (find→verify→fix fans out well) and **M-EVENTS** (20 vignettes
@@ -224,6 +234,69 @@ When done: push your branch to origin and STOP — do not merge to master, do no
 rebase, do not force-push. Report: what you built, what you deviated on and why,
 your final test output, and confirmation that every manual number is composed
 from data.js rather than typed.
+```
+
+---
+
+### Wave 2.5 — M-HIRES (alone; nothing else may touch render.js)
+
+```
+Work in /home/pedro/Documents/games/deepcore. Create a git worktree named
+M-HIRES and do ALL your work there. Branch from current origin/master. You are
+the ONLY session running this wave — you are changing render.js's coordinate
+basis, so nothing else may touch that file while you work.
+
+Read SPEC.md, SPEC2.md, and SPEC3.md section M-HIRES in full, plus js/render.js
+(especially init(), flush() and pxToCell()) and js/data.js. Honor SPEC3's rules
+of engagement at the top of that file.
+
+The brief has three phases and they are ordered by value-per-risk. SHIP PHASE 1
+FIRST AND COMMIT IT before starting Phase 2 — Phase 1 alone is most of the
+value the director asked for, and a session limit mid-Phase-3 must not cost us
+the working scaling.
+
+  Phase 1: the canvas is a fixed 800x627 island on any real monitor because
+           init() sets a CSS pixel size once on load and there is no resize
+           handler anywhere in the codebase. Make it fill the viewport,
+           preserving aspect. Canvas text is RE-RENDERED at the new size, not
+           upscaled, so this genuinely sharpens rather than stretches.
+  Phase 2: sub-cell resolution using block elements, which are already in the
+           font — no dependency needed.
+  Phase 3: braille, ONLY behind a vendored subset font plus a runtime coverage
+           probe and a block-element fallback.
+
+VERIFY THIS BEFORE WRITING PHASE 3, and do not take it on faith from the brief:
+DejaVu Sans Mono does NOT contain braille (U+2800-28FF) — those codepoints fall
+back to the PROPORTIONAL DejaVu Sans face. This is not cosmetic. flush() batches
+a whole run of cells into one fillText scaled by CW/adv, where adv is measured
+from the block glyph, so a single proportional fallback glyph slides every
+character after it out of its cell and corrupts the row. Ship the runtime probe
+even with a vendored font: browsers block webfonts, and the failure mode is a
+corrupted row rather than a missing dot.
+
+DO NOT sub-cell the map tiles. The map is interactive — pxToCell maps a click to
+a cell and every tile is a semantic, clickable, one-glyph object. Sub-cell
+resolution goes on the NON-interactive surfaces: the rig portrait, the victory
+core sphere, gauges and bars (eighths instead of whole cells), title art. That
+is a hard design constraint from the brief and from SPEC3 §0's 'chunky beats
+smooth' law, not a preference.
+
+art.js stays DOM-free and pure: the rasterizer must be unit-testable in bare
+node with no canvas. Zero sim changes. js/data.js ADDITIVE ONLY. No CDN links —
+tools/build.js must inline any vendored font and file:// must keep working.
+
+Gate: all five suites green (node test/headless.js, test/integration.js,
+test/barks_test.js, test/rig_test.js, test/balance.js) and node tools/build.js
+parses. Add tests for: pxToCell round-trip at three viewport sizes, the glyph
+advance being re-measured after resize, the rasterizer against known bitmaps
+including its cell-aspect correction, and the block fallback engaging when
+braille is unavailable. Checkpoint-commit after every green milestone with a
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> trailer.
+
+When done: push your branch to origin and STOP — do not merge, rebase or
+force-push. Report: which phases landed, the bundle size delta on
+dist/deepcore.html, whether you vendored a font and why, and your final test
+output.
 ```
 
 ---
