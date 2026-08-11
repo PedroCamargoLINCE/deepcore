@@ -661,8 +661,7 @@ function drivenRun(seed) {
   // A 2-strata push is early-game territory: drive it with a realistic small
   // Foundry loadout (9 cores ~ 2-4 banked runs). This also exercises the
   // Meta.effects -> Sim.newRun startBonus/integrityBonus contract for real.
-  // (A default-meta bot stalls re-basing stratum 2 at ~30 plates vs ~34 cost
-  //  -- see the balance notes in the PASS line.)
+  // (A default-meta bot stalls re-basing stratum 2 at ~30 plates vs ~34 cost.)
   const prof = DC.Meta.newProfile();
   prof.upgrades = { m_stock: 2, m_hull: 1 };
   const eff = DC.Meta.effects(prof);
@@ -685,14 +684,14 @@ function drivenRun(seed) {
   // sections; bronzeGear crafting in the charge-tier section). s_gear on the
   // first descent leaves integrity untouched (carry-over branch); s_plate on
   // the second exercises the +20-max / +20-restore branch.
-  // asmGate 26 on stratum 1 banks a plate cushion BEFORE the assembler
-  // converts the flow to gears: arriving on stratum 2 with < ~30 plates and
-  // no income means waiting to death under carried instability.
-  // Tuning notes (empirical, seeds 1/777/1337/2024/99999 pass, 2/42 die):
-  // longer post-breach gear banking or higher s2 asmGate LOWER the pass rate
-  // — instability punishes every extra second (by design). Seeds 2/42 lose
-  // the s2 line to inst-75+ quakes at ~29/30 gears with no rebuild reserve;
-  // that is honest hostile procgen, not a sim defect (verified via DC_TRACE).
+  // Tuning notes (empirical; seeds 1/777/1337/2024/99999 pass, 2/42 die):
+  // asmGate 26 on s1 banks a plate cushion BEFORE the assembler converts the
+  // flow to gears — a stratum-2 rebase costs ~30-38 plates and a fresh
+  // stratum has no income. Longer post-breach banking or a higher s2 asmGate
+  // LOWERS the pass rate: instability punishes every extra second (by
+  // design). Seeds 2/42 lose the s2 line to inst-75+ quakes at ~29/30 gears
+  // with no rebuild reserve — honest hostile procgen, not a sim defect
+  // (verified via DC_TRACE=1, which prints 30s progress snapshots).
   const picks = ['s_gear', 's_plate'];
   const stratOpts = [
     { capSec: 420, asmGate: 26, gearBank: 16, gearBankSec: 90 },
