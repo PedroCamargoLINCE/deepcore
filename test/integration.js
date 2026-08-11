@@ -688,14 +688,13 @@ function drivenRun(seed) {
   // sections; bronzeGear crafting in the charge-tier section). s_gear on the
   // first descent leaves integrity untouched (carry-over branch); s_plate on
   // the second exercises the +20-max / +20-restore branch.
-  // Tuning notes (empirical; seeds 1/777/1337/2024/99999 pass, 2/42 die):
-  // asmGate 26 on s1 banks a plate cushion BEFORE the assembler converts the
-  // flow to gears — a stratum-2 rebase costs ~30-38 plates and a fresh
-  // stratum has no income. Longer post-breach banking or a higher s2 asmGate
-  // LOWERS the pass rate: instability punishes every extra second (by
-  // design). Seeds 2/42 lose the s2 line to inst-75+ quakes at ~29/30 gears
-  // with no rebuild reserve — honest hostile procgen, not a sim defect
-  // (verified via DC_TRACE=1, which prints 30s progress snapshots).
+  // Tuning notes (empirical): asmGate 26 on s1 banks a plate cushion BEFORE
+  // the assembler converts the flow to gears — a stratum-2 rebase costs
+  // ~28-36 plates and a fresh stratum has no income until a chain is up.
+  // (Stale note removed: seeds 2/42 used to lose the s2 line to inst-75+
+  // quakes. The M-POLISH balance pass cut instabRate ~35% and made a chain pay
+  // for itself inside a stratum; test/balance.js now measures 13/14 seeds
+  // surviving stratum 2 on a naked rig. DC_TRACE=1 prints 30s snapshots.)
   const picks = ['s_gear', 's_plate'];
   const stratOpts = [
     { capSec: 420, asmGate: 26, gearBank: 16, gearBankSec: 90 },
@@ -777,8 +776,18 @@ function drivenRun(seed) {
   bot.tickN(20 * HZ, false);
   assert(run.status === 'active', 'stratum 3 simulates cleanly on arrival');
 
-  // natural quakes must have fired somewhere in 2+ strata of play
-  assert(drainer.seen.quake >= 1, 'at least one natural quake event across strata 1-2');
+  // Natural quakes must fire once instability builds. (Balance pass, M-POLISH:
+  // instabRate dropped ~35% across the strata table, so a brisk strata-1/2
+  // push can now legitimately outrun the first quake — that IS the reward for
+  // pace. Hold position at stratum 3 instead and let the pressure build; this
+  // is the camper's death in miniature, and it still covers the natural-quake
+  // path end to end.)
+  for (let i = 0; i < 200 && !drainer.seen.quake && run.status !== 'dead'; i++) {
+    bot.tickN(4 * HZ, false);
+  }
+  assert(drainer.seen.quake >= 1,
+    'natural quake fires while holding at stratum 3 (inst ' +
+    Math.round(run.instability) + ')');
   const qEv = drainer.samples.quake;
   assert(qEv.data && typeof qEv.data.dmg === 'number' && qEv.data.dmg > 0,
     'quake event data.dmg is a positive number');
