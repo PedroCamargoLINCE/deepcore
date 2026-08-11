@@ -329,7 +329,12 @@
       // bigQuake may supersede the plain quake bark fired this same tick
       // (engine barks 'quake' from run.shake before draining events).
       const sameTick = trigger === 'bigQuake' && S.lastAt === run.totalT;
-      if (!sameTick && run.totalT - S.lastAt < COOLDOWN) return null;
+      // schematicPick always lands: run.totalT freezes across the descend
+      // screen, so the descend-time bark would otherwise swallow every
+      // bespoke pick line for the whole run (arrival cut-in, not spam —
+      // the engine only fires it when a new stratum begins).
+      const cutIn = trigger === 'schematicPick';
+      if (!sameTick && !cutIn && run.totalT - S.lastAt < COOLDOWN) return null;
     }
     const b = bespokeFor(run, trigger, ctx);
     const line = (b && !S.used[b]) ? b : pickLine(run, S, POOLS[trigger]);

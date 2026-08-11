@@ -169,9 +169,14 @@
       'C      overdrive: 2x drill, +inst',
       'D      descend when BREACH READY',
       'SPACE  pause   ESC menu   H manual',
-      'mouse: click places · drag = belts',
-      '  click assembler: cycle recipe',
-      '  click damaged machine: repair 2▬',
+      rep('─', 34),
+      'MOUSE OPTIONAL — cursor play:',
+      '↑↓←→   move cursor (SHIFT: x5)',
+      'ENTER  place · interact · repair',
+      '  belt tool: ENTER arms lay-mode,',
+      '  moving lays belts, corners turn;',
+      '  ENTER/ESC or tool swap disarms',
+      'mouse: hover=cursor · drag = belts',
     ];
     const R = [
       'TERRAIN & HAZARDS',
@@ -187,6 +192,11 @@
       'slow it 25% each (max 3, coal).',
       'descending vents 40 instability.',
       'integrity 0 = the rig is lost.',
+      rep('─', 29),
+      'ENTER/click on: hub = overdrive,',
+      'assembler = recipe, damaged',
+      'machine = repair (2▬ · m_fix 1).',
+      'GRIT is on the intercom. ignore.',
     ];
     const chain = [
       'PRODUCTION CHAIN ── belts into any rig tile deliver their cargo',

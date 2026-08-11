@@ -642,7 +642,9 @@
         run.inv.ironPlate -= cost;
         m.hp = D.BUILDINGS[m.type].hp;
         m.repairAt = 0;
-        return { handled: true, msg: D.BUILDINGS[m.type].name + ' repaired (−' + cost + ' plate)' };
+        // kind lets the engine distinguish repairs (v1.1 barks) without msg-sniffing
+        return { handled: true, kind: 'repair',
+                 msg: D.BUILDINGS[m.type].name + ' repaired (−' + cost + ' plate)' };
       }
       return { handled: true, msg: 'repair needs ' + cost + ' iron plate' };
     }
