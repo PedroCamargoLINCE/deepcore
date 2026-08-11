@@ -70,7 +70,12 @@
     magenta:  '#c77dff',
     blue:     '#7aa5e0',
     steel:    '#9aa4b0',
-    coal:     '#565650',
+    // coal was #565650 = 2.68:1 on bg — a single '•' or '♠' at that contrast
+    // is a smudge (CX-01). 5.12:1 clears the 4.5:1 glyph floor with margin and
+    // is still the dullest material colour in the palette (steel 7.84, orange
+    // 6.61, magenta 7.37) and dimmer than the UI gray 5.51 — coal reads as
+    // coal, it just exists now.
+    coal:     '#82827a',
     magma:    '#ff6a3d',
     magmaHot: '#ffd23d',
   };
@@ -81,15 +86,18 @@
   D.ARROWS = ['▲', '▶', '▼', '◀']; // ▲ ▶ ▼ ◀
 
   // ---------------- items ----------------
+  // `short`: STOCK-row label, <= 8 chars. Every pair stays distinguishable
+  // down to a 6-char truncation ('iron o' / 'iron p', 'cu ore' / 'cu pla'),
+  // so no row is ambiguous at any width the sidebar can offer (CX-11).
   D.ITEMS = {
-    ironOre:     { name: 'iron ore',     glyph: '•', color: D.COLORS.steel },   // •
-    copperOre:   { name: 'copper ore',   glyph: '•', color: D.COLORS.orange },
-    coal:        { name: 'coal',         glyph: '•', color: D.COLORS.coal },
-    crystal:     { name: 'core crystal', glyph: '♦', color: D.COLORS.magenta }, // ♦
-    ironPlate:   { name: 'iron plate',   glyph: '▬', color: D.COLORS.white },   // ▬
-    copperPlate: { name: 'copper plate', glyph: '▬', color: D.COLORS.orange },
-    gear:        { name: 'drill gear',   glyph: '¤', color: D.COLORS.amber },   // ¤
-    charge:      { name: 'core charge',  glyph: '‡', color: D.COLORS.magenta }, // ‡
+    ironOre:     { name: 'iron ore',     short: 'iron ore', glyph: '•', color: D.COLORS.steel },   // •
+    copperOre:   { name: 'copper ore',   short: 'cu ore',   glyph: '•', color: D.COLORS.orange },
+    coal:        { name: 'coal',         short: 'coal',     glyph: '•', color: D.COLORS.coal },
+    crystal:     { name: 'core crystal', short: 'crystal',  glyph: '♦', color: D.COLORS.magenta }, // ♦
+    ironPlate:   { name: 'iron plate',   short: 'iron plt', glyph: '▬', color: D.COLORS.white },   // ▬
+    copperPlate: { name: 'copper plate', short: 'cu plate', glyph: '▬', color: D.COLORS.orange },
+    gear:        { name: 'drill gear',   short: 'gear',     glyph: '¤', color: D.COLORS.amber },   // ¤
+    charge:      { name: 'core charge',  short: 'charge',   glyph: '‡', color: D.COLORS.magenta }, // ‡
   };
   D.ITEM_ORDER = ['ironOre', 'copperOre', 'coal', 'crystal',
                   'ironPlate', 'copperPlate', 'gear', 'charge'];
