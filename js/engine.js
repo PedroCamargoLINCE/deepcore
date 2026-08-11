@@ -152,6 +152,7 @@
     ui.paused = false; ui.descendAnim = 0; ui.shakeUntil = 0; ui.flash = null;
     gesture = {};
     centerCursor(st);
+    arriveFlash(st);
     acc = 0;
     st.screen = 'run';
     bark('runStart');
@@ -215,7 +216,7 @@
     DC.Sim.applySchematic(run, id);
     bark('schematicPick', id);
     breachFlashed = false;
-    st.ui.flash = null;
+    arriveFlash(st);
     st.ui.shakeUntil = 0;
     st.ui.hover = null;
     centerCursor(st);
@@ -226,6 +227,19 @@
   function centerCursor(st) {
     const run = st.run;
     if (run && run.hub) st.ui.cursor = { x: run.hub.x + 1, y: run.hub.y + 1 };
+  }
+
+  // v1.1 §E: stratum-arrival banner in the stratum's accent color.
+  function arriveFlash(st) {
+    const run = st.run;
+    if (!run) return;
+    const s = run.depth <= D.STRATA_COUNT ? D.STRATA[run.depth - 1]
+                                          : D.mantleStratum(run.depth);
+    st.ui.flash = {
+      text: '»» STRATUM ' + run.depth + ' — ' + s.name + ' ««',
+      color: s.accent || D.COLORS.amber,
+      until: run.t + 3 * D.TICK_HZ,
+    };
   }
 
   // ---------------- keyboard ----------------
@@ -259,7 +273,13 @@
           const i = 'abcdefghi'.indexOf(lk);
           if (i >= 0 && i < D.META_UPGRADES.length) {
             const id = D.META_UPGRADES[i].id;
-            if (DC.Meta.buy(st.meta, id)) bark('foundryBuy', id);
+            if (DC.Meta.buy(st.meta, id)) {
+              // v1.1 §C.2: render blinks this part's overlay white ~1.2s.
+              // (render keys expiry on object identity; until is advisory,
+              // in the rAF-timestamp clock.)
+              st.ui.flashPart = { id: id, until: lastTime + 1200 };
+              bark('foundryBuy', id);
+            }
           } else handled = false;
         }
         break;
@@ -376,6 +396,7 @@
   function doClickTile(st, x, y) {
     const r = DC.Sim.clickTile(st.run, x, y);
     if (r && r.handled && r.msg) DC.Sim.msg(st.run, r.msg, D.COLORS.amber);
+    if (r && r.handled && r.kind === 'repair') bark('repair');
   }
 
   // ---------------- belt gesture (mouse drag & keyboard lay-mode) ----------------

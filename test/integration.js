@@ -15,6 +15,10 @@
        s_charge double credit) + bronzeGear unlock via s_gear
      - endgame: depth-8 breach -> won -> continueIntoMantle -> depth 9 via
        mantleStratum
+     - engine + barks end-to-end (SPEC2 §A/§D/§G): the real engine booted on
+       stub DOM/rAF, driven through its keydown/mouse handlers — keyboard
+       cursor play, lay-mode, bark wiring, foreman lifecycle, arrival flash,
+       foundry flashPart — with render.js live on a recording context stub
    The driven run stops after breaching stratum 2: a fully autonomous
    3-stratum push fights procgen economics (rebuilding stratum 3 from scrap
    under carried instability) without exercising any sim mechanic the direct
@@ -1189,6 +1193,281 @@ function endgameSection(seed) {
   assert(Array.isArray(run.pendingOffers), 'mantle descent offers schematics');
 }
 
+// =========================================================================
+// SECTION 8 — engine + barks end-to-end (SPEC2 §A/§D/§G)
+// Boots the REAL engine against stub DOM/rAF and drives it through its
+// actual keydown/mouse handlers and loop: keyboard-first play (cursor walk,
+// Enter placement, belt lay-mode with auto-corner, Shift jump, tool keys,
+// pause/help), bark wiring (runStart/first*/quake/bigQuake/breachReady/
+// descend/schematicPick-bespoke/stratumArrive-bespoke), foreman set+expiry,
+// the §E arrival flash, and the §C.2 foundry flashPart. render.js runs for
+// real on a recording 2d-context stub; a 'RENDER ERROR' cell fails the
+// section. Zero natural quakes fire in the driven window (instability stays
+// < QUAKE.startInst), so the script is deterministic for any seed.
+// =========================================================================
+function engineBarksSection(seed) {
+  SECTION = 'engine+barks seed=' + seed;
+  require('../js/barks.js');
+  require('../js/render.js');
+  require('../js/engine.js');
+  const B = DC.Barks;
+  assert(B && DC.Render && DC.Engine, 'barks/render/engine loaded');
+
+  // --- DOM / rAF stubs (modules captured root=globalThis at load) ---
+  const handlers = {};          // window keydown + canvas mouse handlers
+  const drawn = [];             // every fillText span, for smoke assertions
+  const ctxStub = {
+    fillStyle: '', font: '', textBaseline: '', textAlign: '',
+    setTransform: function () {}, fillRect: function () {},
+    save: function () {}, restore: function () {}, scale: function () {},
+    fillText: function (s) { drawn.push(String(s)); },
+    measureText: function () { return { width: 10 }; },
+  };
+  const canvasStub = {
+    style: {},
+    getContext: function () { return ctxStub; },
+    addEventListener: function (t, fn) { handlers[t] = fn; },
+    getBoundingClientRect: function () {
+      return { left: 0, top: 0, width: D.COLS * 10, height: D.ROWS * 19 };
+    },
+  };
+  global.window = { addEventListener: function (t, fn) { handlers[t] = fn; } };
+  global.document = { getElementById: function () { return canvasStub; } };
+  global.location = { search: '?seed=' + seed };
+  let rafCb = null;
+  global.requestAnimationFrame = function (fn) { rafCb = fn; };
+
+  DC.Engine.start();
+  const st = DC.state;
+  assert(st && st.screen === 'title', 'engine boots to the title screen');
+
+  let now = 0;
+  function frames(n) {          // drive the real rAF loop, 1 tick per frame
+    for (let i = 0; i < n; i++) {
+      now += 1000 / HZ;
+      const cb = rafCb;
+      assert(cb, 'rAF loop stays scheduled');
+      rafCb = null;
+      cb(now);
+    }
+  }
+  function key(k, shift) {
+    handlers.keydown({ key: k, shiftKey: !!shift, preventDefault: function () {} });
+  }
+  function mouseAt(tx, ty, type) {   // map-tile coords -> pixel event
+    const ev = { clientX: (D.MAP_X + tx) * 10 + 5, clientY: (D.MAP_Y + ty) * 19 + 9 };
+    handlers.mousemove(ev);
+    if (type) handlers[type](ev);
+  }
+
+  frames(2);
+  assert(drawn.some(s => s.indexOf('BEGIN DESCENT') >= 0), 'title menu rendered');
+
+  // --- Enter starts the run; runStart bark + §E arrival flash ---
+  key('Enter');
+  assert(st.screen === 'run' && st.run, 'Enter starts a run');
+  const run = st.run;
+  assertEq(run.seed, seed, 'engine honored the ?seed= param');
+  assert(run.foreman && B.POOLS.runStart.indexOf(run.foreman.text) >= 0,
+    'runStart bark set run.foreman');
+  assertEq(run.foreman.t0, run.totalT, 'foreman.t0 anchored at run.totalT');
+  assert(st.ui.flash && /STRATUM 1/.test(st.ui.flash.text), 'stratum-1 arrival flash set');
+  assertEq(st.ui.flash.color, D.STRATA[0].accent, 'arrival flash uses the stratum accent');
+  const hx = run.hub.x, hy = run.hub.y;
+  assertEq(st.ui.cursor.x, hx + 1, 'cursor starts at hub center (x)');
+  assertEq(st.ui.cursor.y, hy + 1, 'cursor starts at hub center (y)');
+
+  // --- loop ticks the sim; foreman expires right after until + 2s fade ---
+  const u0 = run.foreman.until;
+  frames(2);
+  assert(run.t >= 1, 'engine loop ticks the sim');
+  while (run.totalT <= u0 + 2 * HZ) frames(1);
+  frames(1);
+  assertEq(run.foreman, null, 'foreman cleared after until + 2s fade');
+
+  // --- keyboard-first play (§D): tool key, cursor walk, Enter placement ---
+  key('3');
+  assertEq(st.ui.tool, 'smelter', "'3' selects the smelter tool");
+  for (let i = 0; i < 3; i++) key('ArrowLeft');
+  for (let i = 0; i < 3; i++) key('ArrowUp');
+  assertEq(st.ui.cursor.x, hx - 2, 'cursor walked to the hub-ring corner (x)');
+  assertEq(st.ui.cursor.y, hy - 2, 'cursor walked to the hub-ring corner (y)');
+  const plates0 = run.inv.ironPlate;
+  key('Enter');
+  const smT = run.grid[hy - 2][hx - 2];
+  assert(smT.machine !== null && run.machines[smT.machine].type === 'smelter',
+    'Enter placed the smelter at the cursor');
+  assertEq(run.inv.ironPlate, plates0 - D.BUILDINGS.smelter.cost.ironPlate, 'cost paid');
+  assertEq(run.stats.placed.smelter, 1, 'stats.placed.smelter incremented');
+  frames(2);
+  assert(run.foreman && B.POOLS.firstSmelter.indexOf(run.foreman.text) >= 0,
+    'firstSmelter bark fired via run.stats detection');
+
+  // --- belt lay-mode: Enter arms, moves lay, corners auto-turn, Esc disarms ---
+  key('1');
+  assertEq(st.ui.tool, 'belt', "'1' selects the belt tool");
+  for (let i = 0; i < 6; i++) key('ArrowDown');       // to (hx-2, hy+4), clear ring
+  assertEq(st.ui.cursor.y, hy + 4, 'cursor on the bottom clear row');
+  key('Enter');
+  assert(st.ui.laying, 'Enter arms lay-mode');
+  assert(run.grid[hy + 4][hx - 2].belt, 'arming placed the first belt');
+  for (let i = 0; i < 3; i++) key('ArrowRight');      // lay 3 east
+  key('ArrowUp');                                     // corner turn + lay north
+  const cornerB = run.grid[hy + 4][hx + 1].belt;
+  assert(cornerB && cornerB.dir === 0, 'corner belt auto-turned north');
+  const northB = run.grid[hy + 3][hx + 1].belt;
+  assert(northB && northB.dir === 0, 'lay-mode laid the northbound belt');
+  assertEq(run.stats.placed.belt, 5, 'five belts laid through the key handlers');
+  key('Escape');
+  assert(!st.ui.laying, 'Escape disarms lay-mode');
+  assertEq(st.ui.tool, 'belt', 'Escape while laying keeps the tool');
+  let guard = 0;
+  while (!(run.foreman && B.POOLS.firstBelt.indexOf(run.foreman.text) >= 0) &&
+         guard++ < 20 * HZ) frames(1);
+  assert(guard < 20 * HZ, 'queued firstBelt bark landed after the cooldown');
+
+  // --- Shift jump, rotate, mouse=cursor, keyboard demolish, overdrive ---
+  const cx0 = st.ui.cursor.x;
+  key('ArrowRight', true);
+  assertEq(st.ui.cursor.x, Math.min(cx0 + 5, D.MAP_W - 1), 'Shift+arrow jumps 5');
+  const f0 = st.ui.facing;
+  key('r');
+  assertEq(st.ui.facing, (f0 + 1) % 4, 'R rotates the facing');
+  key('x');
+  assertEq(st.ui.tool, 'demolish', "'x' selects demolish");
+  mouseAt(hx + 1, hy + 3);
+  assertEq(st.ui.cursor.x, hx + 1, 'mouse-move drives the cursor (x)');
+  assertEq(st.ui.cursor.y, hy + 3, 'mouse-move drives the cursor (y)');
+  key('Enter');
+  assert(!run.grid[hy + 3][hx + 1].belt, 'Enter with demolish removed the belt');
+  key('c');
+  assertEq(run.overdrive, true, "'c' engages overdrive");
+  key('c');
+  assertEq(run.overdrive, false, "'c' disengages overdrive");
+
+  // --- Escape tool-clear -> pause -> help (manual documents cursor play) ---
+  key('Escape');
+  assertEq(st.ui.tool, null, 'Escape clears the tool');
+  key('Escape');
+  assert(st.ui.paused, 'Escape with no tool pauses');
+  key('h');
+  assertEq(st.screen, 'help', "pause-menu 'h' opens the manual");
+  frames(1);
+  assert(drawn.some(s => s.indexOf('MOUSE OPTIONAL') >= 0),
+    'manual documents keyboard-cursor play');
+  key('Escape');
+  assertEq(st.screen, 'run', 'Escape returns from the manual to the run');
+  assert(st.ui.paused, 'still paused after the manual');
+  key(' ');
+  assert(!st.ui.paused, 'space unpauses');
+
+  // --- engine wiring: run.shake -> quake bark; event drain -> bigQuake ---
+  guard = 0;
+  while (run.totalT - run._barks.lastAt < B.COOLDOWN + 8 && guard++ < 30 * HZ) frames(1);
+  run.shake = true;                                    // scaffold: force the path
+  run.events.push({ type: 'quake', t: run.totalT, data: { dmg: 9 } });
+  frames(1);
+  assert(run.foreman && B.POOLS.bigQuake.indexOf(run.foreman.text) >= 0,
+    'shake + event drain produced the same-tick bigQuake supersede');
+  assert(st.ui.shakeUntil > run.t, 'engine mirrored run.shake into ui.shakeUntil');
+  assert(st.ui.flash && /QUAKE/.test(st.ui.flash.text), 'quake flash banner set');
+
+  // --- breach -> D descend -> animation gate -> bespoke schematic bark ---
+  run.gearsFed = run.breachReq.gear;                   // scaffold: satisfy quota
+  frames(1);
+  assertEq(run.status, 'breachReady', 'breach ready');
+  assert(run.foreman && B.POOLS.breachReady.indexOf(run.foreman.text) >= 0,
+    'breachReady bark (priority) cut in');
+  assert(st.ui.flash && /BREACH READY/.test(st.ui.flash.text), 'breach flash set');
+  frames(7 * HZ);                                      // clear the bark cooldown
+  key('d');
+  assertEq(st.screen, 'descend', "'d' begins the descent");
+  assert(Array.isArray(run.pendingOffers) && run.pendingOffers.length >= 3,
+    'schematic offers pending');
+  assert(run.foreman && B.POOLS.descend.indexOf(run.foreman.text) >= 0,
+    'descend bark fired');
+  const preDepth = run.depth;
+  key('1');
+  assertEq(run.depth, preDepth, 'pick ignored while the descent animation plays');
+  frames(140);                                         // real render advances the anim
+  assert(st.ui.descendAnim >= DC.Art.descent.length * 10 + 45, 'descent animation done');
+  const pickId = run.pendingOffers[1];
+  key('2');
+  assertEq(run.depth, preDepth + 1, "'2' picked the second schematic");
+  assertEq(st.screen, 'run', 'back on the run screen');
+  assert(run.schematics.indexOf(pickId) >= 0, 'schematic applied');
+  assertEq(run.foreman && run.foreman.text, B.SCHEM_LINES[pickId],
+    'bespoke schematic bark fired on applySchematic');
+  assert(st.ui.flash && st.ui.flash.text.indexOf('STRATUM ' + run.depth) >= 0,
+    'stratum-2 arrival flash set');
+  assertEq(st.ui.flash.color, D.STRATA[1].accent, 'arrival flash uses stratum-2 accent');
+  assertEq(st.ui.cursor.x, run.hub.x + 1, 'cursor recentered on the new hub');
+
+  // --- bespoke stratumArrive queues behind the cooldown, then lands ---
+  guard = 0;
+  while (!(run.foreman && run.foreman.text === B.STRATUM_LINES[2]) &&
+         guard++ < 20 * HZ) frames(1);
+  assertEq(run.foreman && run.foreman.text, B.STRATUM_LINES[2],
+    'bespoke stratum-2 arrival bark landed');
+
+  // --- mouse: sidebar build-row click, hub click = overdrive ---
+  frames(1);                                           // publish layout.buildRows
+  const rows = DC.Render.layout.buildRows;
+  assert(Array.isArray(rows) && rows.length === D.BUILD_ORDER.length + 1,
+    'render published the sidebar build rows');
+  const beltRow = rows.filter(r => r.tool === 'belt')[0];
+  assert(beltRow, 'belt row published');
+  const sbEv = { clientX: 52 * 10 + 5, clientY: beltRow.row * 19 + 9 };
+  handlers.mousedown(sbEv);
+  assertEq(st.ui.tool, 'belt', 'sidebar click selects the belt tool');
+  handlers.mousedown(sbEv);
+  assertEq(st.ui.tool, null, 'clicking the selected row toggles it off');
+  mouseAt(run.hub.x + 1, run.hub.y + 1, 'mousedown');
+  assertEq(run.overdrive, true, 'clicking the hub toggles overdrive');
+  key('c');
+  assertEq(run.overdrive, false, 'C toggles it back off');
+
+  // --- abandon -> gameover (cause-aware epitaph) -> title ---
+  key('Escape');
+  key('a');
+  assertEq(st.screen, 'gameover', 'pause-menu A abandons the run');
+  assertEq(run.status, 'dead', 'abandoned run is dead');
+  frames(2);
+  const epiPool = [];
+  for (const pair of B.EPITAPHS.abandon) for (const l of pair) epiPool.push(l);
+  assert(drawn.some(s => epiPool.some(l => s.indexOf(l.slice(0, 30)) >= 0)),
+    'gameover renders an abandon-cause epitaph');
+  key('Enter');
+  assertEq(st.screen, 'title', 'Enter returns to the title');
+  assertEq(st.run, null, 'run cleared');
+
+  // --- foundry: letter buy sets ui.flashPart (§C.2) and the part renders ---
+  st.meta.cores = 10;                                  // scaffold: afford m_stock
+  key('f');
+  assertEq(st.screen, 'foundry', "'f' opens the Foundry");
+  key('a');
+  assertEq(st.meta.upgrades.m_stock, 1, 'foundry buy applied');
+  assertEq(st.meta.cores, 8, 'cores paid');
+  assert(st.ui.flashPart && st.ui.flashPart.id === 'm_stock',
+    'engine set ui.flashPart on purchase');
+  frames(3);
+  assert(drawn.some(s => s.indexOf('▣') >= 0),
+    'purchased part appears in the rig portrait');
+  key('Escape');
+  assertEq(st.screen, 'title', 'Escape returns to the surface');
+
+  // --- render smoke over the whole drive ---
+  assert(!drawn.some(s => s.indexOf('RENDER ERROR') >= 0),
+    'no render faults during the drive');
+  assert(drawn.some(s => s.indexOf('DEEPCORE') >= 0), 'run header rendered');
+  assert(drawn.some(s => s.indexOf('GRIT') >= 0), 'foreman bar rendered');
+
+  delete global.window;
+  delete global.document;
+  delete global.location;
+  delete global.requestAnimationFrame;
+}
+
 // -------------------------------------------------------------------- main
 const SEED = process.env.DC_SEED ? (parseInt(process.env.DC_SEED, 10) | 0) : 1337;
 try {
@@ -1203,9 +1482,10 @@ try {
   breachSalvageSection(SEED + 17);
   chargeSection(SEED + 19);
   endgameSection(SEED + 23);
+  engineBarksSection(SEED + 29);
   console.log('PASS integration seed=' + SEED + ' | ' + drivenSummary +
-    ' | cadence 16/12/10 | overdrive x2 | damper ok | charge+bronze ok | mantle ok | ' +
-    (Date.now() - t0) + 'ms');
+    ' | cadence 16/12/10 | overdrive x2 | damper ok | charge+bronze ok | mantle ok' +
+    ' | engine+barks ok | ' + (Date.now() - t0) + 'ms');
   process.exit(0);
 } catch (e) {
   fail('exception: ' + (e && e.stack || e));
