@@ -254,6 +254,24 @@
       "Hey. Hey, kid. A smelter is just a really committed campfire.",
       "If the stratum collapses and I'm mellow, does it even... yeah, no.",
     ],
+    // M-WONDERS — the scan finds the stratum's landmark. The bespoke line per
+    // wonder lives in LANDMARK_LINES below; this is the fallback, and it is
+    // deliberately non-specific: GRIT has seen a shape on the scanner, not yet
+    // whatever it turns out to be.
+    landmarkFound: [
+      "Scanner's got a shape out there. Too tidy. Nothing's tidy down here.",
+      "Something's standing in my hole that I did not put in my hole.",
+      "That reads solid on the sweep. Solid and OLD. Give it a wide berth.",
+      "Huh. Somebody was here before the Company. Bet they billed less.",
+      "Mark that on the map, kid. Then pretend you didn't see it. Dig.",
+    ],
+    // ...and what he says when the player actually touches one.
+    landmarkUse: [
+      "You poked it. Course you poked it. I'd have poked it too.",
+      "Well, it did SOMETHING. Twenty years and that's still the review.",
+      "Whatever you just woke up is your responsibility now, kid.",
+      "Noted in the log as 'operator initiative'. That's a warning label.",
+    ],
     egg420End: [
       "Break's over. Why does the copper smell like breakfast, kid?",
       "Whatever that was, it's wearing off. I'd fight a man for toast.",
@@ -327,6 +345,36 @@
       { core: "there is no down remaining. only in. you are welcome in.",
         grit: "Just dig. Don't listen. I'll handle the conversation, kid." },
     ],
+  };
+
+  // M-WONDERS: one bespoke line per landmark, keyed by the id in
+  // D.LANDMARKS. `find` is the sweep spotting it; `use` is the player having
+  // done the thing to it. Every landmark has a find line; only the ones you
+  // can touch have a use line.
+  const LANDMARK_LINES = {
+    anvil: { find: "That's an anvil. Somebody's forge, and the heat never left." },
+    drowned: {
+      find: "Big dead pump out there. Pre-collapse. They built 'em heavy.",
+      use: "She's old. She naps. Respect it and she'll chew for you.",
+    },
+    warmspot: { find: "Floor's warm on the west read. Warm floor doesn't shake." },
+    glassforest: {
+      find: "Glass trees. Whole forest of 'em. Don't lean on the scenery.",
+      use: "Chopped a spire. That's a crystal, kid, and it cost you a wrist.",
+    },
+    seal: {
+      find: "Company seal on a hatch. Means somebody locked something IN.",
+      use: "Cracked it. Your file just grew a paragraph. Hope it was worth it.",
+    },
+    bell: {
+      find: "Bronze dome. Big as a cab. Nobody builds a bell for nothing.",
+      use: "You RANG it. Every seam here just woke up. So did something else.",
+    },
+    mirror: {
+      find: "Black water, flat as a ledger. Never trust a flat thing.",
+      use: "Sweep bounced clean off. Free survey. I'll take free.",
+    },
+    root: { find: "That column runs to the mantle. The planet braces on it." },
   };
 
   // Bespoke arrival line per stratum (1-8) + mantle.
@@ -511,6 +559,12 @@
     if (trigger === 'mantleArrive') return STRATUM_LINES.mantle;
     if (trigger === 'schematicPick' && typeof ctx === 'string') return SCHEM_LINES[ctx] || null;
     if (trigger === 'foundryBuy' && typeof ctx === 'string') return META_LINES[ctx] || null;
+    // M-WONDERS: ctx is the landmark id; the generic pool covers the rest.
+    if ((trigger === 'landmarkFound' || trigger === 'landmarkUse') &&
+        typeof ctx === 'string') {
+      const L = LANDMARK_LINES[ctx];
+      return (L && L[trigger === 'landmarkFound' ? 'find' : 'use']) || null;
+    }
     return null;
   }
 
@@ -599,6 +653,11 @@
       const fresh = pool.filter(p => !S.used[p.core]);
       const arr = fresh.length ? fresh : pool;
       pair = arr[Math.floor(run.rng() * arr.length)];
+      // M-WONDERS rings The Bell early and the Core answers it, which spends
+      // this floor's one intrusion — otherwise the ambient roll could speak
+      // again minutes later and the "at most one per stratum" rule would be
+      // true only when nobody touched anything.
+      if (kind === 'intrusion' || kind === 'mantle') S.coreSaid = true;
     }
     if (!pair) return null;
     const line = say(run, S, pair.core, 'core');
@@ -871,6 +930,7 @@
     // data exposed for the headless acceptance test (SPEC2 §G)
     POOLS: POOLS, STRATUM_LINES: STRATUM_LINES, SCHEM_LINES: SCHEM_LINES,
     META_LINES: META_LINES, EPITAPHS: EPITAPHS, TOASTS: TOASTS,
+    LANDMARK_LINES: LANDMARK_LINES,   // M-WONDERS
     TRIGGERS: TRIGGERS, COOLDOWN: COOLDOWN, PRIORITY: PRIORITY,
   };
 })();
