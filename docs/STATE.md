@@ -88,6 +88,18 @@ than the stratum being unbeatable. Never tune `data.js` against those.
    Company-hating are in bounds by design. Slurs, hate, explicit anatomy, and
    non-consent framing are not.
 
+## Running with the laptop closed
+
+`claude --cloud "<brief>"` starts the session on Anthropic's infrastructure
+rather than this machine, so the laptop can sleep; reattach by session id or
+from claude.ai/code. `--remote-control` is the *other* thing — it drives a
+session on this laptop from elsewhere and still needs it awake.
+
+Local sessions die with the machine, and that is fine by design: everything
+that matters is committed and pushed, and this file plus the specs reconstitute
+the context cold. Workers commit **and push** every green milestone (see
+`docs/DISPATCH.md`) so no in-flight brief is ever stranded on one disk.
+
 ## Picking this up in a fresh session
 
 Paste this:
