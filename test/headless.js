@@ -1191,12 +1191,154 @@ function checkVignettes() {
   return V.length + ' vignettes, ' + choices + ' choices';
 }
 
+// ======================================================================
+// M-EVENTS — the cave-cat.
+// Three promises, all of them checkable: she stays somewhere legal, she
+// sits on furnaces that are actually lit, and she breaks for the rig
+// BEFORE every quake rather than after it. Plus the one that makes her
+// safe to ship at all — she never writes into the sim, so a run with a cat
+// and a run without one are the same run.
+// ======================================================================
+function checkCat() {
+  const E = DC.Events;
+  const eff = DC.Meta.effects(DC.Meta.newProfile());
+  assert(typeof E.grantCat === 'function' && typeof E.cat === 'function',
+    'DC.Events exposes the cat');
+
+  function withCat(seed) {
+    const run = S.newRun(eff, seed || 808);
+    assert(E.cat(run) === null, 'a run has no cat until one is found');
+    const cat = E.grantCat(run);
+    assert(cat && E.cat(run) === cat, 'granting a cat gives the run a cat');
+    assert(E.grantCat(run) === cat, 'and she is not granted twice');
+    return run;
+  }
+
+  {  // she starts somewhere legal, and stays there
+    const run = withCat(808);
+    const cat = E.cat(run);
+    assert(run.grid[cat.y][cat.x].t === 'floor', 'the cat starts on floor');
+    let illegal = 0, moved = 0;
+    let last = cat.x + ',' + cat.y;
+    for (let i = 0; i < 60 * D.TICK_HZ; i++) {
+      S.tick(run);
+      if (run.status === 'dead') break;
+      const t = run.grid[cat.y] && run.grid[cat.y][cat.x];
+      if (!t || (t.t !== 'floor' && t.machine !== 0)) illegal++;
+      const now = cat.x + ',' + cat.y;
+      if (now !== last) { moved++; last = now; }
+    }
+    assert(illegal === 0, 'the cat never stands in rock, glass or magma');
+    assert(moved > 10, 'the cat actually wanders (' + moved + ' moves)');
+    // ...and never far enough away to be somebody else's cat
+    const c = { x: run.hub.x + 1, y: run.hub.y + 1 };
+    assert(Math.abs(cat.x - c.x) <= 20 && Math.abs(cat.y - c.y) <= 20,
+      'the cat stays in sight of the rig');
+  }
+
+  {  // the perch: a smelter that is genuinely burning
+    const run = withCat(909);
+    const cat = E.cat(run);
+    // scaffold: a smelter next to the rig, mid-smelt
+    const sx = run.hub.x + 4, sy = run.hub.y;
+    for (let y = sy; y < sy + 2; y++)
+      for (let x = sx; x < sx + 2; x++) {
+        const t = run.grid[y][x];
+        t.t = 'floor'; t.ore = null; t.oreAmt = 0; t.lm = null; t.revealed = true;
+      }
+    const id = run.nextId++;
+    run.machines[id] = {
+      id: id, type: 'smelter', x: sx, y: sy, w: 2, h: 2, facing: 1, hp: 2,
+      progress: 4, recipe: null, input: { ironOre: 8 }, fuel: 9,
+      status: 'ok', repairAt: 0, blockedSince: 0, nofuelSince: 0,
+      out: [], job: 'smeltIron',
+    };
+    for (let y = sy; y < sy + 2; y++)
+      for (let x = sx; x < sx + 2; x++) run.grid[y][x].machine = id;
+    let perched = false;
+    for (let i = 0; i < 90 * D.TICK_HZ && !perched; i++) {
+      S.tick(run);
+      run.machines[id].job = 'smeltIron';       // scaffold: keep the fire lit
+      run.machines[id].input.ironOre = 8;
+      run.machines[id].fuel = 9;
+      if (cat.mode === 'perch') perched = true;
+    }
+    assert(perched, 'the cat finds a lit smelter and sits on it');
+    assert(cat.x >= sx && cat.x < sx + 2 && cat.y >= sy && cat.y < sy + 2,
+      'and the perch is ON the furnace');
+    // the smelter is unharmed by being sat on
+    assert(run.machines[id].hp === 2 && run.machines[id].job === 'smeltIron',
+      'a cat on a smelter costs the smelter nothing');
+  }
+
+  {  // THE TELL: she runs before the quake, not after it
+    const run = withCat(1111);
+    const cat = E.cat(run);
+    const c = { x: run.hub.x + 1, y: run.hub.y + 1 };
+    const dist = () => Math.max(Math.abs(cat.x - c.x), Math.abs(cat.y - c.y));
+    run.instability = 60;                       // scaffold: quakes are scheduled
+    let flees = 0, quakes = 0, lateFlees = 0, closedIn = 0;
+    let armed = 0, distAtArm = 0;
+    for (let i = 0; i < 300 * D.TICK_HZ; i++) {
+      const before = run.quakeAt;
+      S.tick(run);
+      run.instability = 60;                     // hold the pressure steady
+      run.integrity = run.maxIntegrity;         // and keep her human alive
+      const fleeing = run.quakeAt > 0 &&
+        run.quakeAt - run.t <= D.EVENTS.catFlee * D.TICK_HZ;
+      if (fleeing) {
+        if (!armed) { armed = 1; distAtArm = dist(); flees++; }
+        if (cat.mode !== 'flee') lateFlees++;
+      } else if (armed) {
+        armed = 0;
+      }
+      // the tick a quake actually lands on: quakeAt was armed and is now spent
+      if (before > 0 && run.quakeAt === 0 && run.t >= before) {
+        quakes++;
+        if (dist() <= distAtArm) closedIn++;
+        assert(E.cat(run) === cat, 'the quake did not take the cat');
+      }
+    }
+    assert(quakes >= 5, 'the scaffold produced quakes to flee (' + quakes + ')');
+    assert(flees >= 5, 'the cat had a flee window before each of them');
+    assert(lateFlees === 0,
+      'the cat is already fleeing for the whole window (' + lateFlees + ' late ticks)');
+    assert(closedIn === quakes,
+      'and she is closer to the rig when it lands, every time (' +
+      closedIn + '/' + quakes + ')');
+  }
+
+  {  // a descent re-homes her: the rig is rebuilt around her every floor
+    const run = withCat(1212);
+    const cat = E.cat(run);
+    for (let i = 0; i < 40; i++) S.tick(run);
+    run.depth = 2;
+    S.startStratum(run);
+    E.state(run);
+    assert(run.grid[cat.y][cat.x].t === 'floor',
+      'the cat lands on floor on the new stratum, not in rock');
+  }
+
+  {  // and the promise that lets her exist at all
+    function stream(withCatToo) {
+      const run = S.newRun(eff, 1313);
+      if (withCatToo) E.grantCat(run);
+      for (let i = 0; i < 200 * D.TICK_HZ; i++) S.tick(run);
+      return [run.rng(), run.rng(), run.rng(), run.integrity, run.instability].join(',');
+    }
+    assertEqJSON(stream(true), stream(false),
+      'a run with a cat in it is the same run as one without');
+  }
+  return 'cat: wanders, perches, flees';
+}
+
 function main() {
   checkArt();
   const glyphN = checkGlyphInventory();
   checkSave();
   const digFinds = checkDigFinds();
   const vignettes = checkVignettes();
+  const catNote = checkCat();
   const lmSweep = checkLandmarkSweep();
 
   const eff = DC.Meta.effects(DC.Meta.newProfile());
@@ -1256,7 +1398,7 @@ function main() {
     ' | status ' + run.status +
     ' | glyphs ' + glyphN + ' in the subset' +
     ' | dig finds ' + digFinds + '/4000, all 7 kinds' +
-    ' | ' + vignettes +
+    ' | ' + vignettes + ' | ' + catNote +
     ' | landmarks ' + lmSweep.withLm + '/' + lmSweep.maps + ' maps, ' +
     lmSweep.cells + ' cells, ' + Object.keys(lmSweep.ids).length + ' kinds, ' +
     'veins+connectivity held');

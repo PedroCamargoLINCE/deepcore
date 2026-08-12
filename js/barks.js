@@ -324,6 +324,21 @@
     // (the rock does that, in events.js); he editorialises the CHOICE, a beat
     // after you have made it. The bespoke line per choice is in
     // VIGNETTE_LINES below; this is the fallback for anything unwritten.
+    // M-EVENTS — the cave-cat. He is not a cat person. He is, demonstrably,
+    // a cat person.
+    cat: [
+      "There's a cat on my rig. Fine. She's crew. Don't tell payroll.",
+      "Cat's asleep on a live smelter. Best safety officer we've had.",
+      "She washed her face at me. I think that's a performance review.",
+      "Name her whatever you like, kid. She already named herself.",
+      "Twenty years down here and the CAT gets the warm seat. Typical.",
+    ],
+    catFlee: [
+      "Cat's running. CAT'S RUNNING. Brace for it, kid, she's never wrong.",
+      "She just bolted for the rig. Whatever she heard, it's coming.",
+      "Watch the cat, not the gauge. The cat is the gauge. Hold on.",
+      "That's her tell. Two seconds. Grab something bolted down.",
+    ],
     vignette: [
       "Whatever you just decided, it's in the log as YOUR decision.",
       "Nobody has ever come back to tell me which one was correct.",
@@ -629,6 +644,12 @@
   };
 
   // Victory screen toast lines.
+  // M-EVENTS: what the gameover screen says once the rig is gone and the cat
+  // is sitting on the rubble edge watching. It is one fixed line rather than a
+  // pool on purpose — it is the ending of a running joke, and a punchline that
+  // rotates is a punchline nobody can quote back at you.
+  const CAT_EPITAPH = 'The cat made it out. Cats always do. Take notes, kid.';
+
   const TOASTS = [
     "Core breached. First round's on the Company — I stole their card.",
     "They said the bottom was a myth, kid. You made it a doorstep.",
@@ -1045,6 +1066,7 @@
     META_LINES: META_LINES, EPITAPHS: EPITAPHS, TOASTS: TOASTS,
     LANDMARK_LINES: LANDMARK_LINES,   // M-WONDERS
     VIGNETTE_LINES: VIGNETTE_LINES,   // M-EVENTS
+    CAT_EPITAPH: CAT_EPITAPH,         // M-EVENTS
     TRIGGERS: TRIGGERS, COOLDOWN: COOLDOWN, PRIORITY: PRIORITY,
   };
 })();

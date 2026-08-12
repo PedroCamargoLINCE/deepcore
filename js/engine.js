@@ -199,6 +199,10 @@
       else if (ev.type === 'find' && ev.data) bark(ev.data.bark, ev.data.id);
       // ...and a dead foreman's last log goes in the book, for good.
       else if (ev.type === 'foremanLog' && ev.data) recordLog(run, ev.data.index);
+      // ...and the cat. 'flee' is the one that matters: it is the seismograph
+      // saying out loud what the map is already showing.
+      else if (ev.type === 'cat' && ev.data)
+        bark(ev.data.act === 'flee' ? 'catFlee' : 'cat');
       else if (ev.type === 'landmark' && ev.data) {
         lmPending = { trigger: ev.data.act === 'find' ? 'landmarkFound' : 'landmarkUse',
                       id: ev.data.id };
@@ -287,6 +291,14 @@
     st.run.daily = daily;
     st.run.splits = [];
     st.run.startedAt = Date.now();
+    // M-EVENTS: once she has been found, the cat comes on every run. Quietly
+    // — she is only news the first time — and only ever as decoration plus
+    // the quake tell, so a profile with a cat in it is not a profile with an
+    // advantage in it.
+    if (DC.Events && DC.Events.grantCat && DC.Meta.catFound &&
+        DC.Meta.catFound(st.meta)) {
+      try { DC.Events.grantCat(st.run, true); } catch (e) { /* optional */ }
+    }
     awarded = false; awardedCores = 0; breachFlashed = false; lmPending = null;
     const ui = st.ui;
     ui.tool = null; ui.facing = 1; ui.hover = null;

@@ -660,6 +660,21 @@
       }
     }
 
+    // M-EVENTS: the cat, drawn over the tiles and under the cursor. Her
+    // COLOUR is state, the same way every other glyph on this map is: dim
+    // while she is wandering, ember while she is sitting on a lit furnace,
+    // and bright white the moment she breaks for the rig — which is the two
+    // seconds before a quake, and the only reason a player has to keep half
+    // an eye on her (SPEC3 §0 law 1).
+    const cat = (DC.Events && DC.Events.cat) ? DC.Events.cat(run) : null;
+    if (cat && run.grid[cat.y] && run.grid[cat.y][cat.x] &&
+        run.grid[cat.y][cat.x].revealed) {
+      const cc = cat.mode === 'flee' ? C.white
+        : cat.mode === 'perch' ? C.magmaHot
+        : shade(C.white, 0.7);
+      mapPut(cat.x, cat.y, 'c', egg ? eggTint(cc) : cc, xo);
+    }
+
     // ghost preview / demolish marker / cursor
     const hov = ui.hover || ui.cursor;
     if (hov && hov.x >= 0 && hov.x < D.MAP_W && hov.y >= 0 && hov.y < D.MAP_H) {
@@ -988,6 +1003,13 @@
         text(Math.max(0, (COLS - ln.length) >> 1), 1 + i, ln, artColor('title', C.amber));
       }
       below = Math.min(1 + lines.length + 1, 24);
+    }
+    // M-EVENTS: once she has been found she is on the title rig ever after —
+    // the progression the player will actually mention to somebody. Sat on
+    // the rig's shoulder, one cell, no explanation offered.
+    if (meta.catFound && layout.title.rig) {
+      const rg = layout.title.rig;
+      put(rg.x + rg.w + 1, rg.y + Math.min(2, rg.h - 1), 'c', shade(C.white, 0.85));
     }
     ctext(below, 'an automated descent toward the core', C.gray);
     ctext(below + 1, 'build the line · feed the drill · keep moving', C.amberDim);
@@ -1386,6 +1408,17 @@
     for (let i = 0; i < epi.length && y + 5 + i < 30; i++) {
       ctext(y + 5 + i, (i === 0 ? 'GRIT ▸ ' : '') +
         fxTyped('epitaph' + i, String(epi[i]).slice(0, 70), 8), C.cyan);
+    }
+    // M-EVENTS: the rig is gone and the cat is not. She sits on the rubble
+    // edge of the wreck watching, and GRIT says the one line he says about
+    // it. The run is over, so this is the last thing the screen tells you —
+    // which is exactly the right weight for the joke.
+    const hadCat = (DC.Events && DC.Events.cat) ? DC.Events.cat(state.run) : null;
+    if (hadCat) {
+      const rubble = 1 + lines.length - 3;
+      put(4, Math.max(1, rubble), 'c', shade(C.white, 0.8));
+      const cl = (DC.Barks && DC.Barks.CAT_EPITAPH) || null;
+      if (cl && y + 5 + epi.length < 30) ctext(y + 5 + epi.length + 1, cl, C.gray);
     }
     ctext(30, '[TAB] RUN RECAP CARD', C.amberDim);
     ctext(31, '[ENTER] RETURN TO THE SURFACE', phase ? C.white : C.amber);
