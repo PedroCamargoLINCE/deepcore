@@ -554,6 +554,15 @@
       // fueled: a calm ~2s heartbeat. unfueled: flat dim (render's '!' blink
       // is left alone by the guard at the top of tile()).
       const g = D.BUILDINGS.damper.color;
+      // EGG-420 (M-GRITPLUS): for 42 seconds the damper is a chill unit. The
+      // letter never leaves the cell — the tell is colour and the '~' puff
+      // that rises off it (spawned in frame()), because a 1×1 machine whose
+      // glyph keeps vanishing is a machine you can no longer find at a glance.
+      // Merge note: M-GRITPLUS authored these as `2 * FPS` against the old
+      // frame-count clock; M-HIRES Phase 0 made breathe() take MILLISECONDS,
+      // so that expression now means 120ms — a 16x strobe. Restated as 2 s.
+      if (eggOn(run) && m.fuel > 0)
+        return out(ch, mixOf(C.leaf, C.green, breathe(2 * SEC)));
       if (m.fuel > 0) return out(ch, mixOf(shadeOf(g, 0.35), g, breathe(2 * SEC)));
       return out(ch, shadeOf(g, 0.4));
     }
@@ -649,6 +658,7 @@
     const screen = (state && state.screen) || '';
     const run = state && state.run;
     if (run && mem && mem.grid === run.grid && screen === 'run') {
+      eggPuffs(run, surf);
       drawSmears(run, surf);
       drawDread(run, surf);
       drawBorder(run, surf);
@@ -661,6 +671,31 @@
     if (screen === 'gameover') drawMotes(surf);
     if (screen === 'run') drawSmoke(state, surf);
     drawParts(surf, screen);
+  }
+
+  // --- M-GRITPLUS / EGG-420: the chill units puff --------------------------
+  // One leaf-green '~' rises off each fueled damper every ~2s while the window
+  // is open. Particles are clipped to the map box and age out on their own, so
+  // the effect ends with the window whether or not anyone is watching.
+  function eggOn(run) {
+    return !!(run && run.egg && D.EGG420 && run.totalT < run.egg.until);
+  }
+  function eggPuffs(run, surf) {
+    if (!eggOn(run) || F % (2 * FPS)) return;
+    const L = mapBox(surf);
+    if (!L) return;
+    for (const id in run.machines) {
+      const m = run.machines[id];
+      if (!m || m.type !== 'damper' || m.fuel <= 0) continue;
+      spawn({
+        screen: 'run',
+        x: L.x + m.x + L.xo, y: L.y + m.y - 1,
+        vx: (hash(m.id * 7) - 0.5) * 0.03, vy: -0.05,
+        ch: '~', col: C.leaf || C.green,
+        life: Math.round(2.2 * FPS),
+        clip: { x: L.x, y: L.y, w: L.w, h: L.h },
+      });
+    }
   }
 
   // --- A2: the foundry spark burst -----------------------------------------
