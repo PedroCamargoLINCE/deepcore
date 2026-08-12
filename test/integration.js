@@ -3957,6 +3957,14 @@ function eventsSection(seed) {
   // to finish before anything asserts on what is written there.
   function settle() { drawn.length = 0; frames(24); }
   function shown(s) { return drawn.some(x => x.indexOf(s) >= 0); }
+  // Draw one frame WITHOUT running the loop, for assertions about how a piece
+  // of state is painted: going through frames() would tick the sim first and
+  // the state under test would be gone by the time it was drawn.
+  function paintOnly() {
+    drawn.length = 0;
+    now += 1000 / HZ;
+    DC.Render.frame(DC.state, now);
+  }
 
   try {
     DC.Engine.start();
@@ -4149,8 +4157,62 @@ function eventsSection(seed) {
         '...and the cat is on disk');
     }
 
+    // --- the cat, on screen ------------------------------------------------
+    {
+      const cat = E.cat(vrun);
+      assert(cat, 'the run has a cat after the crate');
+      assertEq(st.screen, 'run', 'and we are back on the floor');
+      // she is drawn on the map, as a `c`, on her own tile
+      cat.x = vrun.hub.x + 4; cat.y = vrun.hub.y + 1; cat.mode = 'wander';
+      vrun.grid[cat.y][cat.x].revealed = true;
+      vrun.grid[cat.y][cat.x].t = 'floor';
+      paintOnly();
+      const cell0 = DC.Render.cellAt(D.MAP_X + cat.x, D.MAP_Y + cat.y);
+      assertEq(cell0 && cell0.ch, 'c', 'the cat is drawn on her tile');
+      // her colour is state, not decoration: the flee is the brightest thing
+      // she does, because that is the two seconds the player must notice
+      const wanderCol = cell0.fg;
+      cat.mode = 'flee';
+      paintOnly();
+      const fleeCol = DC.Render.cellAt(D.MAP_X + cat.x, D.MAP_Y + cat.y).fg;
+      assert(fleeCol !== wanderCol, 'a fleeing cat reads differently');
+      assert(DC.Render.contrast(fleeCol, D.COLORS.bg) >
+             DC.Render.contrast(wanderCol, D.COLORS.bg),
+        'and she is BRIGHTER while she runs, not dimmer');
+      cat.mode = 'wander';
+
+      // an unrevealed tile hides her, like everything else on the map
+      vrun.grid[cat.y][cat.x].revealed = false;
+      paintOnly();
+      assert(DC.Render.cellAt(D.MAP_X + cat.x, D.MAP_Y + cat.y).ch !== 'c',
+        'the cat does not show through unscanned rock');
+      vrun.grid[cat.y][cat.x].revealed = true;
+
+      // gameover: the rig is gone, the cat is not
+      DC.Sim.abandon(vrun);
+      st.screen = 'gameover';
+      settle();
+      assert(!shown('RENDER ERROR'), 'the gameover screen renders clean');
+      assert(shown(B.CAT_EPITAPH), 'GRIT says the cat made it out');
+
+      // title: she is on the rig ever after
+      st.screen = 'title';
+      st.run = null;
+      paintOnly();
+      const grid2 = [];
+      for (let r = 0; r < D.ROWS; r++) {
+        let line = '';
+        for (let c2 = 0; c2 < D.COLS; c2++)
+          line += (DC.Render.cellAt(c2, r) || { ch: ' ' }).ch;
+        grid2.push(line);
+      }
+      assert(DC.Meta.catFound(st.meta), 'the profile still has a cat');
+      assert(grid2.slice(6, 24).some(l => l.indexOf('c') >= 0),
+        'and she is sitting on the title rig');
+    }
+
     return ev.finds + ' finds / ' + holes + ' holes, book ' + bookN +
-           ', ' + V.length + ' vignettes';
+           ', ' + V.length + ' vignettes, cat ok';
   } finally {
     delete global.window;
     delete global.document;

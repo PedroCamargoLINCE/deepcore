@@ -629,11 +629,166 @@
   }
 
   // =========================================================================
-  // THE CAVE-CAT (wired in a later section of this brief)
+  // THE CAVE-CAT
+  // One `c` on the map. She wanders the base, sits on smelters that are
+  // actually burning, and breaks for the rig two seconds before every quake.
+  //
+  // That last one is the whole design: it is charm wrapped around a real
+  // mechanical tell. The quake timer is already in run.quakeAt and the game
+  // has never shown it, because a countdown on the HUD would be a spoiler
+  // with a number on it. A cat that suddenly stops washing and RUNS is the
+  // same information, read at a glance, and earned rather than displayed
+  // (SPEC3 §0 law 1: the animation is honest — she is fleeing a quake that
+  // is genuinely scheduled).
+  //
+  // She writes NOTHING back into the sim. No tile, no machine, no counter,
+  // no draw from run.rng. Deleting this whole section would not move a
+  // single balance number, which is the property that lets a companion exist
+  // in a game about pressure.
+  //
+  // "Quakes never hit the cat" is therefore true by construction rather than
+  // by a special case in fireQuake: she has no hit points to lose, she is at
+  // the rig by the time one lands, and the rig is the one thing a quake never
+  // targets.
   // =========================================================================
-  function grantCat() { /* the cat lands in the next milestone */ }
-  function homeCat() { /* the cat lands in the next milestone */ }
-  function stepCat() { /* ditto */ }
+  const CAT_WANDER = 6;   // tiles: how far from the rig she is willing to roam
+
+  function catPassable(run, x, y) {
+    const t = tileAt(run, x, y);
+    if (!t) return false;
+    const k = t.t;
+    return k === 'floor';   // she is a cat, not a mole: no rock, glass or magma
+  }
+  function hubCentre(run) {
+    return { x: run.hub.x + 1, y: run.hub.y + 1 };
+  }
+  // Park her somewhere legal next to the rig. Called when she is found and
+  // again on every new stratum — the rig is rebuilt around her each descent,
+  // and a cat left standing in the previous floor's coordinates would be
+  // standing in rock.
+  function homeCat(run, S) {
+    if (!S.cat || !run.hub) return;
+    const c = hubCentre(run);
+    for (let r = 2; r <= 6; r++) {
+      for (let dy = -r; dy <= r; dy++)
+        for (let dx = -r; dx <= r; dx++) {
+          const x = c.x + dx, y = c.y + dy;
+          if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+          if (!catPassable(run, x, y)) continue;
+          S.cat.x = x; S.cat.y = y;
+          S.cat.mode = 'wander'; S.cat.hold = 0; S.cat.target = null;
+          return;
+        }
+    }
+    S.cat.x = c.x; S.cat.y = c.y;      // no floor at all: sit on the rig
+  }
+
+  function grantCat(run, quiet) {
+    const S = state(run);
+    if (S.cat) return S.cat;
+    S.cat = { x: 0, y: 0, mode: 'wander', hold: 0, target: null };
+    homeCat(run, S);
+    if (!quiet) {
+      msg(run, 'A cat walks out of the crate and onto the rig.', C.white);
+      pushEvent(run, 'cat', { act: 'found' });
+    }
+    return S.cat;
+  }
+
+  // A smelter that is genuinely burning — the same truth fx.js paints fire
+  // with (m.job), so the cat sits down exactly when the furnace lights up.
+  function warmSpot(run) {
+    let best = null, bestD = 1e9;
+    const c = hubCentre(run);
+    for (const id in run.machines) {
+      const m = run.machines[id];
+      if (!m || m.type !== 'smelter' || !m.job) continue;
+      const d = Math.abs(m.x - c.x) + Math.abs(m.y - c.y);
+      if (d < bestD) { bestD = d; best = m; }
+    }
+    return best;
+  }
+  function quakeSoon(run) {
+    const secs = (D.EVENTS && D.EVENTS.catFlee) || 2;
+    return run.quakeAt > 0 && run.quakeAt - run.t <= secs * HZ;
+  }
+
+  // One step, taken every EVENTS.catStep ticks. Chunky on purpose: a cat that
+  // slid smoothly would be the one thing on this screen that did (law 2).
+  function stepCat(run, S) {
+    const cat = S.cat;
+    if (!cat || !run.grid || !run.hub) return;
+    const EV = D.EVENTS || {};
+    const c = hubCentre(run);
+
+    // The tell is checked EVERY tick, not on the step cadence. She has two
+    // seconds of warning to spend and her legs only move every 0.75s of it;
+    // deciding to run on the step tick would burn up to two thirds of the
+    // window standing still, which is most of the warning the player gets.
+    const bolt = quakeSoon(run);
+    if (bolt && cat.mode !== 'flee') {
+      cat.mode = 'flee';
+      cat.hold = 0;
+      cat.target = c;
+      pushEvent(run, 'cat', { act: 'flee' });
+    } else if (!bolt && cat.mode === 'flee') {
+      // The window shuts on the tick the quake actually lands (sim.js spends
+      // run.quakeAt before this runs), so without a hold she would stroll back
+      // out into the falling rock on the very tick it fell. She stays tucked
+      // in against the rig for a few seconds, like anything sensible does.
+      cat.mode = 'wander';
+      cat.target = null;
+      cat.hold = (EV.catStep || 6) * 4;
+    }
+
+    if (run.t % (EV.catStep || 6) !== 0) return;
+    if (bolt) { stepToward(run, cat, c.x, c.y, true); return; }
+
+    if (cat.hold > 0) {                   // sitting on something warm
+      cat.hold -= (EV.catStep || 6);
+      if (cat.hold > 0) return;
+      cat.mode = 'wander';
+      cat.target = null;
+    }
+
+    const warm = warmSpot(run);
+    if (warm) {
+      // The perch is one cell of a working smelter — she sits ON the furnace,
+      // which is what a cave-cat would do and costs the machine nothing.
+      const px = warm.x + (warm.w > 1 ? 1 : 0), py = warm.y;
+      if (cat.x === px && cat.y === py) {
+        cat.mode = 'perch';
+        cat.hold = EV.catPerch || 40;
+        return;
+      }
+      cat.target = { x: px, y: py };
+    } else if (!cat.target ||
+               (cat.x === cat.target.x && cat.y === cat.target.y)) {
+      // no fire lit: a short random walk, kept inside sight of the rig
+      const dx = U.ri(S.rng, -CAT_WANDER, CAT_WANDER);
+      const dy = U.ri(S.rng, -CAT_WANDER, CAT_WANDER);
+      cat.target = { x: c.x + dx, y: c.y + dy };
+    }
+    cat.mode = 'wander';
+    stepToward(run, cat, cat.target.x, cat.target.y, false);
+  }
+
+  // One cell toward (tx, ty). Diagonals first, then either axis — enough to
+  // get around a belt run without a pathfinder, and a cat that gives up and
+  // sits down for a beat is not a bug in a cat.
+  function stepToward(run, cat, tx, ty, onto) {
+    const sx = Math.sign(tx - cat.x), sy = Math.sign(ty - cat.y);
+    if (!sx && !sy) return;
+    const tries = [[sx, sy], [sx, 0], [0, sy]];
+    for (const [dx, dy] of tries) {
+      if (!dx && !dy) continue;
+      const nx = cat.x + dx, ny = cat.y + dy;
+      // Fleeing, she is allowed onto the rig itself; the rest of the time she
+      // stays off it, because a cat asleep on the D would hide the drill.
+      if (nx === tx && ny === ty && onto) { cat.x = nx; cat.y = ny; return; }
+      if (catPassable(run, nx, ny)) { cat.x = nx; cat.y = ny; return; }
+    }
+  }
 
   // ---------------- public API ----------------
   DC.Events = {
@@ -649,6 +804,11 @@
     apply: apply,
     pending: function (run) { return (run && run.ev && run.ev.vignette) || null; },
     VIGNETTES: VIGNETTES,
+    // The cat. `grantCat(run, true)` is the quiet form engine.js uses at the
+    // start of every run once the profile has found her — she is not news
+    // twice. `cat(run)` is what render draws, and is null until she exists.
+    grantCat: grantCat,
+    cat: function (run) { return (run && run.ev && run.ev.cat) || null; },
     LOGS: LOGS,
     logCount: LOGS.length,
     logText: function (i) { return LOGS[i] || null; },
