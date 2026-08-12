@@ -39,7 +39,7 @@ dispatch prompt):
 
 ---
 
-## §0 The Five Laws (design compass — read before inventing anything)
+## §0 The Six Laws (design compass — read before inventing anything)
 
 1. **Animation is honest.** Every animated glyph communicates true sim state
    (a fire flickers because the smelter is actually smelting). Decoration that
@@ -54,6 +54,17 @@ dispatch prompt):
    mandatory farming. Runs stay 10–25 min; the Mantle owns 30–40.
 5. **Reward = picture changes.** Progress must be visible as a changed image
    (rig parts, trophies, liveries, landmarks) before it is a number.
+6. **Readability is the objective, not a constraint** (director's law,
+   2026-08-12). ASCII games usually fail here, and it is the hardest thing
+   about the form: everything is the same 10×19 box, so meaning has to come
+   from contrast, hierarchy, spacing and colour rather than from shape. When a
+   decision trades legibility for anything else — density, cleverness,
+   authenticity, fidelity to a reference — legibility wins. Ask of every new
+   element: *can a player find this in one glance, on a machine that is not
+   ours?* That last clause is not rhetorical; see the font stack in
+   `render.js`, where a missing platform font silently degraded the whole grid.
+   "Cool" and "clean" are the same axis here, not competing ones — the game
+   looks best exactly when it reads best.
 
 ---
 
@@ -652,6 +663,36 @@ is an instant readability win), shades for soft edges.
 Cell aspect matters and is worth stating: cells are 10 × 19, so a **quadrant
 sub-pixel is 5 × 9.5 — very tall**. Circles drawn naively on a quadrant grid
 come out as eggs. Correct for it in the rasterizer, do not eyeball it.
+
+#### Phase 2.5 — The font subset (the readability half of the dependency question)
+
+M-MANUAL declined the CP437 font for a correctness reason and was right: `node
+tools/glyphs.js` shows the game draws 93 non-ASCII glyphs, 27 outside CP437,
+including the drill gear `¤`, the core charge `‡`, the belt `▶` and the cores
+currency `◈`. A code-page font would tofu the item legend. Read
+`vendor/README.md` before reopening that question.
+
+But it left the *readability* half open, and under §0 law 6 that half is worth
+doing. The problem is not texture, it is that **we cannot see what other
+machines render.** The font stack originally listed no macOS face at all, so a
+Mac fell through to Courier New and the box-drawing and block glyphs degraded —
+invisible from a Linux box. That specific hole is now patched with Menlo and
+Monaco (Menlo shares DejaVu's Bitstream Vera ancestry, so coverage and
+proportions nearly match), but patching a stack is guesswork about other
+people's systems; **vendoring ends the guessing.**
+
+Do it as M-MANUAL specified: subset a full-Unicode monospace — not a code page
+— to exactly the inventory `tools/glyphs.js` prints, rename the family per its
+license (DejaVu's permits renamed derivatives), emit WOFF2 as a data-URI, and
+teach `tools/build.js` to inline the stylesheet. No CDN links.
+
+**The trap, and why this phase lives in M-HIRES:** `Render.init()` measures the
+glyph advance ONCE at startup, but a webfont loads asynchronously — so the
+grid would measure against the fallback face and every row would shear. It
+needs a re-measure on `document.fonts.ready`. That is the same `adv`
+re-measurement this brief already has to solve for resize in Phase 1. One fix,
+two callers. Keep the system stack as the fallback chain — if the webfont
+fails, the game must still be playable.
 
 #### Phase 3 — Braille, only if it earns its dependency (2 × 4 = 160 × 132)
 
