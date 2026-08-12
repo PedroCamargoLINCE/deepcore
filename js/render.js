@@ -556,6 +556,23 @@
     const hubRed = run.integrity < 25;
     const egg = eggOn(run);
 
+    // M-WONDERS: this stratum's landmark. `warm` is the one aura that is drawn
+    // rather than merely felt — the Warm Spot's whole proposition is "build
+    // HERE", which is a question about floor, so the floor answers it. The
+    // other auras stay invisible on purpose: tinting a radius-5 disc under a
+    // working base would cost more legibility than it buys (SPEC3 §0 law 6).
+    const lmk = run.landmark;
+    const lmDef = lmk && D.LANDMARK_BY_ID ? D.LANDMARK_BY_ID[lmk.id] : null;
+    const lmJam = lmDef && lmDef.jam && lmk.on && DC.Sim && DC.Sim.landmarkJammed
+      ? DC.Sim.landmarkJammed(run) : false;
+    const warm = (lmDef && lmDef.quakeSafe && lmDef.aura)
+      ? { cx: lmk.cx, cy: lmk.cy, r2: lmDef.aura.r * lmDef.aura.r } : null;
+    const warmFloor = warm ? mix(floorTint, C.amber, 0.45) : floorTint;
+    // A landmark's colour is a state readout, not decoration: dormant until
+    // it is paid for, and the Drowned Machine visibly dims while she naps.
+    const lmColor = !lmDef ? null
+      : (C[(lmk.on && lmDef.onColor) || lmDef.color] || C.white);
+
     // v1.1 §C.3 "chromed" tell: machine types buffed by an active schematic
     // render their anchor letter in COLORS.white.
     const scs = run.schematics || [];
@@ -579,11 +596,20 @@
         const ter = D.TERRAIN[tile.t] || D.TERRAIN.floor;
         let ch = ter.glyph;
         let fg = tile.t === 'floor' ? floorTint : ter.color;
+        if (warm && tile.t === 'floor' &&
+            (x - warm.cx) * (x - warm.cx) + (y - warm.cy) * (y - warm.cy) <= warm.r2)
+          fg = warmFloor;
         if (tile.t === 'magma' && phase) fg = C.magmaHot;
         if (tile.ore && D.ORE_GLYPHS[tile.ore]) {
           const og = D.ORE_GLYPHS[tile.ore];
           ch = og.glyph;
           fg = tile.oreAmt < 25 ? shade(og.color, 0.55) : og.color;
+        }
+        // M-WONDERS: the wonder outranks the terrain it replaced.
+        if (tile.lm) {
+          ch = tile.lm.g;
+          fg = lmColor || C.white;
+          if (lmJam && tile.lm.id === lmk.id && phase) fg = shade(fg, 0.45);
         }
         if (tile.rubble) { ch = D.RUBBLE_GLYPH; fg = C.gray; }
         if (tile.digT > 0 && phase) { ch = '▒'; fg = C.gray; }

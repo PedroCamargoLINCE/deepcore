@@ -103,7 +103,10 @@ function dirBetween(a, b) {
 }
 
 // ------------------------------------------------------- event drain harness
-const EVENT_TYPES = ['quake', 'magma', 'depleted', 'breachReady', 'death', 'won', 'descend'];
+// 'core' (M-CORELORE, stratum 8 only) and 'landmark' (M-WONDERS, every
+// stratum that fits one) join the v1.1 set from SPEC2 §B.
+const EVENT_TYPES = ['quake', 'magma', 'depleted', 'breachReady', 'death', 'won',
+                     'descend', 'core', 'landmark'];
 function mkDrainer(run) {
   const seen = {};              // type -> count
   const samples = {};           // type -> first event object
@@ -1543,6 +1546,31 @@ function engineBarksSection(seed) {
   key('f');
   assertEq(st.foundryBark.line, null, 're-entering the Foundry clears the stale line');
   key('Escape');
+
+  // --- M-WONDERS: the discovery line survives the bark cooldown ------------
+  // A fresh run through the real rAF loop, because this is precisely the path
+  // that used to lose the line: the sweep finds the wonder while the opening
+  // build has firstBelt/firstExtractor queued, GRIT's 6s cooldown swallows the
+  // one-shot fire, and the stratum's best line is gone. The engine now holds
+  // the trigger and retries it, so the assertion is that it ARRIVES, not that
+  // it was merely attempted.
+  key('Enter');
+  const lrun = st.run;
+  assert(lrun && lrun.landmark, 'the stratum rolled a landmark to talk about');
+  const want = B.LANDMARK_LINES[lrun.landmark.id];
+  assert(want && want.find, 'and that landmark has a line: ' + lrun.landmark.id);
+  // keep the bar busy exactly the way a real opening does
+  key('1');
+  let said = null;
+  for (let i = 0; i < 90 * HZ && !said; i++) {
+    frames(1);
+    const f = lrun.foreman;
+    if (f && (f.text === want.find || B.POOLS.landmarkFound.indexOf(f.text) >= 0))
+      said = f.text;
+  }
+  assert(said, 'GRIT reacts to the wonder the sweep found');
+  assertEq(said, want.find, 'with the bespoke line for ' + lrun.landmark.id);
+  assert(lrun.landmark.found, 'and the sim marked it discovered exactly once');
 
   // --- render smoke over the whole drive ---
   assert(!drawn.some(s => s.indexOf('RENDER ERROR') >= 0),
@@ -3455,6 +3483,397 @@ function coreLoreSection(seed) {
   return A.graffiti.length;
 }
 
+// =========================================================================
+// SECTION 14 — M-WONDERS: stratum landmarks
+// headless.js proves the eight wonders can be PLACED without breaking a map.
+// This proves they DO something once placed, and that what they do is the
+// thing the tooltip claims. Every landmark is installed by hand at a chosen
+// spot rather than waited for on a lucky seed: the roll is mapgen's business
+// and is covered there, while what is under test here is the mechanic.
+// =========================================================================
+function wondersSection(seed) {
+  SECTION = 'wonders seed=' + seed;
+  require('../js/render.js');
+  const R = DC.Render;
+  const ctxStub = {
+    fillStyle: '', font: '', textBaseline: '', textAlign: '',
+    setTransform: function () {}, fillRect: function () {},
+    save: function () {}, restore: function () {}, scale: function () {},
+    fillText: function () {}, measureText: function () { return { width: 10 }; },
+  };
+  R.init({ style: {}, getContext: function () { return ctxStub; } });
+
+  // Install `id` with its anchor at (ax, ay), exactly as mapgen would: grid
+  // flags plus the run-side record. Any landmark the map already rolled is
+  // cleared off the grid first so the two can never overlap.
+  function install(run, id, ax, ay) {
+    const def = D.LANDMARK_BY_ID[id];
+    if (run.landmark)
+      for (const c of run.landmark.cells) {
+        const t = run.grid[c.y][c.x];
+        t.lm = null;
+        t.t = c.was || 'floor';
+      }
+    const cells = [];
+    if (def.art) {
+      for (let dy = 0; dy < def.art.length; dy++)
+        for (let dx = 0; dx < def.art[dy].length; dx++) {
+          const g = def.art[dy][dx];
+          if (g !== ' ') cells.push({ x: ax + dx, y: ay + dy, g: g });
+        }
+    } else {
+      for (let i = 0; i < def.scatter.n; i++)
+        cells.push({ x: ax + (i % 4), y: ay + Math.floor(i / 4), g: def.glyph });
+    }
+    for (const c of cells) {
+      const t = run.grid[c.y][c.x];
+      t.was = t.t;
+      t.ore = null; t.oreAmt = 0; t.belt = null; t.rubble = false;
+      t.t = def.base;
+      t.lm = { id: id, g: c.g };
+      t.revealed = true;
+    }
+    run.landmark = {
+      id: id, x: ax, y: ay,
+      cx: ax + ((def.art ? def.art[0].length : 1) - 1) / 2,
+      cy: ay + ((def.art ? def.art.length : 1) - 1) / 2,
+      cells: cells.map((c) => ({ x: c.x, y: c.y, was: 'rock' })),
+      on: false, onAt: 0, jam: false, fired: false, found: false,
+    };
+    return def;
+  }
+  // A machine dropped straight into the run, bypassing cost and terrain.
+  function put(run, type, x, y, extra) {
+    const B = D.BUILDINGS[type];
+    const id = run.nextId++;
+    run.machines[id] = {
+      id: id, type: type, x: x, y: y, w: B.w, h: B.h, facing: 1, hp: B.hp,
+      progress: 0, recipe: type === 'assembler' ? 'gear' : null,
+      input: {}, fuel: 0, status: 'idle', repairAt: 0,
+      blockedSince: 0, nofuelSince: 0, out: [], job: null,
+    };
+    for (const k in (extra || {})) run.machines[id][k] = extra[k];
+    for (let ty = y; ty < y + B.h; ty++)
+      for (let tx = x; tx < x + B.w; tx++) run.grid[ty][tx].machine = id;
+    return run.machines[id];
+  }
+  function fresh(d) {
+    const run = S.newRun(defEffects(), seed);
+    if (d && d !== 1) { run.depth = d; S.startStratum(run); }
+    return run;
+  }
+
+  // ---- The Anvil: smelters in reach genuinely run hot --------------------
+  {
+    const run = fresh(1);
+    install(run, 'anvil', 6, 6);
+    // one smelter beside the monolith, one across the map
+    const near = put(run, 'smelter', 8, 8, { input: { ironOre: 40, coal: 40 } });
+    const far = put(run, 'smelter', 36, 20, { input: { ironOre: 40, coal: 40 } });
+    assertEq(S.auraMult(run, 'smelt', near.x, near.y), 1.15,
+      'a smelter within 5 of the Anvil works 15% faster');
+    assertEq(S.auraMult(run, 'smelt', far.x, far.y), 1,
+      'and one across the stratum does not');
+    let nearOut = 0, farOut = 0;
+    for (let i = 0; i < 60 * HZ; i++) {
+      S.tick(run);
+      nearOut += near.out.length; farOut += far.out.length;
+      near.out.length = 0; far.out.length = 0;
+    }
+    assert(nearOut > farOut,
+      'the hot smelter out-produces the cold one (' + nearOut + ' vs ' + farOut + ')');
+    // the claimed size of the bonus, not merely its sign
+    const ratio = nearOut / farOut;
+    assert(ratio > 1.05 && ratio < 1.3,
+      'and by about the +15% advertised (measured x' + ratio.toFixed(3) + ')');
+  }
+
+  // ---- The Drowned Machine: pay, double, and nap ------------------------
+  {
+    const run = fresh(2);
+    const def = install(run, 'drowned', 8, 8);
+    const ore = run.grid[10][10];
+    ore.t = 'floor'; ore.ore = 'ironOre'; ore.oreAmt = 9999; ore.lm = null;
+    const ex = put(run, 'extractor', 10, 10);
+    assertEq(S.auraMult(run, 'extract', 10, 10), 1,
+      'a dead machine drives nothing');
+    run.inv.ironPlate = 5;
+    let r = S.clickTile(run, 8, 8);
+    assert(r.handled && /need 10/.test(r.msg), 'restarting her costs 10 plates');
+    assert(!run.landmark.on, 'and she stays dead until they are paid');
+    run.inv.ironPlate = 12;
+    r = S.clickTile(run, 8, 8);
+    assert(r.handled && run.landmark.on, 'paid, she turns over');
+    assertEq(run.inv.ironPlate, 2, 'and the plates leave the hub');
+    assertEq(S.auraMult(run, 'extract', 10, 10), 2,
+      'extractors within 4 mine at double rate');
+    assertEq(S.auraMult(run, 'extract', 30, 20), 1, 'the far side is unmoved');
+    assertEq(S.clickTile(run, 8, 8).msg, def.doneMsg, 'she cannot be restarted twice');
+    // the nap: she runs (every - dur) seconds, then stalls for dur
+    const on0 = run.landmark.onAt;
+    run.t = on0 + (def.jam.every - def.jam.dur) * HZ - 1;
+    assert(!S.landmarkJammed(run), 'still biting one tick before the nap');
+    run.t = on0 + (def.jam.every - def.jam.dur) * HZ;
+    assert(S.landmarkJammed(run), 'then she naps');
+    assertEq(S.auraMult(run, 'extract', 10, 10), 1, 'and the aura sleeps with her');
+    run.t = on0 + def.jam.every * HZ;
+    assert(!S.landmarkJammed(run), 'and wakes on the next cycle');
+    // the nap is a clock, not a roll: same tick, same answer, always
+    const a = [], b = [];
+    for (let k = 0; k < 200; k++) { run.t = on0 + k * 5; a.push(S.landmarkJammed(run)); }
+    for (let k = 0; k < 200; k++) { run.t = on0 + k * 5; b.push(S.landmarkJammed(run)); }
+    assertEq(a.join(''), b.join(''), 'the nap schedule is deterministic');
+    assert(a.indexOf(true) >= 0 && a.indexOf(false) >= 0, 'and it really cycles');
+    void ex;
+  }
+
+  // ---- The Warm Spot: quakes will not land inside it ---------------------
+  {
+    const run = fresh(2);
+    const def = install(run, 'warmspot', 12, 12);
+    assert(S.quakeSafe(run, 12, 12) && S.quakeSafe(run, 12 + def.aura.r, 12),
+      'the zone covers its stated radius');
+    assert(!S.quakeSafe(run, 12 + def.aura.r + 1, 12), 'and stops there');
+    // belts inside and outside, then quakes until something breaks
+    const inside = [], outside = [];
+    for (let i = 0; i < 12; i++) {
+      const xi = 9 + i % 4, yi = 10 + Math.floor(i / 4);
+      const xo = 34 + i % 4, yo = 6 + Math.floor(i / 4);
+      for (const [x, y, list] of [[xi, yi, inside], [xo, yo, outside]]) {
+        const t = run.grid[y][x];
+        if (t.lm || t.machine !== null) continue;
+        t.t = 'floor'; t.ore = null; t.revealed = true;
+        t.belt = { dir: 1, item: null, moved: false };
+        list.push([x, y]);
+      }
+    }
+    assert(inside.length >= 6 && outside.length >= 6, 'both sides got belts');
+    run.instability = 100;
+    for (let i = 0; i < 300 * HZ; i++) { run.integrity = 500; S.tick(run); }
+    const gone = (l) => l.filter(([x, y]) => !run.grid[y][x].belt).length;
+    assertEq(gone(inside), 0, 'nothing inside the Warm Spot was ever hit');
+    assert(gone(outside) > 0, 'while the rest of the stratum was chewed up');
+    // ...and the rig still pays for the quake. Shelter is not immunity.
+    run.integrity = 500;
+    const i0 = run.integrity;
+    for (let i = 0; i < 200 * HZ && run.integrity === i0; i++) S.tick(run);
+    assert(run.integrity < i0, 'the rig still takes the integrity hit');
+  }
+
+  // ---- The Glass Forest: a spire is 8 seconds and one crystal ------------
+  {
+    const run = fresh(3);
+    const def = install(run, 'glassforest', 8, 8);
+    const c = run.landmark.cells[0];
+    assertEq(run.grid[c.y][c.x].t, 'obsidian', 'a spire is glass');
+    assert(!S.canPlace(run, 'belt', c.x, c.y, 1).ok, 'and you cannot build on it');
+    const before = run.inv.crystal || 0;
+    const r = S.demolishAt(run, c.x, c.y);
+    assert(r.ok, 'but it can be excavated: ' + (r.reason || ''));
+    assertEq(run.grid[c.y][c.x].digT, def.dig.ticks, 'the slow dig is 8 seconds');
+    let got = null;
+    for (let i = 0; i < def.dig.ticks + 4; i++) {
+      S.tick(run);
+      for (const ev of run.events.splice(0, run.events.length))
+        if (ev.type === 'landmark' && ev.data.act === 'use') got = ev.data.id;
+    }
+    assertEq((run.inv.crystal || 0) - before, 1, 'and it pays out one crystal');
+    assertEq(got, 'glassforest', 'and announces itself for the foreman');
+    assertEq(run.grid[c.y][c.x].t, 'floor', 'the spire leaves floor behind');
+    assertEq(run.grid[c.y][c.x].lm, null, 'and stops being landmark ground');
+    // the rest of the forest is untouched by one felled spire
+    const c2 = run.landmark.cells[1];
+    assert(run.grid[c2.y][c2.x].lm, 'its neighbours still stand');
+  }
+
+  // ---- The Company Seal: 20 plates for a schematic -----------------------
+  {
+    const run = fresh(4);
+    install(run, 'seal', 8, 8);
+    run.inv.ironPlate = 19;
+    assert(/need 20/.test(S.clickTile(run, 8, 8).msg), 'the hatch is not cheap');
+    assertEq(run.schematics.length, 0, 'and it grants nothing on credit');
+    run.inv.ironPlate = 25;
+    const mods0 = JSON.stringify(run.mods);
+    const r = S.clickTile(run, 8, 8);
+    assert(r.handled && run.landmark.on, 'paid, it opens');
+    assertEq(run.inv.ironPlate, 5, 'and takes its twenty');
+    assertEq(run.schematics.length, 1, 'a schematic comes out of the hatch');
+    assert(D.SCHEMATICS.some((s) => s.id === run.schematics[0]),
+      'and it is a real one: ' + run.schematics[0]);
+    assert(JSON.stringify(run.mods) !== mods0, 'installed, not merely listed');
+    // it is out of the descent pool now, exactly like a chosen schematic
+    for (let i = 0; i < 20; i++) {
+      run.status = 'breachReady';
+      S.beginDescent(run);
+      assert((run.pendingOffers || []).indexOf(run.schematics[0]) < 0,
+        'the seal schematic is never offered again at a breach');
+    }
+  }
+
+  // ---- The Bell: richer, angrier, once ----------------------------------
+  {
+    const run = fresh(5);
+    const def = install(run, 'bell', 8, 8);
+    let ore0 = 0;
+    for (let y = 0; y < D.MAP_H; y++)
+      for (let x = 0; x < D.MAP_W; x++) ore0 += run.grid[y][x].oreAmt || 0;
+    assert(ore0 > 0, 'the stratum has veins to enrich');
+    run.instability = 30;
+    const r = S.clickTile(run, 8, 8);
+    assert(r.handled, 'the bell can be struck');
+    let ore1 = 0;
+    for (let y = 0; y < D.MAP_H; y++)
+      for (let x = 0; x < D.MAP_W; x++) ore1 += run.grid[y][x].oreAmt || 0;
+    const gain = ore1 / ore0;
+    assert(gain > 1.2 && gain < 1.3,
+      'every vein is ~25% richer (measured x' + gain.toFixed(3) + ')');
+    assertEq(Math.round(run.instability), 30 + def.ring.inst,
+      'and the stratum is +12 more unstable for it');
+    const inst1 = run.instability;
+    assertEq(S.clickTile(run, 8, 8).msg, def.doneMsg, 'a bell rings once');
+    let ore2 = 0;
+    for (let y = 0; y < D.MAP_H; y++)
+      for (let x = 0; x < D.MAP_W; x++) ore2 += run.grid[y][x].oreAmt || 0;
+    assertEq(ore2, ore1, 'the second pull enriches nothing');
+    assertEq(run.instability, inst1, 'and costs nothing');
+  }
+
+  // ---- The Mirror Pool: the sweep bounces, once -------------------------
+  {
+    const run = fresh(5);
+    install(run, 'mirror', 8, 12);
+    // a tile the sweep has not reached, whose mirror image it has
+    const W = D.MAP_W;
+    let probe = null;
+    for (let y = 0; y < D.MAP_H && !probe; y++)
+      for (let x = 0; x < W; x++)
+        if (!run.grid[y][x].revealed && run.grid[y][W - 1 - x].revealed) {
+          probe = { x: x, y: y }; break;
+        }
+    assert(probe, 'found an unscanned tile whose mirror is scanned');
+    assert(!run.landmark.fired, 'the pool has not bounced yet');
+    let used = 0;
+    for (let i = 0; i < 4; i++) {
+      S.tick(run);
+      for (const ev of run.events.splice(0, run.events.length))
+        if (ev.type === 'landmark' && ev.data.act === 'use') used++;
+    }
+    assert(run.landmark.fired, 'the pool bounces as soon as it is seen');
+    assertEq(used, 1, 'and says so once');
+    assert(run.grid[probe.y][probe.x].revealed,
+      'the mirrored half of the map is drawn instantly');
+    for (let i = 0; i < 40; i++) S.tick(run);
+    assertEq(run.events.filter((e) => e.type === 'landmark').length, 0,
+      'and it is a one-shot, not a running effect');
+  }
+
+  // ---- The Root: dampers in its shadow are worth two --------------------
+  {
+    function ventedOver(withRoot) {
+      const run = fresh(6);
+      if (withRoot) install(run, 'root', 10, 10);
+      else if (run.landmark) install(run, 'anvil', 40, 2);   // an inert control
+      // a damper beside the column, fuelled forever
+      const d = put(run, 'damper', 12, 11, { fuel: 99999, input: { coal: 99 } });
+      if (withRoot)
+        assertEq(S.auraMult(run, 'damper', d.x, d.y), 2,
+          'a damper within 6 of the Root vents twice as hard');
+      run.instability = 0;
+      for (let i = 0; i < 120 * HZ; i++) { d.fuel = 99999; S.tick(run); }
+      return run.instability;
+    }
+    const bare = ventedOver(false), rooted = ventedOver(true);
+    assert(rooted < bare,
+      'the Root slows the stratum down (' + rooted.toFixed(1) + ' vs ' + bare.toFixed(1) + ')');
+    // one damper is -25%; doubled it is -50%, so the remaining rate halves
+    const ratio = rooted / bare;
+    assert(ratio > 0.6 && ratio < 0.72,
+      'by the stated doubling of its calm (measured x' + ratio.toFixed(3) + ')');
+  }
+
+  // ---- tooltip, buildability and the glyph on the grid ------------------
+  {
+    const run = fresh(1);
+    const def = install(run, 'anvil', 8, 8);
+    const lines = S.describeTile(run, 9, 9).map((l) => l.text);
+    assertEq(lines[0], def.name, 'the tooltip names the wonder first');
+    for (const s of def.lore)
+      assert(lines.indexOf(s) >= 0, 'and states its mechanic: ' + s);
+    for (const l of lines)
+      assert(l.length <= S.SCAN_W, 'landmark tooltip fits the SCAN panel: ' + l);
+    assertEq(S.canPlace(run, 'belt', 9, 9, 1).reason, 'landmark ground',
+      'you cannot pave over a wonder');
+    assertEq(S.demolishAt(run, 9, 9).reason, 'older than the Company',
+      'and you cannot dig one up');
+
+    const st = {
+      screen: 'run', meta: DC.Meta.newProfile(), run: run,
+      ui: { tool: null, facing: 1, hover: null, cursor: { x: 9, y: 9 },
+            dragging: false, dragLast: null, laying: false, paused: false,
+            descendAnim: 0, shakeUntil: 0, flash: null },
+    };
+    for (let y = 0; y < D.MAP_H; y++)
+      for (let x = 0; x < D.MAP_W; x++) run.grid[y][x].revealed = true;
+    // Two frames, seconds apart on the FX clock. fx.js pulses a faint '·' ring
+    // over ground the sweep just uncovered (SPEC3 §A1, "reveal front"), and a
+    // map revealed wholesale one frame ago is ALL new ground — read it on the
+    // first frame and every assertion below would be measuring the sonar
+    // overlay instead of the tile under it.
+    R.frame(st, 1000);
+    R.frame(st, 9000);
+    assertEq(R.cellAt(D.MAP_X + 9, D.MAP_Y + 9).ch, '█',
+      'the monolith draws its own art, not the terrain under it');
+    assertEq(R.cellAt(D.MAP_X + 8, D.MAP_Y + 8).ch, '▓', 'corners and all');
+    // Colour is asserted as a RELATIONSHIP, not a literal: fx.js is entitled to
+    // shade any cell it draws over, so pinning the exact hex here would make
+    // this test a hostage of the animation layer. What must hold is the
+    // readability claim (SPEC3 §0 law 6) — the monolith is one consistent
+    // colour, and it is neither the glass it is cut from nor the floor it
+    // stands on, so a player finds it in one glance.
+    const lmFg = R.cellAt(D.MAP_X + 9, D.MAP_Y + 9).fg;
+    assertEq(R.cellAt(D.MAP_X + 8, D.MAP_Y + 8).fg, lmFg,
+      'the whole monolith is one colour');
+    assert(lmFg !== D.TERRAIN.obsidian.color,
+      'and it is not the obsidian it replaced');
+    assert(lmFg !== R.cellAt(D.MAP_X + 14, D.MAP_Y + 9).fg,
+      'nor the floor it stands on');
+
+    // the Warm Spot is the one aura drawn on the floor
+    const warmRun = fresh(2);
+    const wdef = install(warmRun, 'warmspot', 20, 12);
+    for (let y = 0; y < D.MAP_H; y++)
+      for (let x = 0; x < D.MAP_W; x++) {
+        const t = warmRun.grid[y][x];
+        t.revealed = true;
+        if (!t.lm && t.machine === null && !t.belt) { t.t = 'floor'; t.ore = null; }
+      }
+    st.run = warmRun;
+    R.frame(st, 20000);
+    R.frame(st, 28000);
+    const inZone = R.cellAt(D.MAP_X + 20 + wdef.aura.r - 1, D.MAP_Y + 12).fg;
+    const outZone = R.cellAt(D.MAP_X + 20 + wdef.aura.r + 3, D.MAP_Y + 12).fg;
+    assert(inZone !== outZone, 'the Warm Spot tints the floor it shelters');
+    assertEq(R.cellAt(D.MAP_X + 20, D.MAP_Y + 12).ch, '◎', 'and marks its centre');
+  }
+
+  // ---- a landmark never draws from run.rng ------------------------------
+  // The stream position is the contract: mapgen derives landmarks from a hash
+  // of the finished grid, so a run with a wonder in it must roll exactly the
+  // quakes a run without one rolls.
+  {
+    function stream(withLandmark) {
+      const run = S.newRun(defEffects(), seed + 5);
+      if (!withLandmark) run.landmark = null;
+      for (let i = 0; i < 120 * HZ; i++) S.tick(run);
+      return [run.rng(), run.rng(), run.rng()].join(',');
+    }
+    assertEq(stream(true), stream(false),
+      'a stratum with a landmark consumes the same rng as one without');
+  }
+  return D.LANDMARKS.length + ' kinds, mechanics verified';
+}
+
 // -------------------------------------------------------------------- main
 const SEED = process.env.DC_SEED ? (parseInt(process.env.DC_SEED, 10) | 0) : 1337;
 try {
@@ -3479,6 +3898,7 @@ try {
   // the sub-cell probe pointed at a chosen mode; the Core Gate section draws
   // the victory sphere and would otherwise inherit whichever mode ran last.
   const walls = coreLoreSection(SEED + 43);
+  const wonders = wondersSection(SEED + 47);
   // The webfont section is the one asynchronous check in the suite — a
   // document.fonts.ready handler cannot be driven synchronously — so the
   // PASS line waits on it rather than racing it.
@@ -3489,6 +3909,7 @@ try {
       ' | scale ' + scaleSummary + ' | webfont re-measured ' + advEm + 'em' +
       ' | braille probe->blocks (' + rimGlyphs + ' rim glyphs)' +
       ' | core gate 3 beats | ' + walls + ' walls' +
+      ' | wonders ' + wonders +
       ' | cadence 16/12/10 | overdrive x2 | damper ok | charge+bronze ok | mantle ok' +
       ' | engine+barks ok | ' + (Date.now() - t0) + 'ms');
     process.exit(0);
