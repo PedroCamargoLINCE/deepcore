@@ -2634,6 +2634,83 @@ function fxSection(seed) {
   return all.length;
 }
 
+// =========================================================================
+// SECTION 10 — the animation clock is wall time, not a callback count
+// (M-HIRES Phase 0). engine.js's loop is not throttled, so a 144 Hz monitor
+// hands the renderer 2.4x the callbacks a 60 Hz one does; a clock that
+// counted callbacks ran every frame-measured animation 2.4x too fast there.
+// Drive the SAME four wall seconds at both rates and require the same number
+// of animation cycles out the other end. The probe is the gameover prompt's
+// 1 Hz blink — render's own clock — and fx.js's clock is read alongside it,
+// since every §A phase is a pure function of that clock.
+// =========================================================================
+function clockSection(seed) {
+  SECTION = 'clock';
+  const FX = DC.FX, R = DC.Render;
+  const ctxStub = {
+    fillStyle: '', font: '', textBaseline: '', textAlign: '',
+    setTransform: function () {}, fillRect: function () {},
+    save: function () {}, restore: function () {}, scale: function () {},
+    fillText: function () {}, measureText: function () { return { width: 10 }; },
+  };
+  R.init({ style: {}, getContext: function () { return ctxStub; } });
+
+  const run = S.newRun(defEffects(), seed);
+  run.result = { depth: 3, breaches: 2, timeSec: 300, cores: 4, won: false };
+  const st = {
+    screen: 'gameover', meta: DC.Meta.newProfile(), run: run,
+    ui: { tool: null, facing: 1, hover: null, cursor: { x: 0, y: 0 },
+          dragging: false, dragLast: null, laying: false, paused: false,
+          descendAnim: 0, shakeUntil: 0, flash: null },
+  };
+
+  // A cell of the blinking prompt on the bottom row, found rather than
+  // hardcoded so a copy edit cannot silently make this test vacuous.
+  R.frame(st);
+  let probe = -1;
+  for (let c = 0; c < D.COLS && probe < 0; c++) if (R.cellAt(c, 31).ch !== ' ') probe = c;
+  assert(probe >= 0, 'scaffold: the gameover prompt is on the bottom row');
+
+  let now = 5e6;                     // monotonic across both runs: the clocks
+  function drive(spanMs, fps) {      // keep their `lastNow` between calls
+    const step = 1000 / fps;
+    const n = Math.round(spanMs / step);
+    const f0 = FX.clock(), m0 = FX.ms();
+    let flips = 0, prev = R.cellAt(probe, 31).fg;
+    for (let i = 0; i < n; i++) {
+      now += step;
+      R.frame(st, now);
+      const col = R.cellAt(probe, 31).fg;
+      if (col !== prev) flips++;
+      prev = col;
+    }
+    return { calls: n, frames: FX.clock() - f0, ms: FX.ms() - m0, flips: flips };
+  }
+
+  const at60 = drive(4000, 60);
+  const at144 = drive(4000, 144);
+
+  // The check is not vacuous: the high-refresh run really did deliver 2.4x
+  // the callbacks for the same four seconds.
+  assertEq(at60.calls, 240, '4 s at 60 fps is 240 callbacks');
+  assertEq(at144.calls, 576, '4 s at 144 fps is 576 callbacks');
+  assert(Math.abs(at60.ms - 4000) < 20 && Math.abs(at144.ms - 4000) < 20,
+    'the fx clock tracks wall time at both rates (' +
+    Math.round(at60.ms) + ' / ' + Math.round(at144.ms) + ' ms)');
+  assert(Math.abs(at60.frames - 240) <= 2 && Math.abs(at144.frames - 240) <= 2,
+    'four wall seconds is 240 virtual frames at both rates (' +
+    at60.frames + ' / ' + at144.frames + ')');
+  assert(at60.flips >= 6, 'scaffold: the prompt really blinks (' + at60.flips + ' flips)');
+  assert(Math.abs(at60.flips - at144.flips) <= 1,
+    'the blink completes the same cycles per wall second at 60 and 144 fps (' +
+    at60.flips + ' vs ' + at144.flips + ')');
+  // and the bug this replaces would have failed it: counting callbacks would
+  // have run the 144 fps pass 2.4x through the same wall time.
+  assert(at144.flips * 2 < at144.calls / 30,
+    'scaffold: a callback-counting clock would have blinked far more often');
+  return at60.flips;
+}
+
 // -------------------------------------------------------------------- main
 const SEED = process.env.DC_SEED ? (parseInt(process.env.DC_SEED, 10) | 0) : 1337;
 try {
@@ -2651,8 +2728,10 @@ try {
   engineBarksSection(SEED + 29);
   const cardRows = recapSection(SEED + 37);
   const fxRows = fxSection(SEED + 31);
+  const blinks = clockSection(SEED + 41);
   console.log('PASS integration seed=' + SEED + ' | ' + drivenSummary +
     ' | fx rows ' + fxRows + ' | recap card ' + cardRows + ' rows' +
+    ' | clock 60=144Hz (' + blinks + ' blinks/4s)' +
     ' | cadence 16/12/10 | overdrive x2 | damper ok | charge+bronze ok | mantle ok' +
     ' | engine+barks ok | ' + (Date.now() - t0) + 'ms');
   process.exit(0);

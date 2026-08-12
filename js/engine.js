@@ -84,7 +84,10 @@
     }
     // NOTE: ui.descendAnim is advanced by Render.frame (SPEC §7), not here —
     // incrementing in both places played the descent animation at double speed.
-    DC.Render.frame(st);
+    // The rAF timestamp drives render's and fx.js's animation clocks: this
+    // loop is not throttled, so without it every frame-measured animation
+    // would run 2.4x too fast on a 144 Hz display (M-HIRES Phase 0).
+    DC.Render.frame(st, now);
   }
 
   function afterTick(st) {

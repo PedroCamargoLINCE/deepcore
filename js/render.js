@@ -39,7 +39,29 @@
   };
 
   let canvas = null, ctx = null, dpr = 1, adv = CW; // adv = measured glyph advance
-  let frameN = 0;
+
+  // Render's own animation clock (M-HIRES Phase 0). Same contract as fx.js's:
+  // driven by elapsed milliseconds, expressed in virtual 60 fps frames, so the
+  // gameover/victory blink, the flashPart pulse and the descent animation run
+  // at wall speed on a 144 Hz monitor instead of 2.4x too fast. Throwaway
+  // render state — nothing here ever feeds back into the sim.
+  const RFPS = 60, RMS_PER_FRAME = 1000 / RFPS, RMAX_DT = 250;
+  let clockMs = 0, frameN = 0, dFrames = 1, lastNow = null;
+  function advanceClock(nowMs) {
+    const prev = frameN;
+    if (typeof nowMs !== 'number' || !isFinite(nowMs)) {
+      clockMs += RMS_PER_FRAME;              // no host clock (tests): nominal step
+    } else if (lastNow === null) {
+      lastNow = nowMs;
+      clockMs += RMS_PER_FRAME;
+    } else {
+      const dt = nowMs - lastNow;
+      lastNow = nowMs;
+      if (dt > 0) clockMs += Math.min(dt, RMAX_DT);
+    }
+    frameN = Math.round(clockMs * RFPS / 1000);
+    dFrames = frameN - prev;
+  }
 
   // ---------------- cell buffer ----------------
   const chB = [], fgB = [], bgB = [];
@@ -864,7 +886,7 @@
     const accent = nst.accent || C.amber;
 
     if (anim < animLen || !run || !run.pendingOffers) {
-      ui.descendAnim = anim + 1;                  // render advances the anim counter (SPEC §7)
+      ui.descendAnim = anim + dFrames;            // render advances the anim counter (SPEC §7)
       ctext(2, '»» DESCENDING ««', C.amber);
       // SPEC3 §A2 interstitial: the name types itself in the accent while the
       // odometer rolls its digits down to the depth you are arriving at.
@@ -1413,15 +1435,15 @@
       return { ch: chB[row][col], fg: fgB[row][col], bg: bgB[row][col] };
     },
 
-    frame: function (state) {
+    frame: function (state, nowMs) {
       if (!ctx || !state) return;
-      frameN++;
-      const phase = Math.floor(frameN / 30) % 2;   // blink phase off the run clock
+      advanceClock(nowMs);
+      const phase = Math.floor(frameN / 30) % 2;   // 1 Hz blink, wall time
       clearBuf();
       // SPEC3 §A: fx.js advances its frame clock and takes its per-frame read
       // of the world BEFORE anything draws; its overlay lands after everything.
       if (DC.FX && DC.FX.begin) {
-        try { DC.FX.begin(state, surface); } catch (e) { /* fx never kills a frame */ }
+        try { DC.FX.begin(state, surface, nowMs); } catch (e) { /* fx never kills a frame */ }
       }
       try {
         switch (state.screen) {
