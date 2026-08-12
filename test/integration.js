@@ -1361,12 +1361,60 @@ function engineBarksSection(seed) {
   assert(st.ui.paused, 'Escape with no tool pauses');
   key('h');
   assertEq(st.screen, 'help', "pause-menu 'h' opens the manual");
+  assertEq(st.ui.helpPage, 0, 'the manual always opens on page 1');
   frames(1);
   assert(drawn.some(s => s.indexOf('MOUSE OPTIONAL') >= 0),
     'manual documents keyboard-cursor play');
+
+  // --- M-MANUAL: both pages really reach the cell buffer, and the keycaps
+  // are inverse cells (the letter takes the page background, the cap the tier
+  // colour) rather than bracketed text pretending to be keys.
+  {
+    const A = DC.Art, R = DC.Render;
+    const pages = A.helpPages;
+    assertEq(pages.length, 2, 'the manual ships two pages');
+    const x0 = (D.COLS - pages[0].w) >> 1, y0 = (D.ROWS - pages[0].h) >> 1;
+    for (let i = 0; i < pages.length; i++) {
+      st.ui.helpPage = i;
+      drawn.length = 0;
+      frames(1);
+      const page = pages[i];
+      // the page's longest single-colour run landed on the canvas
+      let probe = '';
+      for (const row of page.rows)
+        for (const s of row) if (!s.inv && s.t.trim().length > probe.length) probe = s.t.trim();
+      assert(drawn.some(s => s.indexOf(probe) >= 0),
+        'page ' + page.id + ' rendered ("' + probe + '")');
+      // the grid the composer built is the grid the buffer holds
+      for (let r = 0; r < page.h; r++) {
+        for (const span of page.rows[r]) {
+          const cell = R.cellAt(x0 + span.x, y0 + r);
+          assertEq(cell.ch, span.t[0], page.id + ' row ' + r + ' col ' + span.x + ' drew its glyph');
+          if (span.inv) {
+            assertEq(cell.fg, D.COLORS.bg, page.id + ': a keycap letter is the page background');
+            assertEq(cell.bg, R.helpColor(span.c), page.id + ': a keycap face is the tier colour');
+          } else {
+            assertEq(cell.fg, R.helpColor(span.c), page.id + ' row ' + r + ': span colour');
+          }
+        }
+      }
+    }
+    // the pager itself: arrows wrap, page numbers jump, ESC leaves
+    st.ui.helpPage = 0;
+    key('ArrowRight'); assertEq(st.ui.helpPage, 1, '→ turns to page 2');
+    key('ArrowRight'); assertEq(st.ui.helpPage, 0, '→ wraps back to page 1');
+    key('ArrowLeft');  assertEq(st.ui.helpPage, 1, '← wraps to the last page');
+    key('1');          assertEq(st.ui.helpPage, 0, "'1' jumps to page 1");
+    key('2');          assertEq(st.ui.helpPage, 1, "'2' jumps to page 2");
+    key('9');          assertEq(st.ui.helpPage, 1, 'a page that does not exist is ignored');
+    frames(1);
+  }
+
   key('Escape');
   assertEq(st.screen, 'run', 'Escape returns from the manual to the run');
   assert(st.ui.paused, 'still paused after the manual');
+  key('h'); assertEq(st.ui.helpPage, 0, 'reopening the manual returns to page 1');
+  key('Escape');
   key(' ');
   assert(!st.ui.paused, 'space unpauses');
 
