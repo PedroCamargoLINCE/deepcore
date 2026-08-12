@@ -1207,7 +1207,50 @@
     if (fb) ctext(28, 'GRIT ▸ ' + String(fb).slice(0, 70), C.cyan);
 
     ctext(29, 'lifetime cores ' + (meta.totalCores || 0) + '   runs ' + (meta.runs || 0), C.darkgray);
-    ctext(31, '[A-I] FORGE UPGRADE      [ESC] RETURN TO SURFACE', C.amber);
+    ctext(31, '[A-I] FORGE UPGRADE   [L] LOGBOOK   [ESC] RETURN TO SURFACE', C.amber);
+  }
+
+  // ================= THE LOGBOOK (M-EVENTS) =================
+  // Twenty rigs that didn't come back up, one line each, collected across
+  // runs. The unfound ones are drawn as the SHAPE of a missing line rather
+  // than hidden: the page has to read as a jigsaw with holes in it, or
+  // filling one in is a number going up instead of a picture changing
+  // (SPEC3 §0 law 5). The dots are furniture and answer to the 3:1 floor;
+  // the entries themselves are gold, the colour the LOG already gives a
+  // found log, so the two readings of the same line agree.
+  const LOG_ROW0 = 5;                       // first entry row
+  const LOG_COL = 4;                        // left margin of the number column
+  const LOG_TEXT = LOG_COL + 5;             // where the entry itself starts
+  const LOG_W = COLS - LOG_TEXT - 3;        // room the entry has to read in
+  function logDots(color) { return color; }  // (named for the test to point at)
+  function drawLogbook(state) {
+    const meta = state.meta || {};
+    const E = DC.Events;
+    const logs = (E && E.LOGS) || [];
+    const found = (DC.Meta && DC.Meta.logbook) ? DC.Meta.logbook(meta) : [];
+    const dim = mix(C.gray, C.bg, 0.5);
+
+    ctext(1, 'DEAD FOREMEN OF THE DEEP', C.amber);
+    ctext(2, 'what they wrote down before the rock had them', C.gray);
+    text(LOG_COL, 3, '─'.repeat(COLS - 2 * LOG_COL + 1), mix(C.amber, C.bg, 0.42));
+
+    for (let i = 0; i < logs.length && LOG_ROW0 + i < ROWS - 4; i++) {
+      const row = LOG_ROW0 + i;
+      const has = found.indexOf(i) >= 0;
+      text(LOG_COL, row, U.padL(String(i + 1), 2), has ? C.amberDim : C.darkgray);
+      put(LOG_COL + 3, row, '▸', has ? C.amber : C.darkgray);
+      if (has) {
+        text(LOG_TEXT, row, logs[i].slice(0, LOG_W), C.gold);
+      } else {
+        // the hole, drawn to the true width of the line that belongs in it
+        text(LOG_TEXT, row, '·'.repeat(Math.min(LOG_W, logs[i].length)), logDots(dim));
+      }
+    }
+    const n = found.length, tot = logs.length;
+    ctext(ROWS - 3, 'RECOVERED ' + n + ' / ' + tot +
+      (n >= tot && tot > 0 ? '  —  the whole book' : ''),
+      n >= tot && tot > 0 ? C.green : C.gray);
+    ctext(ROWS - 1, '[ESC] BACK TO THE FOUNDRY', C.amber);
   }
 
   // ================= HELP: THE FIELD MANUAL (M-MANUAL) =================
@@ -1855,6 +1898,7 @@
           case 'run':      drawRun(state); break;
           case 'descend':  drawDescend(state); break;
           case 'foundry':  drawFoundry(state); break;
+          case 'logbook':  drawLogbook(state); break;   // M-EVENTS
           case 'help':     drawHelp(state); break;
           case 'gameover': drawGameover(state, phase); break;
           case 'recap':    drawRecap(state); break;      // M-RECAP

@@ -522,6 +522,9 @@
       }
       case 'foundry':
         if (k === 'Escape' || k === 'Enter') st.screen = 'title';
+        // M-EVENTS: the logbook. It hangs off the Foundry because that is the
+        // one screen between runs where you are already reading your record.
+        else if (lk === 'l') st.screen = 'logbook';
         else {
           const i = 'abcdefghi'.indexOf(lk);
           if (i >= 0 && i < D.META_UPGRADES.length) {
@@ -536,6 +539,12 @@
             }
           } else handled = false;
         }
+        break;
+      // M-EVENTS: the logbook is a reading screen and nothing else — every
+      // way out of it goes back to the floor you opened it from.
+      case 'logbook':
+        if (k === 'Escape' || k === 'Enter' || lk === 'l') st.screen = 'foundry';
+        else handled = false;
         break;
       case 'help':
         // M-MANUAL: the manual is a two-page pager. ←/→ (and the page numbers)
