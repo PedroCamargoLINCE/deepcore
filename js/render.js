@@ -1306,7 +1306,6 @@
   // over. A logbook that clips its own entries mid-word is worse than no
   // logbook: the whole page exists to be read (SPEC3 §0 law 6).
   const LOG_W = COLS - LOG_TEXT - 2;
-  function logDots(color) { return color; }  // (named for the test to point at)
   function drawLogbook(state) {
     const meta = state.meta || {};
     const E = DC.Events;
@@ -1327,7 +1326,7 @@
         text(LOG_TEXT, row, logs[i].slice(0, LOG_W), C.gold);
       } else {
         // the hole, drawn to the true width of the line that belongs in it
-        text(LOG_TEXT, row, '·'.repeat(Math.min(LOG_W, logs[i].length)), logDots(dim));
+        text(LOG_TEXT, row, '·'.repeat(Math.min(LOG_W, logs[i].length)), dim);
       }
     }
     const n = found.length, tot = logs.length;
