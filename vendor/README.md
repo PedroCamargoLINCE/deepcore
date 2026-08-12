@@ -1,3 +1,73 @@
+# vendor/ — the font subset (M-HIRES Phase 2.5, 2026-08-12)
+
+**Status: §3 below has now been done.** `deepcore-mono.woff2` is a subset of
+DejaVu Sans Mono renamed "Deepcore Mono", carrying exactly the inventory
+`node tools/glyphs.js` reports (204 codepoints — printable ASCII plus the 109
+non-ASCII glyphs the game can draw). 8.3 KiB as WOFF2, 11.9 KiB once base64'd
+into `deepcore-mono.css` as a data URI. Regenerate with `node tools/font.js`
+after adding any glyph; that script subsets against the audit, so the two
+cannot drift. It needs Python with fontTools + brotli, which are **build-time
+only** — the generated files are committed, so the game, the five suites and
+`tools/build.js` need none of it.
+
+Three things worth knowing:
+
+- **The advances are identical to the source face** (1233/2048 = 0.602 em for
+  every glyph, verified after subsetting). That matters more than it sounds:
+  `flush()` batches a whole run of cells into one `fillText` scaled by
+  `cw / adv`, so a face whose advance differs from the fallback's shears the
+  row on swap.
+- **It loads asynchronously and `Render.init()` measures once.** `render.js`
+  re-measures on `document.fonts.ready` *and* explicitly calls
+  `document.fonts.load()`, because nothing in the DOM uses the face — the page
+  paints through a canvas — so it might otherwise never become pending.
+  `font-display: block`, because `swap` would paint a frame in the fallback
+  and then reflow, which on a character grid is a visible shear of every row.
+- **The system stack is still behind it.** If the webfont is blocked, the game
+  runs on DejaVu Sans Mono / Menlo / Consolas exactly as before; the advance is
+  measured from whatever is actually in use, so nothing shears either way.
+
+`tools/glyphs.js` scans raw source text, so it also reports glyphs that appear
+only in *comments* — `≫` (U+226B) is one, and it is genuinely absent from
+DejaVu Sans Mono, which is why `sim.js` draws `»` instead and says so. Being
+over-inclusive is the safe direction: a spare glyph costs bytes, a missing one
+is a tofu box on screen. `tools/subset_font.py` prints anything it had to skip.
+
+## Braille was NOT vendored (M-HIRES Phase 3, 2026-08-12)
+
+The mechanism ships and works — `DC.Art.raster.braille()`, the runtime probe
+in `render.js`, the block fallback, and `A.coreSphere(mode)` which builds the
+victory sphere either way. A **second** vendored face for braille was
+declined, on measurements:
+
+| Face | braille glyphs | advance |
+|---|---|---|
+| DejaVu Sans Mono (the grid's face) | **0** | `█` is 1233/2048 = 0.602 em |
+| DejaVu Sans (what braille falls through to) | 256 | 1500/2048 = **0.7324 em** |
+| Noto Sans Symbols2 | 256 | 700/1000 = **0.70 em** |
+
+No monospace face on hand has braille at all. Every available source is
+proportional and ~21% too wide, so vendoring braille means taking glyphs from
+a proportional font, scaling the outlines ~82%, forcing a mono advance, and
+merging tables — surgery on a binary we cannot visually verify from here. The
+return is a rim that steps in quarter-cells instead of half-cells, on one
+screen, at the end of a winning run. Under §0 law 6 (readability is the
+objective) and law 2 (chunky beats smooth), that does not earn a second font.
+
+It is not dead code. The probe measures the *actual* stack, so on a machine
+whose fallback supplies cell-width braille — Windows with Cascadia Mono, which
+has the block and is monospaced — the sphere upgrades itself with no code
+change. Everywhere else it draws blocks, which is the default, not a degraded
+mode.
+
+**Do not skip the probe if someone does vendor braille later.** Browsers block
+webfonts and users override fonts; `flush()` batches a run of cells into one
+`fillText` scaled by `cw / adv`, so one proportional braille glyph slides every
+character after it out of its cell. The failure mode is a corrupted row, not a
+missing dot. `test/integration.js` SECTION 13 holds that line.
+
+---
+
 # vendor/ — deliberately empty (M-MANUAL, 2026-08-11)
 
 SPEC3 rule 7 permits vendored dependencies "when they demonstrably improve the

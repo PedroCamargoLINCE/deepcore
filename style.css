@@ -1,4 +1,10 @@
 /* DEEPCORE — the page is a terminal, nothing more. */
+:root {
+  /* CRT scanline period. render.js rewrites this from the current cell size
+     (M-HIRES Phase 1): a fixed 3px pattern reads twice as dense at 2x scale
+     and muddies the art it is supposed to sit behind. */
+  --scanline: 3px;
+}
 html, body {
   margin: 0;
   padding: 0;
@@ -31,7 +37,10 @@ body {
   pointer-events: none;
   background:
     radial-gradient(ellipse at center, rgba(0,0,0,0) 62%, rgba(0,0,0,0.32) 100%),
-    repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 2px, rgba(0,0,0,0.10) 3px);
+    repeating-linear-gradient(to bottom,
+      rgba(0,0,0,0) 0px,
+      rgba(0,0,0,0) calc(var(--scanline) - 1px),
+      rgba(0,0,0,0.10) var(--scanline));
 }
 noscript pre {
   color: #e8b45a;

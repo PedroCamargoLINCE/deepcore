@@ -20,10 +20,14 @@
    (clock + grid scan + triggers), `DC.FX.tile(...)` per map cell inside
    drawMap, `DC.FX.frame(state, surface)` LAST, after every screen has drawn.
 
-   Frame budget: the clock counts render frames and assumes ~60 fps, which is
-   the same assumption render.js's flashPart blink already makes. Anything
-   whose duration is specced in sim TICKS is measured against run.t instead,
-   so it stays honest when the tab throttles. */
+   Frame budget (M-HIRES Phase 0): the clock is driven by ELAPSED
+   MILLISECONDS, not by a count of requestAnimationFrame callbacks. engine.js
+   does not throttle its loop, so a 144 Hz monitor delivers 2.4x the callbacks
+   a 60 Hz one does; a frame-counted heartbeat beat 2.4x too fast there. `T`
+   is the time base and `F` is that same time expressed in virtual 60 fps
+   frames, so every span below still reads as "frames" while running at wall
+   speed on any display. Anything whose duration is specced in sim TICKS is
+   measured against run.t instead, so it stays honest when the tab throttles. */
 (function () {
   'use strict';
   const root = typeof window !== 'undefined' ? window : globalThis;
@@ -32,13 +36,47 @@
   const C = D.COLORS;
   const U = DC.util;
 
-  const FPS = 60;                        // render.js's assumed frame rate
+  const FPS = 60;                        // the rate this choreography is authored in
+  const SEC = 1000;                      // ms — durations are stated in these
   const HZ = D.TICK_HZ;
   const W = D.MAP_W, H = D.MAP_H;
   const N = W * H;
 
-  // The frame clock. Starts at 1 so a zero stamp always means "never".
-  let F = 0;
+  // The clock. `T` is animation time in milliseconds and is the only thing
+  // the host advances; `F` is the same instant expressed in virtual 60 fps
+  // frames, which keeps every stamp an integer and every span in this file
+  // readable as a frame count. Both start at 0, so a zero stamp always means
+  // "never" — the first advance() moves F to 1.
+  let T = 0;                             // ms of animation time
+  let F = 0;                             // = round(T * FPS / SEC)
+  let F0 = 0;                            // F as of the previous advance()
+  let lastNow = null;                    // last host timestamp seen
+  const MS_PER_FRAME = SEC / FPS;
+  const MAX_DT = 250;                    // a backgrounded tab must not lurch
+
+  // Called once per begin(). `nowMs` is the requestAnimationFrame timestamp;
+  // without one (the stub-canvas tests, which drive frame() directly) the
+  // clock takes a nominal 60 fps step, so a test frame stays a frame.
+  function advance(nowMs) {
+    F0 = F;
+    if (typeof nowMs !== 'number' || !isFinite(nowMs)) {
+      T += MS_PER_FRAME;
+    } else if (lastNow === null) {
+      lastNow = nowMs;
+      T += MS_PER_FRAME;
+    } else {
+      const dt = nowMs - lastNow;
+      lastNow = nowMs;
+      if (dt > 0) T += Math.min(dt, MAX_DT);
+    }
+    F = Math.round(T * FPS / SEC);
+  }
+  // True once per `period` virtual frames. A crossing test rather than
+  // `F % period === 0`: under 60 fps the clock skips values, and an equality
+  // gate would drop the whole cycle it stepped over.
+  function every(period) {
+    return Math.floor(F0 / period) !== Math.floor(F / period);
+  }
   // Private PRNG. run.rng belongs to the sim and is never touched from here.
   const rand = U.mulberry32(0x0DEEC02E);
 
@@ -94,8 +132,10 @@
     n = n ^ (n >>> 15);
     return (n >>> 0) / 4294967296;
   }
-  function breathe(period, off) {        // 0..1 sine, `period` frames
-    return 0.5 + 0.5 * Math.sin(((F + (off || 0)) / period) * Math.PI * 2);
+  // 0..1 sine. `periodMs` and `off` are DURATIONS in milliseconds — the clock
+  // is a time base, so a heartbeat is stated as "2 s", never as "120 frames".
+  function breathe(periodMs, off) {
+    return 0.5 + 0.5 * Math.sin(((T + (off || 0)) / periodMs) * Math.PI * 2);
   }
 
   // ------------------------------------------------------------- the scan
@@ -201,8 +241,8 @@
   let lastScreen = null;
   let crack = null;                      // {x, y, f} the breach crack pattern
 
-  function begin(state, surf) {
-    F++;
+  function begin(state, surf, nowMs) {
+    advance(nowMs);
     stepParts();
     const run = state && state.run;
     const ui = (state && state.ui) || null;
@@ -368,7 +408,7 @@
       }
     }
     // one visible crystal glints white for ~1 tick every ~4s
-    if (F % (4 * FPS) === 0 && mem.crystals.length) {
+    if (every(4 * FPS) && mem.crystals.length) {
       const i = mem.crystals[(rand() * mem.crystals.length) | 0];
       mem.glint = { i: i, until: F + Math.round(FPS / HZ) };
     }
@@ -514,7 +554,7 @@
       // fueled: a calm ~2s heartbeat. unfueled: flat dim (render's '!' blink
       // is left alone by the guard at the top of tile()).
       const g = D.BUILDINGS.damper.color;
-      if (m.fuel > 0) return out(ch, mixOf(shadeOf(g, 0.35), g, breathe(2 * FPS)));
+      if (m.fuel > 0) return out(ch, mixOf(shadeOf(g, 0.35), g, breathe(2 * SEC)));
       return out(ch, shadeOf(g, 0.4));
     }
     return null;
@@ -534,7 +574,7 @@
 
     if (dx === 1 && dy === 1) {
       if (mem.feeding) return out(och, C.white);      // pulse on the feed tick
-      if (ready) return out(och, mixOf(mem.accent, C.white, breathe(90)));
+      if (ready) return out(och, mixOf(mem.accent, C.white, breathe(1500)));
       return null;                                     // render's own D handling
     }
     const idx = RING_IDX[dy * 3 + dx];
@@ -546,7 +586,7 @@
     }
     if (ready) {
       // the whole 3x3 pulses in the stratum accent; the bottom row sweeps
-      const k = dy === 2 ? breathe(45, dx * 15) : breathe(90, idx * 6);
+      const k = dy === 2 ? breathe(750, dx * 250) : breathe(1500, idx * 100);
       return out(och, mixOf(mem.accent, C.white, k * 0.8));
     }
     if (mem.drillActive) {
@@ -663,7 +703,10 @@
     const A = surf.layout && surf.layout.artBlock;
     if (!A) return;
     const cy = A.row + (A.h >> 1), cx = (D.COLS / 2) | 0;
-    const rx = 28, ry = A.h / 2;
+    // The sphere's real half-width, published by render (M-HIRES Phase 2
+    // re-rasterised the core and it is no longer 55 cells across). The
+    // fallback keeps this working if an older render is loaded beside it.
+    const rx = (A.w ? A.w : 56) / 2, ry = A.h / 2;
     const ph = (F / 24) | 0;
     const done = typedDone('toast');
     const ring = done ? (F - done) / 40 : -1;      // expands over ~0.7s
@@ -684,7 +727,7 @@
   // --- A2: dust settling over the collapsed rig ----------------------------
   function drawMotes(surf) {
     const A = surf.layout && surf.layout.artBlock;
-    if (F % 12) return;
+    if (!every(12)) return;
     const top = A ? A.row : 1, h = A ? A.h : 14;
     spawn({
       screen: 'gameover',
@@ -748,7 +791,7 @@
   // breathes. The logo's 3-tone sweep is render's and is left alone.
   const EMBER_COL = [C.amber, C.orange, '#ff7a45'];
   function drawTitle(state, surf) {
-    if (F % 18 === 0) {
+    if (every(18)) {
       spawn({
         screen: 'title',
         x: 8 + rand() * (D.COLS - 16), y: D.ROWS - 3,
@@ -772,7 +815,7 @@
       }
     }
     if (T.enter) {
-      const k = 0.45 + 0.55 * breathe(1.6 * FPS);
+      const k = 0.45 + 0.55 * breathe(1.6 * SEC);
       for (let i = 0; i < T.enter.len; i++) {
         const gc = T.enter.col + i;
         surf.put(gc, T.enter.row, surf.ch(gc, T.enter.row), mixOf(C.green, C.white, k));
@@ -805,7 +848,7 @@
     const B = mapBox(surf);
     if (!B) return;
     const x0 = B.x - 1, y0 = B.y - 1, w = B.w + 2, h = B.h + 2;
-    const k = 0.35 + 0.5 * breathe(2 * FPS);           // ~2s period
+    const k = 0.35 + 0.5 * breathe(2 * SEC);           // ~2s period
     for (let c = x0; c < x0 + w; c++) {
       tintCell(surf, c, y0, k); tintCell(surf, c, y0 + h - 1, k);
     }
@@ -829,7 +872,7 @@
     if (run.totalT > (f.until || 0) + 2 * HZ) return;   // the bar has faded out
     const agitated = run.status === 'breachReady' || run.status === 'dead' ||
       run.status === 'won' || (run.instability || 0) >= 99;
-    const on = agitated ? ((((F / 4) | 0) & 1) === 0) : breathe(90) > 0.45;
+    const on = agitated ? ((((F / 4) | 0) & 1) === 0) : breathe(1500) > 0.45;
     surf.put(6, 31, '°', on ? C.orange : shadeOf(C.orange, 0.4));
   }
 
@@ -856,15 +899,19 @@
 
   DC.FX = {
     FPS: FPS,
-    // render.js hooks
-    begin: function (state, surf) { SURF = surf || SURF; begin(state, surf); },
+    SEC: SEC,
+    // render.js hooks. `nowMs` is the rAF timestamp: pass it and the clock
+    // runs at wall speed on any refresh rate; omit it and it takes a nominal
+    // 60 fps step per call.
+    begin: function (state, surf, nowMs) { SURF = surf || SURF; begin(state, surf, nowMs); },
     tile: tile,
     frame: frame,
     typed: typed,
     odometer: odometer,
     // test surface: the clock and the per-stratum scratch are inspectable so
     // a stub-canvas frame-advance test can prove each A1/A2 row fires.
-    clock: function () { return F; },
+    clock: function () { return F; },     // virtual 60 fps frames
+    ms: function () { return T; },        // the underlying time base
     mem: function () { return mem; },
   };
 })();
