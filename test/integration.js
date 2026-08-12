@@ -4010,7 +4010,70 @@ function eventsSection(seed) {
       ev.finds + ' finds in ' + holes + ' holes)');
     assert(run.messages.some(m => /pocket|cache|lunchbox|Bones|shaft|dead rig|tin/i.test(m.text)),
       'and the LOG says what it was');
-    return ev.finds + ' finds / ' + holes + ' holes';
+
+    // --- the Company Seal hands over a page of the jigsaw ------------------
+    // M-WONDERS welded that hatch shut; whoever did it filed something first.
+    {
+      const seal = D.LANDMARK_BY_ID.seal;
+      assert(seal, 'the Company Seal is still a landmark');
+      const before2 = E.peek(run).logs.length;
+      // install the seal under the cursor, exactly as mapgen would
+      const sx = run.hub.x + 6, sy = run.hub.y;
+      const cells = [];
+      for (let dy = 0; dy < seal.art.length; dy++)
+        for (let dx = 0; dx < seal.art[dy].length; dx++) {
+          const t = run.grid[sy + dy][sx + dx];
+          t.t = seal.base; t.lm = { id: 'seal', g: seal.art[dy][dx] };
+          t.revealed = true; t.machine = null; t.belt = null; t.rubble = false;
+          t.ore = null; t.oreAmt = 0; t.digT = 0;
+          cells.push({ x: sx + dx, y: sy + dy, was: 'rock' });
+        }
+      run.landmark = { id: 'seal', x: sx, y: sy, cx: sx + 0.5, cy: sy + 0.5,
+                       cells: cells, on: false, onAt: 0, jam: false,
+                       fired: false, found: true };
+      run.inv.ironPlate = (run.inv.ironPlate || 0) + 40;
+      const res = DC.Sim.clickTile(run, sx, sy);
+      assert(res && res.handled, 'the seal opens for 20 plates');
+      assertEq(E.peek(run).logs.length, before2 + 1,
+        'opening the Company Seal recovers a foreman log');
+      frames(1);
+      assert(M.logbook(st.meta).length >= 2, '...and it is filed in the book');
+    }
+
+    // --- the logbook screen -----------------------------------------------
+    st.screen = 'title';
+    key('f');
+    assertEq(st.screen, 'foundry', 'F opens the Foundry');
+    paint();
+    assert(shown('[L] LOGBOOK'), 'the Foundry floor advertises the logbook');
+    key('l');
+    assertEq(st.screen, 'logbook', 'L opens the logbook');
+    paint();
+    assert(shown('DEAD FOREMEN OF THE DEEP'), 'the logbook has its masthead');
+    assert(!shown('RENDER ERROR'), 'the logbook renders clean');
+    const bookN = M.logbook(st.meta).length;
+    assert(shown('RECOVERED ' + bookN + ' / ' + E.LOGS.length),
+      'the page counts what has been recovered');
+    // a found entry is legible ON THE GRID; an unfound one is a hole of dots
+    const rows = [];
+    for (let r = 0; r < D.ROWS; r++) {
+      let line = '';
+      for (let c = 0; c < D.COLS; c++) line += (DC.Render.cellAt(c, r) || { ch: ' ' }).ch;
+      rows.push(line);
+    }
+    for (const i of M.logbook(st.meta))
+      assert(rows.some(l => l.indexOf(E.LOGS[i].slice(0, 30)) >= 0),
+        'a recovered entry is readable on the page: ' + E.LOGS[i]);
+    assert(rows.some(l => /·{20,}/.test(l)),
+      'an unrecovered entry is a hole shaped like the line that belongs in it');
+    // the entries clear the text floor; the holes are furniture at 3:1
+    const R2 = DC.Render;
+    assert(R2.contrast(D.COLORS.gold, D.COLORS.bg) >= R2.MIN_CONTRAST,
+      'a recovered entry clears the text contrast floor');
+    key('Escape');
+    assertEq(st.screen, 'foundry', 'ESC returns to the Foundry');
+
+    return ev.finds + ' finds / ' + holes + ' holes, book ' + bookN;
   } finally {
     delete global.window;
     delete global.document;

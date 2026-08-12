@@ -321,6 +321,9 @@
       msg(run, 'The seal breaks. Company property: ' + (s ? s.name : 'nothing'),
           D.COLORS.cyan);
       out = s ? 'schematic recovered: ' + s.name : 'the vault was already emptied';
+      // M-EVENTS: a Company hatch is also a Company FILE. Whoever welded this
+      // one shut wrote something down first, and it goes in the logbook.
+      if (DC.Events && DC.Events.grantLog) DC.Events.grantLog(run);
     }
     pushEvent(run, 'landmark', { id: def.id, act: 'use' });
     return { handled: true, kind: 'landmark', msg: out };

@@ -278,6 +278,10 @@
   DC.Events = {
     rollDig: rollDig,
     tick: tick,
+    // M-WONDERS' Company Seal asks for one of these when it is opened. Any
+    // caller that has a reason to hand the player a piece of the jigsaw uses
+    // this; the roll, the LOG line and the meta write are all on this side.
+    grantLog: function (run) { return run ? takeLog(run, state(run)) : null; },
     LOGS: LOGS,
     logCount: LOGS.length,
     logText: function (i) { return LOGS[i] || null; },

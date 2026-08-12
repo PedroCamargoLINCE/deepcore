@@ -57,6 +57,7 @@ switches recipe, the rig toggles overdrive.
 | `H` | title or pause menu: manual |
 | `1`–`4` | descent screen: take that schematic |
 | `A`–`I` | Foundry: forge that upgrade |
+| `L` | Foundry: the logbook — what the dead foremen wrote down |
 | `A` | pause menu: abandon the run (banks your cores) |
 | `C` | victory screen: continue into the Mantle |
 | `Esc` | back / resume |
