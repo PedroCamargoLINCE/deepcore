@@ -1132,13 +1132,19 @@
     for (let i = 0; i < strata.length; i++) {
       const s = strata[i];
       const st = stratumOf(s.depth);
-      const inner = ' ' + U.pad('S' + s.depth, 3) + ' ' + U.pad(st.name, 15) + ' ' +
-        cardBar(s.sec / maxSec, 13) + ' ' + U.padL(fmtTime(s.sec), 6) + ' ' +
+      // Widths are budgeted so no stratum NAME is ever cut mid-word: the
+      // longest of the eight is GLOWDEEP GALLERIES at 18, so the name field is
+      // 18 and the bar gives up the two columns to pay for it (11 cells is
+      // still 88 eighth-steps — more resolution than the eye reads off a
+      // 46-wide card). Deep Mantle names overflow by their trailing daggers,
+      // which clip harmlessly. 1+3+1+18+1+11+1+6+1+1 = 44 = CARD_IN exactly.
+      const inner = ' ' + U.pad('S' + s.depth, 3) + ' ' + U.pad(st.name, 18) + ' ' +
+        cardBar(s.sec / maxSec, 11) + ' ' + U.padL(fmtTime(s.sec), 6) + ' ' +
         (s.partial ? '†' : ' ');
       rows.push(cardRow(inner, C.gray, [
-        { from: 5, len: 15, color: st.accent || C.amber },
-        { from: 21, len: 13, color: st.accent || C.amber },
-        { from: 35, len: 7, color: s.partial ? C.red : C.white },
+        { from: 5, len: 18, color: st.accent || C.amber },
+        { from: 24, len: 11, color: st.accent || C.amber },
+        { from: 36, len: 7, color: s.partial ? C.red : C.white },
       ]));
     }
 

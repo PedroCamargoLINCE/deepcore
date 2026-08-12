@@ -1780,6 +1780,18 @@ function recapSection(seed) {
     const wonCard = R.recapCard(st).plain.join('\n');
     assert(/S8\s+THE CORE GATE/.test(wonCard), 'the winning card charts all eight strata');
     assert(wonCard.indexOf('†') < 0, 'a completed run has no unfinished stratum');
+    // Every stratum name in FULL. The card is meant to be pasted somewhere
+    // public, and a name cut mid-word ('GLOWDEEP GALLER') is the exact defect
+    // M-POLISH/CX-04 called out in the SCAN panel. The name column is budgeted
+    // for the longest of the eight, so this is a width regression alarm.
+    for (let d = 1; d <= D.STRATA_COUNT; d++) {
+      const nm = D.STRATA[d - 1].name;
+      assert(wonCard.indexOf(nm) >= 0,
+        'the card prints stratum ' + d + ' name whole: ' + JSON.stringify(nm));
+    }
+    for (const ln of wonCard.split('\n')) {
+      assertEq(ln.length, R.CARD_W, 'every card row is exactly ' + R.CARD_W + ' columns');
+    }
     key('Tab');
     assertEq(st.screen, 'victory', 'TAB goes back to the victory stats view');
     key('c');
