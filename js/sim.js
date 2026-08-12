@@ -709,7 +709,9 @@
         if (quakeSafe(run, x, y)) continue;
         const t = run.grid[y][x];
         if (t.belt || (t.machine !== null && t.machine !== 0)) built.push({ x: x, y: y });
-        if (t.t === 'floor' && t.revealed && t.machine !== 0) floors.push({ x: x, y: y });
+        // ...and rubble never lands on landmark ground either (same reason).
+        if (t.t === 'floor' && t.revealed && t.machine !== 0 && !t.lm)
+          floors.push({ x: x, y: y });
       }
     for (let i = 0; i < n; i++) {
       const useBuilt = built.length && (run.rng() < 0.55 || !floors.length);
@@ -758,7 +760,12 @@
       for (let y = 1; y < H - 1; y++)
         for (let x = 1; x < W - 1; x++) {
           const t = g[y][x];
-          if (t.t === 'floor' && t.machine !== 0 && adjMagma(x, y)) cand.push({ x: x, y: y });
+          // M-WONDERS: landmark ground is never eaten. Only the Warm Spot's
+          // marker is floor at all, but a tile whose terrain said 'magma'
+          // while its flag still said 'landmark' would render as a wonder,
+          // describe as a wonder and behave as lava.
+          if (t.t === 'floor' && t.machine !== 0 && !t.lm && adjMagma(x, y))
+            cand.push({ x: x, y: y });
         }
       let spread = 0;
       for (const c of cand) {
