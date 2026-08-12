@@ -1054,8 +1054,10 @@
     return { text: s, color: color || C.amberDim, spans: null };
   }
 
-  // GRIT's Performance Review consumes run.rng, so it is cached per run and
-  // outcome — a per-frame redraw must never re-roll the roast.
+  // GRIT's Performance Review is a pure function of the run (Barks picks it by
+  // seed hash precisely so that opening this card cannot move run.rng — see the
+  // note over Barks.reviewPick). Cached per run and outcome anyway: it builds a
+  // string, and this runs every frame the card is up.
   let revRun = null, revKey = '', revLine = '';
   function reviewSafe(run, res) {
     if (!run || !DC.Barks || typeof DC.Barks.review !== 'function') return '';

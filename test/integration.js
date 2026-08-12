@@ -1785,6 +1785,45 @@ function recapSection(seed) {
     key('c');
     assertEq(st.screen, 'descend', 'C on the stats view still continues into the Mantle');
 
+    // --- the card is a spectator: reading it must not change the run --------
+    // On victory the run is STILL LIVE — C continues it into the Mantle. So if
+    // building the card drew from run.rng (the roast used to), the Mantle you
+    // got would depend on whether you pressed TAB on the way there. Two
+    // identical wins, one of which opens the card, must descend into the same
+    // schematic offers and the same map. (SPEC3 rule 4.)
+    {
+      const mkWon = (seed) => {
+        const r = S.newRun(defEffects(), seed);
+        r.splits = []; r.startedAt = 0; r.depth = D.STRATA_COUNT;
+        r.status = 'won'; r.breaches = D.STRATA_COUNT;
+        r.result = { depth: D.STRATA_COUNT, breaches: D.STRATA_COUNT,
+                     timeSec: 1200, cores: D.WIN_CORES, won: true };
+        return r;
+      };
+      const sig = (r) => {
+        let h = 0;
+        for (let y = 0; y < D.MAP_H; y++) for (let x = 0; x < D.MAP_W; x++) {
+          const t = r.grid[y][x];
+          h = (Math.imul(h, 31) + (String(t.t || '').charCodeAt(0) || 0) +
+               (t.ore ? String(t.ore).charCodeAt(0) : 0) + (t.oreAmt || 0)) | 0;
+        }
+        return h;
+      };
+      const descend = (r) => {
+        S.continueIntoMantle(r);
+        const offers = (r.pendingOffers || []).slice();
+        S.applySchematic(r, offers[0]);
+        return offers.join(',') + '#' + sig(r);
+      };
+      const plain = mkWon(90210);
+      const read = mkWon(90210);
+      const cardTxt = R.recapText({ run: read, ui: {}, meta: st.meta });
+      assert(cardTxt.length > 0, 'the spectator run built a card');
+      R.recapText({ run: read, ui: {}, meta: st.meta });   // and read it twice
+      assertEq(descend(read), descend(plain),
+        'opening the recap card does not change the Mantle (no rng feedback)');
+    }
+
     assert(!drawn.some((s) => s.indexOf('RENDER ERROR') >= 0),
       'no render faults across the recap drive');
     return card.rows.length;
