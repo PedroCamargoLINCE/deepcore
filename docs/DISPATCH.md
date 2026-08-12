@@ -46,7 +46,7 @@ with `git add -A`).
 | Wave | Session A | Session B | Session C |
 |---|---|---|---|
 | 1 | ~~M-POLISH (alone, on master)~~ ✅ **merged 2026-08-11** | — | — |
-| 2 | ~~M-ANIM-1 + M-ANIM-2~~ ✅ **merged 2026-08-11** | M-RECAP | M-MANUAL |
+| 2 | ~~M-ANIM-1 + M-ANIM-2~~ ✅ | ~~M-RECAP~~ ✅ | ~~M-MANUAL~~ ✅ **all merged 2026-08-11** |
 | 2.5 | **M-HIRES** (alone — see below) | — | — |
 | 3 | M-CORELORE + M-GRITPLUS | M-WONDERS | — |
 | 4 | M-EVENTS (big) | — | — |
@@ -250,11 +250,15 @@ Read SPEC.md, SPEC2.md, and SPEC3.md section M-HIRES in full, plus js/render.js
 (especially init(), flush() and pxToCell()) and js/data.js. Honor SPEC3's rules
 of engagement at the top of that file.
 
-The brief has three phases and they are ordered by value-per-risk. SHIP PHASE 1
-FIRST AND COMMIT IT before starting Phase 2 — Phase 1 alone is most of the
-value the director asked for, and a session limit mid-Phase-3 must not cost us
-the working scaling.
+The brief has four phases, ordered by value-per-risk. SHIP EACH AND COMMIT IT
+before starting the next — Phase 1 alone is most of the value the director
+asked for, and a session limit mid-Phase-3 must not cost us the working
+scaling.
 
+  Phase 0: fx.js's frame clock counts requestAnimationFrame callbacks while
+           assuming 60fps, and engine.js does not throttle — so frame-measured
+           animations run 2-2.4x too fast on a 120/144Hz monitor. Small fix,
+           drive the clock from elapsed milliseconds. Details in the brief.
   Phase 1: the canvas is a fixed 800x627 island on any real monitor because
            init() sets a CSS pixel size once on load and there is no resize
            handler anywhere in the codebase. Make it fill the viewport,

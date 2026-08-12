@@ -581,6 +581,29 @@ proportional fallback glyph has a different advance, so **every character after
 it in that run slides out of its cell** — one braille dot smears an entire row.
 Assume nothing here; probe at runtime (below).
 
+#### Phase 0 — The frame clock is wrong on high-refresh monitors (small, do it first)
+
+Found while reviewing M-ANIM, and it belongs here because this brief already
+owns render's timing and metrics.
+
+`engine.js`'s `loop()` runs at raw `requestAnimationFrame` rate with no render
+throttle, and `fx.js` increments its frame counter `F` once per callback while
+assuming `FPS = 60`. The sim is unaffected — it runs on a fixed-timestep
+accumulator, correctly decoupled — and anything `fx.js` measures in sim ticks
+against `run.t` is also correct. But every animation measured in *frames* runs
+**2–2.4× too fast on a 120/144 Hz display**: the damper heartbeat, the smelter
+breath, the breach-ready invitation pulse, GRIT's cigarette ember.
+
+`fx.js` documents the assumption in its header rather than hiding it, so this
+is a known trade, not a defect. Fix it by driving the clock from **elapsed
+milliseconds** instead of a frame count — `F` becomes a time base, and
+`breathe(period)` takes a duration rather than a frame span. Cosmetic-only, and
+determinism is unaffected (FX already owns a private PRNG and its own test
+proves it never touches `run.rng`).
+
+**Acceptance:** advance the stub clock at 60 and at 144 fps and assert an
+animation completes the same number of cycles per second of wall time.
+
 #### Phase 1 — Make it fill the screen (do this first; it is the whole complaint)
 
 Biggest visible payoff, zero dependencies, near-zero risk.
