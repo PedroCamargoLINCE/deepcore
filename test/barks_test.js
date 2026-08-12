@@ -400,7 +400,29 @@ let REVIEW_N = 0;
   {
     const a = S.newRun(defEffects(), 4242), b = S.newRun(defEffects(), 4242);
     const res = { depth: 4, won: false, timeSec: 500, cores: 3 };
-    assertEq(B.review(a, res), B.review(b, res), 'review is deterministic on run.rng');
+    assertEq(B.review(a, res), B.review(b, res), 'review is deterministic on the run seed');
+
+    // ...and the review must not TOUCH run.rng. It is the one bark that render
+    // asks for on demand — the card is a screen the player may never open, and
+    // on victory the run is still live. If picking the roast advanced the
+    // stream, the Mantle a player got would depend on whether they pressed TAB.
+    const c = S.newRun(defEffects(), 4242);
+    for (let i = 0; i < 8; i++) c.rng();                     // control: no card
+    const before = [];
+    for (let i = 0; i < 8; i++) before.push(c.rng());
+    const d = S.newRun(defEffects(), 4242);
+    for (let i = 0; i < 8; i++) d.rng();
+    for (let k = 0; k < 5; k++) B.review(d, res);            // open the card 5×
+    const after = [];
+    for (let i = 0; i < 8; i++) after.push(d.rng());
+    assertEq(after.join(','), before.join(','),
+      'review never advances run.rng (render must not feed back into sim)');
+
+    // and it still varies run to run — a constant would pass every check above
+    const seen = {};
+    for (let s = 1; s <= 40; s++) seen[B.review(S.newRun(defEffects(), s * 7919), res)] = 1;
+    assert(Object.keys(seen).length >= 5,
+      'review picks spread across the pool (' + Object.keys(seen).length + ' distinct in 40 seeds)');
   }
 }
 

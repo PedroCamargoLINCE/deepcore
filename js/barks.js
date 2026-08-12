@@ -584,10 +584,32 @@
     });
   }
 
+  // The review is the one bark RENDER asks for on demand: the recap card is a
+  // screen the player may or may not open, and may open at any frame. Every
+  // other pool is rolled from run.rng inside the game loop, where the draw
+  // happens for everyone at the same point in the sequence — but a draw made
+  // here would only happen for the player who pressed TAB, and on the victory
+  // screen the run is still live: one stolen number changes the Mantle's
+  // schematic offers AND its map generation. So this pool is picked by a pure
+  // hash of the run's seed and its outcome instead. run.rng is never advanced,
+  // the roast is the same roast whether or not you ever look at the card, and
+  // it is still per-run and unpredictable. (SPEC3 rule 4: render must never
+  // feed back into sim.)
+  function reviewPick(run, tier, ctx) {
+    let h = 0x811c9dc5;
+    const s = String((run && run.seed) >>> 0) + '|' + tier + '|' + ctx.depth;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    return (h >>> 1);
+  }
+
   function review(run, result) {
-    const pool = REVIEWS[reviewTier(run, result)] || REVIEWS.shallow;
-    const i = run && run.rng ? Math.floor(run.rng() * pool.length) : 0;
-    return fillReview(pool[i], reviewCtx(run, result));
+    const tier = reviewTier(run, result);
+    const pool = REVIEWS[tier] || REVIEWS.shallow;
+    const ctx = reviewCtx(run, result);
+    return fillReview(pool[reviewPick(run, tier, ctx) % pool.length], ctx);
   }
 
   DC.Barks = {
