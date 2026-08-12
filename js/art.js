@@ -17,6 +17,158 @@
   }
   function lay(s, at, ins) { return s.slice(0, at) + ins + s.slice(at + ins.length); }
 
+  // ================= M-HIRES Phase 2: the sub-cell rasterizer =================
+  // Block elements are already in the font — verified per codepoint with
+  // fc-match against DejaVu Sans Mono, all 15 quadrants (including the
+  // three-quarter ▛▜▙▟ the brief's table omitted), all 8 eighths in both
+  // axes, and the shades. No vendoring is needed for any of this.
+  //
+  // Pure and DOM-free like the rest of art.js: bitmap in, rows of glyphs out.
+  // No canvas, no measurement, unit-testable in bare node.
+  //
+  // THE CELL IS NOT SQUARE and that is the whole difficulty. A cell is
+  // 10 x 19 px, so a quadrant sub-pixel is 5 x 9.5 — very nearly TWICE as
+  // tall as it is wide. A circle plotted naively on that grid comes out an
+  // egg. Every shape helper here therefore works in sub-pixel columns and
+  // multiplies the y term by `aspect`, so what is round in the bitmap is
+  // round in PIXELS. Never eyeball this; the tests pin it.
+  //
+  // Where this may be used is a hard design constraint, not a preference
+  // (SPEC3 M-HIRES, and §0's chunky-beats-smooth law): NOT on the map. Every
+  // map tile is a semantic, clickable, one-glyph object and pxToCell resolves
+  // a click to exactly one cell — doubling map resolution would decouple what
+  // the player sees from what they can click. Sub-cell detail belongs on the
+  // non-interactive surfaces: gauges, the victory core, portrait, title art.
+  const CELL_W = 10, CELL_H = 19;
+
+  // Quadrant glyphs indexed by a 4-bit coverage mask: TL=1, TR=2, BL=4, BR=8.
+  const QUAD = [
+    ' ', '▘', '▝', '▀', '▖', '▌', '▞', '▛',
+    '▗', '▚', '▐', '▜', '▄', '▙', '▟', '█',
+  ];
+  // Partial-cell fills, index = eighths covered. Horizontal grows from the
+  // left edge, vertical from the bottom — the two directions a gauge fills.
+  const EIGHTH_H = [' ', '▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'];
+  const EIGHTH_V = [' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+  const SHADES = [' ', '░', '▒', '▓', '█'];
+
+  const R = A.raster = {
+    CELL_W: CELL_W, CELL_H: CELL_H,
+    QUAD: QUAD, EIGHTH_H: EIGHTH_H, EIGHTH_V: EIGHTH_V, SHADES: SHADES,
+
+    // A sub-cell bitmap covering `cols` x `rows` CELLS, subdivided sx by sy.
+    // `aspect` is the sub-pixel's height/width ratio: 1.9 for quadrants,
+    // 0.95 for a 2x4 braille cell (very nearly square — that is braille's
+    // whole appeal, and why Phase 3 wanted it).
+    bitmap: function (cols, rows, sx, sy) {
+      sx = sx || 2; sy = sy || 2;
+      const w = cols * sx, h = rows * sy;
+      return {
+        cols: cols, rows: rows, sx: sx, sy: sy, w: w, h: h,
+        aspect: (CELL_H / sy) / (CELL_W / sx),
+        data: new Uint8Array(w * h),
+      };
+    },
+    get: function (bm, x, y) {
+      if (x < 0 || y < 0 || x >= bm.w || y >= bm.h) return 0;
+      return bm.data[y * bm.w + x];
+    },
+    set: function (bm, x, y, v) {
+      if (x < 0 || y < 0 || x >= bm.w || y >= bm.h) return;
+      bm.data[y * bm.w + x] = v === undefined ? 1 : v;
+    },
+
+    // A disc that is round ON SCREEN. cx/cy/r are in sub-pixel COLUMNS; the
+    // y term is scaled by the sub-pixel aspect, so the shape ends up
+    // r * (CELL_W / sx) pixels in radius along BOTH axes.
+    disc: function (bm, cx, cy, r, v) {
+      const a = bm.aspect;
+      for (let y = 0; y < bm.h; y++) {
+        const dy = (y + 0.5 - cy) * a;
+        for (let x = 0; x < bm.w; x++) {
+          const dx = x + 0.5 - cx;
+          if (dx * dx + dy * dy <= r * r) R.set(bm, x, y, v === undefined ? 1 : v);
+        }
+      }
+      return bm;
+    },
+    // Normalised distance from a disc's centre, 0 at the core and 1 at the
+    // rim, in the same aspect-corrected space. Shading ramps read this.
+    radial: function (bm, x, y, cx, cy, r) {
+      const dx = x + 0.5 - cx, dy = (y + 0.5 - cy) * bm.aspect;
+      return Math.sqrt(dx * dx + dy * dy) / r;
+    },
+    // How many of a cell's sub-pixels are set (0..sx*sy), and their mask.
+    cellMask: function (bm, col, row) {
+      let mask = 0, n = 0, bit = 0;
+      for (let j = 0; j < bm.sy; j++) {
+        for (let i = 0; i < bm.sx; i++) {
+          if (R.get(bm, col * bm.sx + i, row * bm.sy + j)) { mask |= (1 << bit); n++; }
+          bit++;
+        }
+      }
+      return { mask: mask, n: n };
+    },
+    // The bitmap as rows of quadrant glyphs. 2x2 only — that is what the
+    // glyph repertoire can express.
+    quadrants: function (bm) {
+      const out = [];
+      for (let row = 0; row < bm.rows; row++) {
+        let s = '';
+        for (let col = 0; col < bm.cols; col++) s += QUAD[R.cellMask(bm, col, row).mask];
+        out.push(s);
+      }
+      return out;
+    },
+    // Level 0..4 as a shade glyph. Shades are for SOFT EDGES and gradients,
+    // never for structure: at 10x19 a ▒ next to a ▓ is a texture, not a line.
+    shade: function (level) {
+      return SHADES[Math.max(0, Math.min(SHADES.length - 1, Math.round(level)))];
+    },
+
+    // ---- gauges: eighths instead of whole cells ----------------------
+    // A bar `width` cells wide filled to `frac`, in 1/8-cell steps. Returns
+    // {full, part, rest}: the solid run, the partial glyph at its head, and
+    // how many cells are left empty — the caller paints the three pieces in
+    // its own colours, which is what keeps the fill and the track distinct.
+    // Eighths covered by `frac` of `cells`, with the two readings that
+    // actually matter at a glance protected (§0 law 6): a bar that has
+    // STARTED never renders as empty, and a bar that is not DONE never
+    // renders as full. Those are the two states a player reads without
+    // looking — a hull gauge that shows solid must mean undamaged.
+    eighths: function (frac, cells) {
+      const max = cells * 8;
+      frac = frac < 0 ? 0 : (frac > 1 ? 1 : frac);
+      let n = Math.round(frac * max);
+      if (frac > 0 && n <= 0) n = 1;
+      if (frac < 1 && n >= max) n = max - 1;
+      return n;
+    },
+    // A bar `width` cells wide. Returns {full, part, rest}: the solid run,
+    // the partial glyph at its head, and how many cells are left empty — the
+    // caller paints the three pieces in its own colours, which is what keeps
+    // the fill and the track distinct.
+    bar: function (frac, width) {
+      const n = R.eighths(frac, width);
+      const full = Math.floor(n / 8), part = n - full * 8;
+      return {
+        full: full,
+        part: part ? EIGHTH_H[part] : '',
+        rest: width - full - (part ? 1 : 0),
+        eighths: n,
+      };
+    },
+    // The same in the vertical: a column `height` cells tall filling upward.
+    gauge: function (frac, height) {
+      const n = R.eighths(frac, height);
+      const full = Math.floor(n / 8), part = n - full * 8;
+      const out = new Array(height).fill(' ');
+      for (let i = 0; i < full; i++) out[height - 1 - i] = '█';
+      if (part && full < height) out[height - 1 - full] = EIGHTH_V[part];
+      return out;
+    },
+  };
+
   const TEX  = '▓▓▒▓▓▓▓▒▒▓▓▒▓▓▓▓▓▒▓▓▓▒▓▓▒▒▓▓▓▒▓▓▓▓▒▓▓▓';   // shallow rock
   const DTEX = '▓▓█▓▓▒▓▓▓▓█▓▒▓▓▓▓▓█▓▓▒▓▓▓▓▓█▒▓▓▓▓▒▓▓█▓▓';   // deep rock
   const GLOW = '░▒░░▒▒░▒▒░░▒░░▒░▒▒░░▒░▒░░▒▒░';               // breach light
@@ -129,33 +281,64 @@
   ];
 
   // ---------------- victory: THE CORE ----------------
+  // M-HIRES Phase 2. This was 55 x 13 cells — 550 x 247 px, an ellipse more
+  // than twice as wide as it was tall. It was drawn with x/rx and y/ry
+  // normalised independently, which makes a shape that is circular in CELLS
+  // and therefore flat on screen: the exact egg the brief warns about, only
+  // squashed the other way. The core is the payoff image of the whole game
+  // and it was not a sphere.
+  //
+  // Now it is rasterised through A.raster, which does the aspect arithmetic
+  // in pixels: 33 x 17 cells is 330 x 323 px, round to within 2%. The silhouette
+  // is sampled at 2 x 2 sub-cells so the rim steps in half-cells rather than
+  // whole ones, and the radial shading ramp is kept exactly as it was — it is
+  // what makes the thing read as a lit sphere instead of a disc, and §0 law 6
+  // says legibility outranks any cleverness I could put in its place.
+  const VICTORY_W = 33, VICTORY_H = 17;
   (function () {
-    const rx = 27, ry = 6, W = rx * 2 + 1;   // 55 wide, 13 rows
+    const bm = R.bitmap(VICTORY_W, VICTORY_H, 2, 2);
+    const cx = bm.w / 2, cy = bm.h / 2;
+    // Radius in sub-columns: the largest disc that fits BOTH axes once the
+    // sub-pixel's 1.9:1 aspect is accounted for, less half a cell of margin.
+    const rad = Math.min(bm.w / 2, (bm.h / 2) * bm.aspect) - 0.6;
+    R.disc(bm, cx, cy, rad, 1);
+
     const lines = [];
-    for (let y = -ry; y <= ry; y++) {
+    for (let row = 0; row < VICTORY_H; row++) {
       let s = '';
-      for (let x = -rx; x <= rx; x++) {
-        const d = (x * x) / (rx * rx) + (y * y) / (ry * ry);
+      for (let col = 0; col < VICTORY_W; col++) {
+        const cover = R.cellMask(bm, col, row).n;         // 0..4 sub-pixels lit
+        // distance from the core, 0 at the centre and 1 at the rim, measured
+        // in the same aspect-corrected space the disc was drawn in
+        const d = R.radial(bm, col * 2 + 1, row * 2 + 1, cx, cy, rad);
         let ch = ' ';
-        if (d <= 0.045) ch = '☼';
-        else if (d <= 0.16) ch = '█';
-        else if (d <= 0.42) ch = '▓';
-        else if (d <= 0.72) ch = '▒';
-        else if (d <= 1.0) ch = '░';
-        else if (d <= 1.35 && (x * 7 + y * 13) % 9 === 0) ch = '·';
+        if (cover === 0) {
+          if (d <= 1.3 && (col * 7 + row * 13) % 9 === 0) ch = '·';   // sparks
+        } else if (d <= 0.10) ch = '☼';
+        else if (d <= 0.38) ch = '█';
+        else if (d <= 0.62) ch = '▓';
+        else if (d <= 0.82) ch = '▒';
+        else ch = '░';
         s += ch;
       }
       lines.push(s);
     }
     // the tiny rig, silhouetted against the lower limb of the core
-    const c = rx - 1;
-    lines[ry + 4] = lay(lines[ry + 4], c, ' ╥ ');
-    lines[ry + 5] = lay(lines[ry + 5], c, '╔╩╗');
-    lines[ry + 6] = lay(lines[ry + 6], c, '║·║');
+    const c = (VICTORY_W >> 1) - 1;
+    lines[VICTORY_H - 5] = lay(lines[VICTORY_H - 5], c, ' ╥ ');
+    lines[VICTORY_H - 4] = lay(lines[VICTORY_H - 4], c, '╔╩╗');
+    lines[VICTORY_H - 3] = lay(lines[VICTORY_H - 3], c, '║·║');
+    // padded to the full width so drawArt, which centres each line by its own
+    // length, puts the caption over the sphere rather than 3 columns right of it
     const cap = '≡≡  T H E   C O R E  ≡≡';
-    lines.unshift(sp((W - cap.length) >> 1) + cap);
-    lines.push(rep('▀', W));
+    const lead = Math.max(0, (VICTORY_W - cap.length) >> 1);
+    lines.unshift((sp(lead) + cap + sp(VICTORY_W)).slice(0, VICTORY_W));
+    lines.push(rep('▀', VICTORY_W));
     A.victory = lines;
+    // Published so fx.js's core pulse can band the shading against the real
+    // geometry instead of a hardcoded half-width (it had rx = 28, which was
+    // the OLD sphere).
+    A.victoryGeom = { w: VICTORY_W, h: VICTORY_H, top: 1 };
   })();
 
   // ---------------- help: THE FIELD MANUAL (two pages) ----------------

@@ -164,11 +164,30 @@
     text(col, row + h - 1, '└' + horiz + '┘', color);
     if (title) text(col + 2, row, (' ' + title + ' ').slice(0, Math.max(0, w - 4)), titleColor || color);
   }
+  // M-HIRES Phase 2: gauges fill in EIGHTHS of a cell, not whole cells.
+  // A 13-cell integrity bar used to quantise to 7.7 points of hull; it now
+  // resolves to under one, so the bar moves when the rig takes a hit instead
+  // of sitting still for six of them and then jumping. That is the single
+  // cheapest readability win in the brief (§0 law 6), and it costs one glyph
+  // per bar — the partial cell is drawn in the FILL colour so the boundary
+  // between "filled" and "track" stays unambiguous at a glance.
+  //
+  // Falls back to whole cells if art.js is absent (render is defensive about
+  // its assets by contract) — the bar is never wrong, only coarser.
   function bar(col, row, width, frac, color) {
     frac = U.clamp(frac || 0, 0, 1);
-    const n = Math.round(frac * width);
-    if (n > 0) text(col, row, '█'.repeat(n), color);
-    if (n < width) text(col + n, row, '░'.repeat(width - n), C.darkgray);
+    const R = DC.Art && DC.Art.raster;
+    if (!R || !R.bar) {
+      const n = Math.round(frac * width);
+      if (n > 0) text(col, row, '█'.repeat(n), color);
+      if (n < width) text(col + n, row, '░'.repeat(width - n), C.darkgray);
+      return;
+    }
+    const b = R.bar(frac, width);
+    let x = col;
+    if (b.full > 0) { text(x, row, '█'.repeat(b.full), color); x += b.full; }
+    if (b.part) { put(x, row, b.part, color); x += 1; }
+    if (b.rest > 0) text(x, row, '░'.repeat(b.rest), C.darkgray);
   }
   function wrap(str, w) {
     const out = [];
@@ -257,6 +276,11 @@
     const inner = ' ' + name + ' ';
     const h = '─'.repeat(inner.length);
     return ['┌' + h + '┐', '│' + inner + '│', '└' + h + '┘'];
+  }
+  function artWidth(lines) {
+    let w = 0;
+    for (const ln of lines) if (ln.length > w) w = ln.length;
+    return w;
   }
   function art(name) {
     const A = DC.Art;
@@ -1139,7 +1163,9 @@
   function drawVictory(state, phase) {
     const lines = art('victory');
     drawArt(lines, 1, artColor('victory', C.magmaHot));
-    layout.artBlock = { row: 1, h: lines.length };   // fx: the core sphere pulses
+    // fx: the core sphere pulses. `w` is published so the pulse bands against
+    // the sphere's real half-width instead of a hardcoded one (M-HIRES).
+    layout.artBlock = { row: 1, h: lines.length, w: artWidth(lines) };
     const y = Math.min(1 + lines.length + 1, 24);
     statsBlock(y, fallbackResult(state.run, true));
     ctext(y + 5, '+' + D.WIN_CORES + ' ◈ CORE BONUS', phase ? C.magenta : shade(C.magenta, 0.6));

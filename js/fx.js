@@ -703,7 +703,10 @@
     const A = surf.layout && surf.layout.artBlock;
     if (!A) return;
     const cy = A.row + (A.h >> 1), cx = (D.COLS / 2) | 0;
-    const rx = 28, ry = A.h / 2;
+    // The sphere's real half-width, published by render (M-HIRES Phase 2
+    // re-rasterised the core and it is no longer 55 cells across). The
+    // fallback keeps this working if an older render is loaded beside it.
+    const rx = (A.w ? A.w : 56) / 2, ry = A.h / 2;
     const ph = (F / 24) | 0;
     const done = typedDone('toast');
     const ring = done ? (F - done) / 40 : -1;      // expands over ~0.7s
