@@ -285,6 +285,75 @@ for (const id of schemIds) {
 
   assert(R.shade(0) === ' ' && R.shade(4) === '█' && R.shade(2) === '▒',
     'the shade ramp maps 0..4 to " ░▒▓█"');
+
+  // ---- braille (Phase 3): the dot numbering is not raster order ---------
+  // Unicode numbers the dots 1,2,3,7 down the left and 4,5,6,8 down the
+  // right, so the BOTTOM row is the two high bits. Walk all eight positions
+  // one at a time: a transposed row or column cannot survive this.
+  const DOT = [
+    [0x01, 0x08],   // row 0 -> dots 1, 4
+    [0x02, 0x10],   // row 1 -> dots 2, 5
+    [0x04, 0x20],   // row 2 -> dots 3, 6
+    [0x40, 0x80],   // row 3 -> dots 7, 8
+  ];
+  for (let j = 0; j < 4; j++) {
+    for (let i = 0; i < 2; i++) {
+      const b = R.bitmap(1, 1, 2, 4);
+      R.set(b, i, j, 1);
+      const got = R.braille(b)[0];
+      const want = String.fromCharCode(0x2800 + DOT[j][i]);
+      assert(got === want,
+        'braille dot at sub-pixel ' + i + ',' + j + ' is U+' +
+        (0x2800 + DOT[j][i]).toString(16).toUpperCase() +
+        ' (got U+' + got.charCodeAt(0).toString(16).toUpperCase() + ')');
+    }
+  }
+  const empty = R.bitmap(1, 1, 2, 4);
+  assert(R.braille(empty)[0] === '⠀', 'an empty braille cell is U+2800, not a space');
+  const solid = R.bitmap(1, 1, 2, 4);
+  for (let j = 0; j < 4; j++) for (let i = 0; i < 2; i++) R.set(solid, i, j, 1);
+  assert(R.braille(solid)[0] === '⣿', 'a full braille cell is U+28FF');
+  // every glyph it can emit is inside the braille block
+  const bigger = R.bitmap(6, 3, 2, 4);
+  R.disc(bigger, bigger.w / 2, bigger.h / 2, 4, 1);
+  for (const line of R.braille(bigger)) {
+    for (const chr of line) {
+      const cp = chr.codePointAt(0);
+      assert(cp >= 0x2800 && cp <= 0x28FF, 'braille output stays in U+2800-28FF');
+    }
+  }
+
+  // ---- both core builds occupy the same cells ---------------------------
+  // The braille build is swapped in at RUNTIME behind a probe, so it must not
+  // move the layout by a single cell or the stats block below it shifts.
+  const blockCore = A.coreSphere('blocks');
+  const brailleCore = A.coreSphere('braille');
+  assert(blockCore.length === brailleCore.length,
+    'the braille and block core builds are the same height');
+  for (let i = 0; i < blockCore.length; i++) {
+    assert(blockCore[i].length === brailleCore[i].length,
+      'core row ' + i + ' is the same width in both builds');
+  }
+  assert(blockCore.join('\n') !== brailleCore.join('\n'),
+    'scaffold: the two builds really do differ, so the probe decides something');
+  // the interior shading ramp survives in BOTH: it is what makes the core
+  // read as a lit sphere, and a uniform braille fill would throw it away
+  for (const build of [blockCore, brailleCore]) {
+    const mid = build[Math.floor(build.length / 2)];
+    for (const g of ['█', '▓', '▒', '░']) {
+      assert(mid.indexOf(g) >= 0,
+        'the core keeps its ' + g + ' shading band in both builds');
+    }
+  }
+  const brailleRow = brailleCore[2];
+  assert(Array.from(brailleRow).some((c) => {
+    const cp = c.codePointAt(0);
+    return cp >= 0x2800 && cp <= 0x28FF;
+  }), 'the braille build really does put braille on the rim');
+  assert(!Array.from(blockCore.join('')).some((c) => {
+    const cp = c.codePointAt(0);
+    return cp >= 0x2800 && cp <= 0x28FF;
+  }), 'and the block build contains no braille at all — it is the safe default');
 })();
 
 console.log('rig_test OK — ' + checks + ' checks passed');
