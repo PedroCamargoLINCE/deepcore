@@ -8,7 +8,9 @@
 
   function blankTile(t) {
     return { t: t, ore: null, oreAmt: 0, machine: null, belt: null,
-             rubble: false, digT: 0, revealed: false };
+             rubble: false, digT: 0, revealed: false,
+             // M-WONDERS: { id, g } when this tile belongs to a landmark.
+             lm: null };
   }
 
   function generate(depth, rng, mods) {
@@ -256,7 +258,167 @@
       seen = reachSet();
     }
 
-    return { grid: grid, hub: { x: hx, y: hy } };
+    // -- 8. landmark (M-WONDERS) -------------------------------------------
+    // Runs LAST, on a finished map, and is the only step that can be refused.
+    //
+    // DETERMINISM WITHOUT STREAM CHURN. This step draws ZERO numbers from
+    // `rng`. It seeds a private mulberry32 from a hash of the grid the steps
+    // above just produced, so it is still a pure function of the run seed —
+    // the same seed always yields the same landmark in the same place — while
+    // leaving `run.rng` positioned exactly where it was before landmarks
+    // existed. Every vein roll, quake timer and schematic offer downstream is
+    // therefore bit-identical to the pre-M-WONDERS build, which is what makes
+    // the balance sweep's before/after readable: any movement in it is the
+    // landmark's MECHANICS, never a reshuffled map.
+    //
+    // THE INVARIANTS. Mapgen is the module where a bug hides for seeds before
+    // it surfaces, so placement is verify-then-keep rather than
+    // reason-then-hope:
+    //   1. no landmark cell may carry ore      (a vein is never overwritten)
+    //   2. no landmark cell may be hub or clearing
+    //   3. every floor tile reachable from the rig BEFORE placement must
+    //      still be reachable after it, except the cells the landmark itself
+    //      consumed (nothing is ever walled off)
+    // Any candidate that fails is reverted tile-by-tile and the next is tried.
+    // If every candidate fails, the map ships with no landmark — a stratum
+    // without a wonder is a lesser stratum, never a broken one.
+    function gridHash() {
+      let h = (0x811c9dc5 ^ Math.imul(depth, 0x9e3779b1)) >>> 0;
+      for (let y = 0; y < H; y++)
+        for (let x = 0; x < W; x++) {
+          const t = grid[y][x];
+          h ^= t.t.charCodeAt(0) + (t.ore ? t.ore.charCodeAt(0) * 7 + t.oreAmt : 0);
+          h = Math.imul(h, 0x01000193);
+        }
+      h ^= hx * 31 + hy;
+      return Math.imul(h, 0x01000193) >>> 0;
+    }
+
+    // Terrain a landmark may consume. Magma is excluded on purpose: sim counts
+    // magma tiles at stratum start to size `run.magmaCap`, and quietly eating
+    // some would change a hazard budget this module has no business touching.
+    const LM_OVER = { floor: true, rock: true, obsidian: true, chasm: true };
+    const MIN_D = D.LANDMARK_MIN_DIST || 12;
+
+    function lmCells(def, ax, ay, lrng) {
+      const cells = [];
+      if (def.art) {
+        for (let dy = 0; dy < def.art.length; dy++)
+          for (let dx = 0; dx < def.art[dy].length; dx++) {
+            const g = def.art[dy][dx];
+            if (g === ' ') continue;
+            cells.push({ x: ax + dx, y: ay + dy, g: g });
+          }
+        return cells;
+      }
+      // scattered: loose cells in a disc, deduped, order-stable
+      const r = def.scatter.r, seen = {};
+      for (let att = 0; att < def.scatter.n * 8 && cells.length < def.scatter.n; att++) {
+        const dx = U.ri(lrng, -r, r), dy = U.ri(lrng, -r, r);
+        if (dx * dx + dy * dy > r * r) continue;
+        const k = (ay + dy) * W + (ax + dx);
+        if (seen[k]) continue;
+        seen[k] = 1;
+        cells.push({ x: ax + dx, y: ay + dy, g: def.glyph });
+      }
+      return cells;
+    }
+
+    function cellOk(def, c) {
+      if (!inb(c.x, c.y)) return false;
+      const t = grid[c.y][c.x];
+      if (t.ore || t.machine !== null) return false;      // invariant 1 & 2
+      if (inClear(c.x, c.y)) return false;                // invariant 2
+      if (!LM_OVER[t.t]) return false;
+      if (def.needReach && t.t !== 'floor') return false;
+      return true;
+    }
+
+    let landmark = null;
+    const lrng = U.mulberry32(gridHash());
+    const pool = (D.LANDMARKS || []).filter(l => depth >= l.min);
+    if (pool.length) {
+      const order = U.shuffle(lrng, pool);
+      // anchors far enough from the rig that no aura is free, shuffled once
+      // and shared by every candidate landmark this map tries.
+      const anchors = [];
+      for (let y = 1; y < H - 1; y++)
+        for (let x = 1; x < W - 1; x++)
+          if (Math.hypot(x - hcx, y - hcy) >= MIN_D) anchors.push({ x: x, y: y });
+      const tries = U.shuffle(lrng, anchors);
+
+      const before = reachSet();
+      // Each full verification is two floods of the map, so the search is
+      // budgeted: cheap checks may be tried 240 times per landmark, but only
+      // 30 candidates ever get flooded. Mapgen runs once per stratum and the
+      // balance sweep runs it thousands of times — an unbounded retry loop
+      // here is how a "harmless" mapgen tweak becomes a hung harness.
+      let verified = 0;
+      for (let oi = 0; oi < order.length && !landmark; oi++) {
+        const def = order[oi];
+        const minCells = def.scatter ? Math.ceil(def.scatter.n * 0.6) : 0;
+        for (let ti = 0; ti < tries.length && ti < 240 && verified < 30; ti++) {
+          const a = tries[ti];
+          let cells = lmCells(def, a.x, a.y, lrng);
+          if (def.scatter) cells = cells.filter(c => cellOk(def, c));
+          if (!cells.length) continue;
+          if (def.scatter ? cells.length < minCells : !cells.every(c => cellOk(def, c))) continue;
+          // needReach: the landmark is only worth anything if the player can
+          // stand on/next to it, so require the anchor to be live ground.
+          if (def.needReach && !cells.some(c => before.has(c.y * W + c.x))) continue;
+          // otherwise: reachable OR at least approachable by digging — never
+          // sealed inside glass, a chasm or lava with no way in.
+          if (!def.needReach) {
+            let open = false;
+            for (const c of cells) {
+              for (const d of D.DIRS) {
+                const nx = c.x + d.dx, ny = c.y + d.dy;
+                if (!inb(nx, ny)) continue;
+                const tt = grid[ny][nx];
+                if (tt.t === 'floor' || tt.t === 'rock') { open = true; break; }
+              }
+              if (open) break;
+            }
+            if (!open) continue;
+          }
+
+          verified++;
+          const prev = cells.map(c => grid[c.y][c.x].t);
+          for (const c of cells) {
+            const t = grid[c.y][c.x];
+            t.t = def.base;
+            t.lm = { id: def.id, g: c.g };
+          }
+          // invariant 3: nothing the rig could reach may have been walled off
+          const after = reachSet();
+          const eaten = new Set(cells.map(c => c.y * W + c.x));
+          let ok = true;
+          for (const k of before) if (!eaten.has(k) && !after.has(k)) { ok = false; break; }
+          if (ok) {
+            // `was` is the terrain this cell replaced. It is not decoration:
+            // test/headless.js rebuilds the pre-landmark map from it and
+            // re-derives invariant 3 from scratch, rather than trusting the
+            // check twelve lines above to be the one that is right.
+            landmark = { id: def.id, x: a.x, y: a.y,
+                         cx: a.x + ((def.art ? def.art[0].length : 1) - 1) / 2,
+                         cy: a.y + ((def.art ? def.art.length : 1) - 1) / 2,
+                         cells: cells.map((c, i) => ({ x: c.x, y: c.y, was: prev[i] })) };
+            break;
+          }
+          for (let i = 0; i < cells.length; i++) {   // revert, tile by tile
+            const t = grid[cells[i].y][cells[i].x];
+            t.t = prev[i];
+            t.lm = null;
+          }
+        }
+      }
+      // a scattered landmark's "centre" is the anchor it grew around
+      if (landmark && D.LANDMARK_BY_ID[landmark.id].scatter) {
+        landmark.cx = landmark.x; landmark.cy = landmark.y;
+      }
+    }
+
+    return { grid: grid, hub: { x: hx, y: hy }, landmark: landmark };
   }
 
   DC.MapGen = { generate: generate };
