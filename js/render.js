@@ -1262,10 +1262,12 @@
     const frame = (DC.Art && DC.Art.eventFrame) ? DC.Art.eventFrame(ev.id) : [''];
     box(VG_X, VG_ROW, 40, 14, mix(accent, C.bg, 0.55));
     const inner = frame.slice(0, 12);
+    // The BLOCK is centred, never the individual rows: a panel whose rows are
+    // different lengths (they all are) would shear into nonsense if each row
+    // found its own centre.
+    const ax = VG_X + 1 + blockX(inner, 38);
     let ay = VG_ROW + 1 + Math.max(0, (12 - inner.length) >> 1);
-    for (const ln of inner) {
-      text(VG_X + 1 + Math.max(0, (38 - ln.length) >> 1), ay++, ln.slice(0, 38), C.rock);
-    }
+    for (const ln of inner) text(ax, ay++, ln.slice(0, 38), C.rock);
 
     let py = VG_ROW + 15;
     for (const p of (ev.text || []).slice(0, 2)) {
@@ -1297,9 +1299,13 @@
   // the entries themselves are gold, the colour the LOG already gives a
   // found log, so the two readings of the same line agree.
   const LOG_ROW0 = 5;                       // first entry row
-  const LOG_COL = 4;                        // left margin of the number column
+  const LOG_COL = 3;                        // left margin of the number column
   const LOG_TEXT = LOG_COL + 5;             // where the entry itself starts
-  const LOG_W = COLS - LOG_TEXT - 3;        // room the entry has to read in
+  // Wide enough for the longest entry the corpus allows (70 columns, the same
+  // ceiling every authored line in this game answers to), with a margin left
+  // over. A logbook that clips its own entries mid-word is worse than no
+  // logbook: the whole page exists to be read (SPEC3 §0 law 6).
+  const LOG_W = COLS - LOG_TEXT - 2;
   function logDots(color) { return color; }  // (named for the test to point at)
   function drawLogbook(state) {
     const meta = state.meta || {};

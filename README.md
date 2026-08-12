@@ -102,6 +102,13 @@ Everything runs on plain `node` — no test runner, no install:
 `js/data.js` is the balance source of truth; the in-game field manual composes
 its numbers from it at load, so tuning a constant retunes the manual too.
 
+`js/events.js` (`DC.Events`) is the roguelike texture layer: what the rock has
+in it (8% of excavations pay out), the twenty Dead Foremen whose logs you
+collect across runs into the Foundry's `[L]ogbook`, the twenty two-choice
+expedition vignettes that open a quarter of descents, and the cave-cat. It
+rolls on a stream derived from `run.seed` rather than on `run.rng`, so a find
+can never move the quake schedule — same seed and same play, same finds.
+
 `js/fx.js` (`DC.FX`) is the animation layer: a render-side frame clock, a small
 particle list, and the per-tile choreography of SPEC3 §A. It makes no sim edits
 and reads no randomness from `run.rng` — everything it shows is derived from
