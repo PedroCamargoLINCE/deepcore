@@ -475,8 +475,116 @@ function addSecondIronExtractor(smelter, reach) {
 }
 
 // -------------------------------------------------------------------- main
+// ------------------------------------------- M-RECAP: the save, DOM-free
+// meta.js grew two fields (ghost splits, the Daily Shaft history) after v1
+// saves had already shipped. This asserts the load path in bare node with no
+// storage at all: a v1 profile must come back whole, with the new fields
+// defaulted, and the new helpers must be pure functions of their arguments
+// (dailyKey takes the timestamp; nothing here reads a clock).
+function checkSave() {
+  const M = DC.Meta;
+  const fresh = M.newProfile();
+  assert(fresh.v === M.SAVE_V, 'a fresh profile carries the save version');
+  assert(fresh.bestSplits && typeof fresh.bestSplits === 'object',
+    'a fresh profile has a bestSplits table');
+  assert(Array.isArray(fresh.dailyHistory), 'a fresh profile has a daily history');
+
+  // load() with no localStorage must not throw and must be a fresh profile
+  const loaded = M.load();
+  assert(loaded && Array.isArray(loaded.dailyHistory) && loaded.v === M.SAVE_V,
+    'Meta.load is headless-safe and returns a migrated profile');
+
+  // best splits: lower time wins, junk is refused
+  const p = M.newProfile();
+  assert(M.bestSplit(p, 3) === 0, 'no record yet reads as 0 (no ghost to race)');
+  assert(M.recordSplit(p, 3, 141.24) === true, 'first split for a depth records');
+  assert(M.bestSplit(p, 3) === 141.2, 'split stored to a tenth of a second');
+  assert(M.recordSplit(p, 3, 150) === false, 'a slower split does not overwrite');
+  assert(M.recordSplit(p, 3, 120.5) === true, 'a faster split takes the record');
+  assert(M.bestSplit(p, 3) === 120.5, 'best split is the fastest seen');
+  assert(M.recordSplit(p, 0, 10) === false, 'depth 0 is not a stratum');
+  assert(M.recordSplit(p, 4, -3) === false, 'negative times are refused');
+  assert(M.recordSplit(p, 4, NaN) === false, 'NaN times are refused');
+  assert(M.recordSplits(p, [{ depth: 5, sec: 90 }, { depth: 6, sec: 80 }, null]) === 2,
+    'recordSplits banks a whole run and survives holes in the list');
+
+  // the Daily Shaft: one seed per UTC date, one ranked attempt per date
+  assert(M.dailyKey(Date.UTC(2026, 0, 5, 23, 59, 59)) === '2026-01-05', 'dailyKey is UTC');
+  assert(M.dailyKey(Date.UTC(2026, 0, 6, 0, 0, 1)) === '2026-01-06', 'dailyKey rolls at UTC midnight');
+  const s1 = M.dailySeed('2026-01-05'), s2 = M.dailySeed('2026-01-06');
+  assert(s1 === M.dailySeed('2026-01-05'), 'the daily seed is a pure hash of the date');
+  assert(s1 !== s2, 'consecutive days are different shafts');
+  assert(s1 >= 0 && s1 < 2 ** 31 && (s1 | 0) === s1, 'daily seed is a positive 31-bit int');
+  assert(M.recordDaily(p, { date: '2026-01-05', depth: 4, timeSec: 512, cores: 3 }) === true,
+    'the first attempt of a date ranks');
+  assert(M.recordDaily(p, { date: '2026-01-05', depth: 9, timeSec: 99, cores: 9 }) === false,
+    'later attempts that day are practice and are not recorded');
+  assert(M.dailyEntry(p, '2026-01-05').depth === 4, 'the ranked attempt is the one kept');
+  assert(M.dailyEntry(p, '2026-01-06') === null, 'no entry for a day not played');
+  assert(M.recordDaily(p, { date: 'yesterday', depth: 1, timeSec: 1 }) === false,
+    'a malformed date is refused rather than repaired');
+
+  // --- the real migration: a v1 save read back through Meta.load ---
+  // (a bare-object storage stub, exactly the shape meta.js guards for)
+  const cell = {};
+  global.localStorage = {
+    getItem: (k) => (k in cell ? cell[k] : null),
+    setItem: (k, v) => { cell[k] = String(v); },
+  };
+  try {
+    // written by a build that predates M-RECAP: no v, no bestSplits, no history
+    cell[D.SAVE_KEY] = JSON.stringify({
+      cores: 7, upgrades: { m_stock: 1, m_bogus: 3 }, bestDepth: 5,
+      wins: 1, runs: 9, totalCores: 22,
+    });
+    const old = M.load();
+    assert(old.cores === 7 && old.bestDepth === 5 && old.runs === 9,
+      'a v1 save still loads its own fields');
+    assert(old.upgrades.m_stock === 1 && !('m_bogus' in old.upgrades),
+      'v1 upgrades survive; unknown ids are dropped');
+    assert(old.v === M.SAVE_V, 'the loaded profile is stamped with the new version');
+    assert(Object.keys(old.bestSplits).length === 0,
+      'a v1 profile loads with no ghosts rather than undefined');
+    assert(old.dailyHistory.length === 0,
+      'a v1 profile loads with an empty daily history rather than undefined');
+    // it can then take new records and round-trip them
+    M.recordSplit(old, 2, 88.5);
+    M.recordDaily(old, { date: '2026-02-02', depth: 3, timeSec: 300, cores: 2 });
+    M.save(old);
+    const back = M.load();
+    assert(back.bestSplits['2'] === 88.5, 'a new record round-trips through the save');
+    assert(back.dailyHistory.length === 1 && back.dailyHistory[0].date === '2026-02-02',
+      'the daily history round-trips through the save');
+
+    // a save corrupted in the NEW fields must degrade, never throw
+    cell[D.SAVE_KEY] = JSON.stringify({
+      cores: 3, bestSplits: { '0': 5, x: 3, '3': -1, '4': 'nope', '5': 12.34, '6': 9 },
+      dailyHistory: [null, 42, { date: 'nope' },
+                     { date: '2026-03-03', depth: 4, timeSec: 100 },
+                     { date: '2026-03-03', depth: 99, timeSec: 1 }],
+    });
+    const dirty = M.load();
+    assert(Object.keys(dirty.bestSplits).sort().join(',') === '5,6',
+      'only sane split records survive (got ' + JSON.stringify(dirty.bestSplits) + ')');
+    assert(dirty.bestSplits['5'] === 12.3, 'split times are normalised on load');
+    assert(dirty.dailyHistory.length === 1 && dirty.dailyHistory[0].depth === 4,
+      'malformed and duplicate-date daily rows are dropped');
+    cell[D.SAVE_KEY] = '{not json at all';
+    assert(M.load().cores === 0, 'corrupt JSON still yields a fresh profile');
+  } finally {
+    delete global.localStorage;
+  }
+
+  // the new helpers must also tolerate a profile object that predates them
+  const legacy = { cores: 1, upgrades: {} };
+  assert(M.bestSplit(legacy, 2) === 0, 'bestSplit on a v1 profile reads 0');
+  assert(M.dailyEntry(legacy, '2026-01-05') === null, 'dailyEntry on a v1 profile is null');
+  assert(M.recordSplit(legacy, 2, 100) === true, 'a v1 profile can still take a record');
+}
+
 function main() {
   checkArt();
+  checkSave();
 
   const eff = DC.Meta.effects(DC.Meta.newProfile());
   assert(eff && typeof eff.instMult === 'number' && eff.offerCount === 3,

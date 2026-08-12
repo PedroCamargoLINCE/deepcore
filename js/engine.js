@@ -17,6 +17,7 @@
   let awardedCores = 0;      // cores already banked (mantle-death delta support)
   let breachFlashed = false; // breach-ready banner shown for this stratum
   let helpFrom = 'title';    // screen to return to from help
+  let recapFrom = 'gameover';// screen to return to from the recap card
   let gesture = {};          // "x,y" -> true: belts placed in the current drag/lay gesture
 
   // ---------------- startup ----------------
@@ -43,6 +44,7 @@
     DC.state = {
       screen: 'title',
       meta: DC.Meta.load(),
+      today: DC.Meta.dailyKey(Date.now()),   // M-RECAP: the Daily Shaft's date
       run: null,
       ui: {
         tool: null, facing: 1,
@@ -50,6 +52,7 @@
         cursor: { x: (D.MAP_W / 2) | 0, y: (D.MAP_H / 2) | 0 },
         dragging: false, dragLast: null, laying: false,
         paused: false, descendAnim: 0, shakeUntil: 0, flash: null,
+        copied: null,          // M-RECAP: the recap card's clipboard notice
       },
     };
     window.addEventListener('keydown', onKey);
@@ -168,25 +171,78 @@
 
   // ---------------- run lifecycle ----------------
 
-  function newRun(st) {
-    const seed = params.seed !== null ? params.seed : (Math.random() * 2 ** 31) | 0;
-    st.run = DC.Sim.newRun(DC.Meta.effects(st.meta), seed);
+  // opts.daily (M-RECAP): the Daily Shaft — the seed is a hash of today's UTC
+  // date, and the rig runs NAKED (Foundry effects deliberately not applied, so
+  // the day's ladder measures play and not banked cores). The first attempt of
+  // a date is the ranked one; every later attempt that day is practice and is
+  // never recorded.
+  function newRun(st, opts) {
+    opts = opts || {};
+    let seed, effects, daily = null;
+    if (opts.daily) {
+      const date = DC.Meta.dailyKey(Date.now());
+      seed = DC.Meta.dailySeed(date);
+      effects = DC.Meta.effects(DC.Meta.newProfile());
+      daily = { date: date, practice: !!DC.Meta.dailyEntry(st.meta, date) };
+    } else {
+      seed = params.seed !== null ? params.seed : (Math.random() * 2 ** 31) | 0;
+      effects = DC.Meta.effects(st.meta);
+    }
+    st.run = DC.Sim.newRun(effects, seed);
+    // Engine-owned recap bookkeeping. The sim knows nothing about any of it:
+    // splits are stamped at descend time, startedAt is wall-clock (engine may
+    // read a clock; sim may not).
+    st.run.daily = daily;
+    st.run.splits = [];
+    st.run.startedAt = Date.now();
     awarded = false; awardedCores = 0; breachFlashed = false;
     const ui = st.ui;
     ui.tool = null; ui.facing = 1; ui.hover = null;
     ui.dragging = false; ui.dragLast = null; ui.laying = false;
     ui.paused = false; ui.descendAnim = 0; ui.shakeUntil = 0; ui.flash = null;
+    ui.copied = null;
     gesture = {};
     centerCursor(st);
     arriveFlash(st);
     acc = 0;
     st.screen = 'run';
-    bark('runStart');
+    bark(daily ? (daily.practice ? 'dailyPractice' : 'dailyStart') : 'runStart');
+  }
+
+  // M-RECAP: one cleared stratum = one split. Stamped the moment the descent
+  // is accepted, because startStratum resets run.t on the way into the next
+  // floor. gearsFed/chargesFed reset with it, so the totals ride along.
+  function recordSplit(run) {
+    if (!run) return;
+    if (!Array.isArray(run.splits)) run.splits = [];
+    run.splits.push({
+      depth: run.depth,
+      sec: run.t / D.TICK_HZ,
+      gears: run.gearsFed || 0,
+      charges: run.chargesFed || 0,
+    });
+  }
+
+  // Everything the finished run leaves behind in the save: ghost splits for
+  // every stratum it cleared, and the Daily result when the run was today's
+  // ranked attempt. Idempotent — the Mantle path awards twice.
+  function recordRunMeta(st) {
+    const run = st.run;
+    if (!run) return;
+    DC.Meta.recordSplits(st.meta, run.splits);
+    const d = run.daily;
+    if (d && !d.practice && run.result) {
+      DC.Meta.recordDaily(st.meta, {
+        date: d.date, depth: run.result.depth, timeSec: run.result.timeSec,
+        won: !!run.result.won, cores: run.result.cores || 0,
+      });
+    }
   }
 
   function awardRun(st) {
     const res = st.run && st.run.result;
     if (!res) return;
+    recordRunMeta(st);
     if (!awarded) {
       DC.Meta.award(st.meta, res);
       awarded = true;
@@ -204,6 +260,48 @@
     }
   }
 
+  // ---------------- recap card (M-RECAP) ----------------
+
+  // The card is its own screen rather than a flag on gameover/victory: the FX
+  // layer scopes its particles and colour passes by screen id, so a distinct
+  // id is what keeps the gameover dust and the victory core-pulse off the
+  // card without either module knowing about the other.
+  function toggleRecap(st) {
+    if (st.screen === 'recap') st.screen = recapFrom || 'gameover';
+    else { recapFrom = st.screen; st.screen = 'recap'; }
+    st.ui.copied = null;
+  }
+
+  function leaveEndScreen(st) {
+    st.ui.copied = null;
+    st.run = null;
+    st.screen = 'title';
+  }
+
+  // C on the card: copy the plain-text card. navigator.clipboard is absent on
+  // file:// (insecure context) and can reject when the document is not
+  // focused, so every failure path lands on a readable on-card notice — the
+  // card is legible ASCII on screen either way.
+  function copyRecap(st) {
+    let txt = '';
+    try {
+      if (DC.Render && typeof DC.Render.recapText === 'function') txt = DC.Render.recapText(st) || '';
+    } catch (e) { /* render in flux */ }
+    if (!txt) { st.ui.copied = 'NOTHING TO COPY'; return; }
+    const nav = root.navigator;
+    if (nav && nav.clipboard && typeof nav.clipboard.writeText === 'function') {
+      try {
+        const p = nav.clipboard.writeText(txt);
+        st.ui.copied = 'COPIED — PASTE IT SOMEWHERE LOUD';
+        if (p && typeof p.catch === 'function') {
+          p.catch(function () { st.ui.copied = 'CLIPBOARD REFUSED — SELECT IT BY HAND'; });
+        }
+        return;
+      } catch (e) { /* fall through to the offline notice */ }
+    }
+    st.ui.copied = 'NO CLIPBOARD HERE — SELECT IT BY HAND';
+  }
+
   function handleWon(st) {
     awardRun(st);
     bark('victory');
@@ -214,6 +312,7 @@
     const run = st.run;
     if (!run || run.status !== 'breachReady') return;
     if (!DC.Sim.beginDescent(run)) return;
+    recordSplit(run);
     bark('descend');
     if (run.status === 'won') { handleWon(st); return; }
     if (run.pendingOffers) {
@@ -289,12 +388,17 @@
   function onKey(e) {
     const st = DC.state;
     if (!st) return;
+    // M-RECAP: render draws the Daily line from state.today rather than
+    // keeping a clock of its own; refresh it whenever the title is in play so
+    // a session left open across UTC midnight still shows the right day.
+    if (st.screen === 'title') st.today = DC.Meta.dailyKey(Date.now());
     const k = e.key;
     const lk = k.length === 1 ? k.toLowerCase() : k;
     let handled = true;
     switch (st.screen) {
       case 'title':
         if (k === 'Enter') newRun(st);
+        else if (lk === 't') newRun(st, { daily: true });
         else if (lk === 'f') {
           st.screen = 'foundry';
           if (st.foundryBark) st.foundryBark.line = null;   // fresh floor, no stale line
@@ -342,16 +446,27 @@
         } else handled = false;
         break;
       case 'gameover':
-        if (k === 'Escape' || k === 'Enter') { st.run = null; st.screen = 'title'; }
+        if (k === 'Tab') toggleRecap(st);
+        else if (k === 'Escape' || k === 'Enter') leaveEndScreen(st);
         else handled = false;
         break;
       case 'victory':
-        if (k === 'Escape' || k === 'Enter') { st.run = null; st.screen = 'title'; }
+        if (k === 'Tab') toggleRecap(st);
+        else if (k === 'Escape' || k === 'Enter') leaveEndScreen(st);
         else if (lk === 'c' && st.run) {
           DC.Sim.continueIntoMantle(st.run);
+          st.ui.copied = null;
           st.ui.descendAnim = 0;
           st.screen = 'descend';
         } else handled = false;
+        break;
+      // M-RECAP: the card. C copies it here; on the victory stats view C still
+      // means the Mantle, and both footers say which one they mean.
+      case 'recap':
+        if (k === 'Tab') toggleRecap(st);
+        else if (lk === 'c') copyRecap(st);
+        else if (k === 'Escape' || k === 'Enter') leaveEndScreen(st);
+        else handled = false;
         break;
       default:
         handled = false;
