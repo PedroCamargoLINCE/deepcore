@@ -1210,6 +1210,62 @@
     ctext(31, '[A-I] FORGE UPGRADE   [L] LOGBOOK   [ESC] RETURN TO SURFACE', C.amber);
   }
 
+  // ================= THE VIGNETTE SCREEN (M-EVENTS) =================
+  // The dark asks a question between two strata. The layout is built around
+  // one demand from SPEC3 §0 law 6: a player who has been staring at a dense
+  // factory for four minutes has to take this in at a glance. So it is one
+  // picture, two lines of prose in a comfortable measure, and two choices in
+  // a column with their consequences under them — the same [1]/[2] idiom the
+  // schematic cards already taught, turned on its side because these are
+  // sentences rather than cards.
+  const VG_X = (COLS - 40) >> 1;      // the 40-wide panel, centred
+  const VG_ROW = 3;
+  const VG_PROSE_W = 64;
+  const VG_CHOICE_X = 12;
+  function drawVignette(state) {
+    const run = state.run, ui = state.ui || {};
+    const ev = (DC.Events && DC.Events.pending) ? DC.Events.pending(run) : null;
+    const accent = stratumOf(run ? run.depth : 1).accent || C.amber;
+    if (!ev) {                       // never a blank screen, even mid-edit
+      ctext(15, 'THE DARK HAS NOTHING TO SAY', C.gray);
+      ctext(17, '[ENTER] CARRY ON', C.amber);
+      return;
+    }
+
+    // The title types itself in the stratum's accent — the same interstitial
+    // grammar the descent screen uses, so this reads as part of the descent
+    // rather than as a modal that interrupted it.
+    ctext(1, fxTyped('vignette:' + ev.id, ev.title, 26), accent);
+
+    const frame = (DC.Art && DC.Art.eventFrame) ? DC.Art.eventFrame(ev.id) : [''];
+    box(VG_X, VG_ROW, 40, 14, mix(accent, C.bg, 0.55));
+    const inner = frame.slice(0, 12);
+    let ay = VG_ROW + 1 + Math.max(0, (12 - inner.length) >> 1);
+    for (const ln of inner) {
+      text(VG_X + 1 + Math.max(0, (38 - ln.length) >> 1), ay++, ln.slice(0, 38), C.rock);
+    }
+
+    let py = VG_ROW + 15;
+    for (const p of (ev.text || []).slice(0, 2)) {
+      for (const ln of wrap(p, VG_PROSE_W).slice(0, 1)) ctext(py++, ln, C.gray);
+    }
+
+    const rows = [];
+    let cy = py + 2;
+    for (let i = 0; i < ev.choices.length && i < 2; i++) {
+      const c = ev.choices[i];
+      const hot = ui.hoverChoice === i;
+      const key = '[' + (i + 1) + ']';
+      text(VG_CHOICE_X, cy, key, C.green);
+      text(VG_CHOICE_X + 4, cy, c.label, hot ? C.white : C.amber);
+      if (c.hint) text(VG_CHOICE_X + 4, cy + 1, c.hint, C.darkgray);
+      rows.push({ col: VG_CHOICE_X, row: cy, w: COLS - 2 * VG_CHOICE_X, h: 2, index: i });
+      cy += 3;
+    }
+    layout.choices = rows;
+    ctext(ROWS - 2, 'CHOOSE — [1] OR [2]', C.amberDim);
+  }
+
   // ================= THE LOGBOOK (M-EVENTS) =================
   // Twenty rigs that didn't come back up, one line each, collected across
   // runs. The unfound ones are drawn as the SHAPE of a missing line rather
@@ -1754,7 +1810,7 @@
     try { return DC.FX.odometer(key, value, prog); } catch (e) { return plain; }
   }
   // ================= public API =================
-  const layout = { cards: [], buildRows: [], map: null };
+  const layout = { cards: [], buildRows: [], map: null, choices: [] };
   surface.layout = layout;
 
   DC.Render = {
@@ -1899,6 +1955,7 @@
           case 'descend':  drawDescend(state); break;
           case 'foundry':  drawFoundry(state); break;
           case 'logbook':  drawLogbook(state); break;   // M-EVENTS
+          case 'vignette': drawVignette(state); break;  // M-EVENTS
           case 'help':     drawHelp(state); break;
           case 'gameover': drawGameover(state, phase); break;
           case 'recap':    drawRecap(state); break;      // M-RECAP

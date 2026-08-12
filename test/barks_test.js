@@ -96,6 +96,24 @@ for (const L of D.LANDMARKS) {
     assertEq(typeof lines.use, 'string', 'bespoke use line for landmark ' + L.id);
 }
 assertEq(D.LANDMARKS.length, 8, 'all 8 landmarks covered');
+// M-EVENTS: GRIT has an opinion about EVERY fork. A vignette choice with no
+// bespoke line falls back to a shrug, and a shrug on half the catalog reads
+// as the game not having noticed what the player just did.
+{
+  const V = (DC.Events && DC.Events.VIGNETTES) || [];
+  assert(V.length >= 20, 'the vignette catalog is loaded (' + V.length + ')');
+  const keys = new Set();
+  for (const v of V) {
+    for (let i = 0; i < v.choices.length; i++) {
+      const k = v.id + ':' + i;
+      keys.add(k);
+      assertEq(typeof B.VIGNETTE_LINES[k], 'string',
+        'GRIT answers ' + v.title + ' / ' + v.choices[i].label);
+    }
+  }
+  for (const k in B.VIGNETTE_LINES)
+    assert(keys.has(k), 'vignette line ' + k + ' names a real choice');
+}
 for (const id in B.LANDMARK_LINES)
   assert(D.LANDMARK_BY_ID[id], 'landmark line ' + id + ' names a real landmark');
 
@@ -108,6 +126,8 @@ for (const k in B.SCHEM_LINES) allLines.push([k, B.SCHEM_LINES[k]]);
 for (const k in B.META_LINES) allLines.push([k, B.META_LINES[k]]);
 for (const k in B.LANDMARK_LINES)   // M-WONDERS
   for (const w in B.LANDMARK_LINES[k]) allLines.push(['landmark:' + k, B.LANDMARK_LINES[k][w]]);
+for (const k in B.VIGNETTE_LINES)   // M-EVENTS
+  allLines.push(['vignette:' + k, B.VIGNETTE_LINES[k]]);
 for (const c in B.EPITAPHS)
   for (const pair of B.EPITAPHS[c]) for (const l of pair) allLines.push(['epitaph:' + c, l]);
 for (const l of B.TOASTS) allLines.push(['toast', l]);
@@ -167,6 +187,7 @@ function eventLines() {
     for (const p of v.text || []) out.push(['vignette:' + v.id, p]);
     for (const c of v.choices || []) {
       out.push(['vignette:' + v.id + ' choice', c.label]);
+      if (c.hint) out.push(['vignette:' + v.id + ' hint', c.hint]);
       if (c.result) out.push(['vignette:' + v.id + ' result', c.result]);
     }
   }

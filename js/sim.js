@@ -1018,6 +1018,21 @@
     const s = D.SCHEMATICS.filter(x => x.id === id)[0];
     msg(run, 'Schematic installed: ' + (s ? s.name : id), D.COLORS.cyan);
     msg(run, '▼ Descending — stratum ' + run.depth + '.', D.COLORS.amber);
+    // M-EVENTS: and between the pick and the floor, the dark may ask you
+    // something. Guarded; engine.js checks Events.pending to decide whether
+    // there is a screen to show, so an absent module descends as it always did.
+    if (DC.Events && DC.Events.rollVignette) DC.Events.rollVignette(run);
+  }
+
+  // M-EVENTS: install a schematic mid-stratum, without a descent (the Miner's
+  // Ghost trades one for hull). The CALLER chooses which — events.js rolls it
+  // on its own stream — so this consumes no randomness at all, and a run with
+  // a ghost in it schedules exactly the quakes a run without one does.
+  function installSchematic(run, id) {
+    if (!id || !run || run.schematics.indexOf(id) >= 0) return null;
+    run.schematics.push(id);
+    applySchematicMod(run, id);
+    return id;
   }
 
   function abandon(run) {
@@ -1154,6 +1169,8 @@
     clickTile: clickTile, toggleOverdrive: toggleOverdrive,
     beginDescent: beginDescent, continueIntoMantle: continueIntoMantle,
     applySchematic: applySchematic, abandon: abandon,
+    // M-EVENTS: a schematic granted outside a descent (the caller picks it)
+    installSchematic: installSchematic,
     describeTile: describeTile, feedRate: feedRate, msg: msg,
     // M-CORELORE / M-GRITPLUS: the Core Gate's progress reading, the EGG-420
     // window (engine opens it from the typed code; js/events.js may open it

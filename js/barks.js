@@ -320,6 +320,17 @@
       "Poor bastard got this far. We go further. Feed the drill.",
       "It isn't grave-robbing if you leave the name plate bolted on.",
     ],
+    // M-EVENTS — the expedition vignettes. GRIT does not narrate the event
+    // (the rock does that, in events.js); he editorialises the CHOICE, a beat
+    // after you have made it. The bespoke line per choice is in
+    // VIGNETTE_LINES below; this is the fallback for anything unwritten.
+    vignette: [
+      "Whatever you just decided, it's in the log as YOUR decision.",
+      "Nobody has ever come back to tell me which one was correct.",
+      "Fine. Done is done. The drill doesn't care either way. Move.",
+      "Every crew that stood there picked one. Most of them were wrong.",
+      "That's the thing about a fork, kid. You only get the one leg.",
+    ],
     egg420End: [
       "Break's over. Why does the copper smell like breakfast, kid?",
       "Whatever that was, it's wearing off. I'd fight a man for toast.",
@@ -423,6 +434,57 @@
       use: "Sweep bounced clean off. Free survey. I'll take free.",
     },
     root: { find: "That column runs to the mantle. The planet braces on it." },
+  };
+
+  // ---------------- M-EVENTS: the foreman answers the fork ----------------
+  // Keyed '<vignette id>:<choice index>'. GRIT is not the narrator of these
+  // — the rock narrates, flatly, and he talks over the top of it about a
+  // second later, which is the whole joke of having him. Every one of the
+  // forty choices gets a line: the ones where he approves are as much of the
+  // character as the ones where he is appalled, and a generic shrug on the
+  // half of them he happened to have no opinion about would read as the
+  // system not noticing what you did.
+  const VIGNETTE_LINES = {
+    'vault:0': "Thirty plates and a ceiling with opinions. I'll allow it.",
+    'vault:1': "Good. Anything the Company welds shut, I want staying shut.",
+    'crack:0': "...Kid. Kid. Tell me you heard a NOTE as well. Right. Onward.",
+    'crack:1': "Plated over. I sleep better, and I don't even sleep. Dig.",
+    'drone:0': "Ten plates to a flying clipboard. That IS the industry, kid.",
+    'drone:1': "HA! Get IN. Eight plates, and the little snitch is a shelf.",
+    'pool:0': "No comment.",
+    'pool:1': "Straight down the intake. She's earned herself a warm drink.",
+    'ghost:0': "He kept his half of that bargain. Don't turn round. Walk.",
+    'ghost:1': "Correct. You do not haggle with a lamp. First rule of lamps.",
+    'crate:0': "...That is a CAT. Right. She's crew now. Somebody feed her.",
+    'crate:1': "Fine. Good timber. Something's still moving in that seam.",
+    'rations:0': "Company beef, vintage unknown. Crew's chewing. Crew's happy.",
+    'rations:1': "Twenty plates of banding and one very quiet lunch break.",
+    'ladder:0': "Never trusted a ladder that goes the wrong way. Nice map.",
+    'ladder:1': "Down it comes. One fewer road in is one fewer road in.",
+    'door:0': "A DESK. Down here. Voss, you magnificent bureaucratic idiot.",
+    'door:1': "You knocked. On a door. In the rock. And I love you for it.",
+    'tally:0': "Ninety-seven of whatever. He stopped mid-group. Think about it.",
+    'tally:1': "You finished his five. That's the kindest thing I've seen down here.",
+    'seam:0': "Cut it off mid-note. The rock heard that, and so did I.",
+    'seam:1': "Leave it be. Whole floor's calmer with it humming. So am I.",
+    'terminal:0': "Filed a claim with a dead department. Very you. Very us.",
+    'terminal:1': "Wiped and stripped. Twenty-two plates and one more paragraph.",
+    'sump:0': "Twenty-five plates and a cough you'll be keeping. Fair trade.",
+    'sump:1': "Sent it downstairs. Somebody down there's got wet boots now.",
+    'watchman:0': "Rig Nine's lamp. She lit our way twice, that one. Twice.",
+    'watchman:1': "Let her burn. Take the words. That's the whole eulogy, kid.",
+    'coin:0': "Keep it. Everybody down here carries something useless. Me too.",
+    'coin:1': "You paid the rock. Mock it all you like: the rock stayed paid.",
+    'crossing:0': "Traded steel with strangers in a hole. Classic Tuesday.",
+    'crossing:1': "Bricked it. Whoever they are, they're their own problem.",
+    'suit:0': "Sample plate in a briefcase. He died doing paperwork, kid.",
+    'suit:1': "Straightened his tie. You're a better man than the Company is.",
+    'shrine:0': "Two gears to a pile of rocks. And the floor went quiet. Huh.",
+    'shrine:1': "You took the OFFERING. Whatever's owed that, it's your tab.",
+    'wind:0': "Warm draught from below is a road. Follow the road. Fast.",
+    'wind:1': "Sealed it. Rig stopped flinching. So did the rest of us.",
+    'offer:0': "Something came out of the rig just then. Don't ask me what.",
+    'offer:1': "You said no. To THAT. Kid, I'm putting you up for foreman.",
   };
 
   // Bespoke arrival line per stratum (1-8) + mantle.
@@ -613,6 +675,9 @@
       const L = LANDMARK_LINES[ctx];
       return (L && L[trigger === 'landmarkFound' ? 'find' : 'use']) || null;
     }
+    // M-EVENTS: ctx is '<vignette id>:<choice index>'.
+    if (trigger === 'vignette' && typeof ctx === 'string')
+      return VIGNETTE_LINES[ctx] || null;
     return null;
   }
 
@@ -979,6 +1044,7 @@
     POOLS: POOLS, STRATUM_LINES: STRATUM_LINES, SCHEM_LINES: SCHEM_LINES,
     META_LINES: META_LINES, EPITAPHS: EPITAPHS, TOASTS: TOASTS,
     LANDMARK_LINES: LANDMARK_LINES,   // M-WONDERS
+    VIGNETTE_LINES: VIGNETTE_LINES,   // M-EVENTS
     TRIGGERS: TRIGGERS, COOLDOWN: COOLDOWN, PRIORITY: PRIORITY,
   };
 })();
