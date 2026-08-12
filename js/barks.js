@@ -272,6 +272,54 @@
       "Whatever you just woke up is your responsibility now, kid.",
       "Noted in the log as 'operator initiative'. That's a warning label.",
     ],
+    // M-EVENTS — what the rock had in it. The finds that PAY share one pool
+    // (an ore pocket and a plate cache are the same shrug in his mouth); the
+    // four that pay nothing but story get their own, because that story is
+    // the entire reason they exist.
+    digFind: [
+      "Rock owes us about nine years. Rock just paid a Tuesday.",
+      "Free material out of a hole. Rare. Take it and say nothing.",
+      "Well, look at that. The seam had a conscience after all.",
+      "Log it under 'found'. The Company reads 'found' as 'theirs'.",
+      "Somebody left that behind. Their loss, our shift bonus, kid.",
+      "Twenty years and the rock still hands me presents. Suspicious.",
+    ],
+    lunchbox: [
+      "A lunchbox. Sealed. Somebody meant to come back for that one.",
+      "Don't open it. I opened one on four. I still think about it.",
+      "That's a Halloran box. Man packed a thermos every single shift.",
+      "Empty belly, full box. The deep's idea of a punchline, that.",
+      "Leave it where he set it down. He's owed that much, at least.",
+      "Old foreman told me: never eat what the rock kept. He was thin.",
+    ],
+    bones: [
+      "Somebody stopped here. Boots off. He knew he was stopping.",
+      "Say nothing, dig on. That's the whole funeral we can afford.",
+      "Hard hat still on him. Regulations to the last, the poor sod.",
+      "That's no fossil, kid. Fossils are older than the Company.",
+      "Every seam down here is somebody's last address. Mind yours.",
+    ],
+    gasPocket: [
+      "HISS. Down— right. Pressure's up. Breathe through your teeth.",
+      "Pocket gas. Sour, ancient, furious, and ours now. Wonderful.",
+      "The whole seam just exhaled on us. Charming. Keep drilling.",
+      "For the file: the planet burps. The gauge agrees with me.",
+      "Everybody smell that? Good. Means you're still breathing.",
+    ],
+    oldShaft: [
+      "Somebody dug that before us. Scan's running down it. Free map.",
+      "An old shaft means an old crew. Look, learn, do NOT linger.",
+      "That hole goes further than our paperwork does. Eyes forward.",
+      "Company says these shafts don't exist. Company says a lot.",
+      "Free survey, courtesy of a dead man. Thank him by moving fast.",
+    ],
+    deadRig: [
+      "Another rig. Strip her. She'd rather work than rust, that one.",
+      "Twelve plates and a last log entry. That's a career, kid.",
+      "Read what he wrote. Then dig faster. That's how you thank him.",
+      "Poor bastard got this far. We go further. Feed the drill.",
+      "It isn't grave-robbing if you leave the name plate bolted on.",
+    ],
     egg420End: [
       "Break's over. Why does the copper smell like breakfast, kid?",
       "Whatever that was, it's wearing off. I'd fight a man for toast.",

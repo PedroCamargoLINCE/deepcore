@@ -360,7 +360,14 @@
             msg(run, 'A spire comes down — 1 ' + D.ITEMS[ld.dig.yield].name + '.',
                 D.ITEMS[ld.dig.yield].color);
             pushEvent(run, 'landmark', { id: ld.id, act: 'use' });
-          } else if (t.t === 'rock') t.t = 'floor';
+          } else if (t.t === 'rock') {
+            t.t = 'floor';
+            // M-EVENTS: the rock has things in it. Guarded, so a tree without
+            // js/events.js digs exactly as it always did — and that module
+            // rolls on its own derived stream, so a find can never move the
+            // quake schedule out from under a dig.
+            if (DC.Events && DC.Events.rollDig) DC.Events.rollDig(run, x, y);
+          }
           t.rubble = false;
         }
       }
@@ -378,6 +385,10 @@
     stepCoreGate(run);
     stepQuake(run);
     stepMagma(run);
+    // M-EVENTS: the gas pocket's one-second fuse and the cat's next step.
+    // After the hazards on purpose — the cat bolts for the rig off a quake
+    // that was scheduled on this very tick, which is the whole trick.
+    if (DC.Events && DC.Events.tick) DC.Events.tick(run);
     if (run.status === 'active' &&
         run.gearsFed >= run.breachReq.gear && run.chargesFed >= run.breachReq.charge) {
       run.status = 'breachReady';

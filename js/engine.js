@@ -194,6 +194,11 @@
       // M-WONDERS: the stratum's landmark, found by the sweep or used by the
       // player. The Bell is the one that reaches past GRIT: ringing it is
       // heard, and something far below answers early (SPEC3 M-CORELORE hook).
+      // M-EVENTS: the rock handed something over. The find names its own bark
+      // pool, so a pool js/barks.js has not grown yet is simply a quiet find.
+      else if (ev.type === 'find' && ev.data) bark(ev.data.bark, ev.data.id);
+      // ...and a dead foreman's last log goes in the book, for good.
+      else if (ev.type === 'foremanLog' && ev.data) recordLog(run, ev.data.index);
       else if (ev.type === 'landmark' && ev.data) {
         lmPending = { trigger: ev.data.act === 'find' ? 'landmarkFound' : 'landmarkUse',
                       id: ev.data.id };
@@ -201,6 +206,15 @@
           coreBeat(run, { kind: 'intrusion' });
       }
     }
+  }
+
+  // M-EVENTS: a found log entry is filed the instant it is read, not at the
+  // end of the run — a rig that dies on the next quake still keeps what its
+  // foreman learned, which is the only reason the logbook fills up at all.
+  function recordLog(run, index) {
+    const st = DC.state, M = DC.Meta;
+    if (!st || !M || typeof M.recordLog !== 'function') return;
+    try { M.recordLog(st.meta, index); } catch (e) { /* meta stays optional */ }
   }
 
   // Optional Core wiring — no-op unless js/barks.js exposes the second voice.
