@@ -13,7 +13,22 @@
 
   const COLS = D.COLS, ROWS = D.ROWS;
   const CW = 10, CH = 19;
-  const FONT = '16px "DejaVu Sans Mono", "Cascadia Mono", Consolas, "Courier New", monospace';
+  // Readability is a design objective (SPEC3 §0 law 6), and on a character
+  // grid it starts with the font: a missing glyph is a tofu box and a
+  // wrong-width one shears the whole row, because flush() batches a run of
+  // cells into one fillText scaled by CW/adv.
+  // The stack is ordered by coverage, one entry per platform:
+  //   DejaVu Sans Mono  Linux, and the face every glyph here was chosen against
+  //   Menlo             macOS — derived from the same Bitstream Vera ancestor
+  //                     as DejaVu, so coverage and proportions nearly match.
+  //                     WITHOUT it a Mac fell through to Courier New, whose
+  //                     box-drawing and block coverage is poor: the game
+  //                     looked broken on a platform we cannot see from here.
+  //   Monaco            older macOS, before Menlo shipped
+  //   Cascadia Mono / Consolas   Windows
+  // `node tools/glyphs.js` prints the inventory any candidate must cover.
+  const FONT = '16px "DejaVu Sans Mono", Menlo, Monaco, "Cascadia Mono", ' +
+               'Consolas, "Courier New", monospace';
   const UNREV_BG = '#050504';        // near-black for unrevealed tiles (SPEC §7)
   const SB = 49, SBW = 31;           // sidebar box: cols 49..79
   const SBC = 50, SCW = 29;          // sidebar content col + width
