@@ -1,0 +1,51 @@
+Work in this repository (github.com/PedroCamargoLINCE/deepcore). Create and
+switch to a branch named M-EVENTS off origin/master, and do all your work on it.
+You are the only session running this wave — the brief is large and touches many
+files.
+
+Read SPEC.md, SPEC2.md, and SPEC3.md section M-EVENTS in full, plus js/data.js,
+js/sim.js and js/barks.js. Honor SPEC3's rules of engagement at the top of that
+file, and note §0 law 6: readability is a primary objective, not a constraint —
+if a vignette's presentation reads worse than the plain screen, it is wrong
+however good the writing is.
+
+Build the new module js/events.js. Add it to index.html AND tools/build.js's
+script list. It stays DOM-free and deterministic on run.rng — every vignette
+must roll identically for the same seed, so no Date.now and no Math.random.
+js/data.js is ADDITIVE ONLY.
+
+The vignettes are the roguelike soul of the game and the cave-cat is the one
+players will talk about — give the writing real care, and keep every voice
+distinct from GRIT's. GRIT's guardrails apply to all of it: profanity and
+gallows humor yes; slurs, hate, explicit anatomy and non-consent framing never.
+
+Waves 1 through 3 have all merged, so several hooks your brief references now
+EXIST on master and should be wired rather than guarded away:
+  - js/fx.js is the animation layer (SPEC3 §A). Render-side only, driven by a
+    millisecond clock; it must never feed back into the sim.
+  - DC.Barks.CORE is the Core's voice (M-CORELORE) and Dead Foreman logs are
+    meant to foreshadow it — shared trigger ids light up automatically.
+  - Landmarks exist (M-WONDERS) via map.js tile flags and a landmarkAt helper;
+    The Company Seal in particular expects a Dead Foreman log from this brief.
+  - EGG-420 (M-GRITPLUS) wants a dig-find route: a 0.42%-weight find of a
+    perfectly preserved pre-collapse tin. Without this brief the key sequence
+    is the only route, so wire it.
+Anything you cannot find, guard so an absent feature is a silent no-op.
+
+Ship vignette by vignette. Checkpoint-commit AND PUSH your branch after every
+green milestone, with a Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+trailer. Pushing each checkpoint matters here: this is the biggest brief on the
+board and a session limit mid-way must leave eight working events on origin,
+not a half-written module on a disk nobody can reach.
+
+Gate: all five suites green (node test/headless.js, test/integration.js,
+test/barks_test.js, test/rig_test.js, test/balance.js) and node tools/build.js
+parses, with the suites extended to cover the event system and each vignette's
+trigger. test/balance.js must not regress the survive-stratum-2 rate — read its
+footer first, it explains which SPEC §12 target is measured under which Foundry
+loadout and which failures are the scripted bot's ceiling rather than the game's.
+
+When done: push your branch to origin and STOP — do not merge, rebase or
+force-push; the orchestrator merges. Report: what you built, which vignettes
+landed, which hooks you wired versus guarded, what you deviated on and why, and
+your final test output.
