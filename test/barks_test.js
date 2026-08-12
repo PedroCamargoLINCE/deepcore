@@ -391,27 +391,103 @@ SECTION = 'guardrails';
   assertEq(deposits.length, 1, 'the "the deep keeps the deposit" gag is told once');
 }
 
-// ------------------------- CX-02 / CX-03: field manual vs data.js & engine.js
-// art.js composes the manual from DC.DATA at load. This lint proves it: every
-// integer printed in the manual must be derivable from the balance data (or
-// from an engine binding), so retuning data.js can never leave a lie on the
-// help screen again.
+// ------------------------ M-MANUAL: the field manual vs data.js & engine.js
+// art.js composes BOTH pages of the manual from DC.DATA at load. A manual that
+// lies is worse than no manual (CX-02 said the descent vented 40 where the sim
+// vented 45; CX-03 said quakes past 22 where they start at 25), so this block
+// proves the composition five ways:
+//   * every integer printed on either page is authorized by a balance value or
+//     an engine binding — the allow-table below IS the audit trail;
+//   * the descend vent still reaches sim.js AND the manual from one data key;
+//   * retuning data.js underneath the composer really MOVES the printed
+//     figures — the one check a coincidentally-correct literal cannot survive;
+//   * the key labels are bound in engine.js for real (arrows, never WASD);
+//   * the layout holds SPEC3's contrast and air budgets: every colour the
+//     pages paint clears 4.5:1, gutters stay >= 3 columns, ink <= 60%.
 SECTION = 'manual';
+let MANUAL_COLORS = 0;
 {
   const fs = require('fs');
   const path = require('path');
-  const help = DC.Art.help;
-  assert(Array.isArray(help) && help.length > 10, 'A.help is a line array');
-  const widths = new Set(help.map(l => l.length));
-  assertEq(widths.size, 1, 'every manual row is the same width (box is intact)');
-  assert(help[0].length <= 74, 'manual is <= 74 columns (got ' + help[0].length + ')');
-  assert(help.length <= D.ROWS - 2, 'manual fits the 33-row screen with a footer');
+  require('../js/render.js');       // where the manual's colours are resolved
+  const A = DC.Art;
+  const R = DC.Render;
+  const pages = A.helpPages;
+  const LAY = A.HELP_LAYOUT;
 
-  // The descend vent is one number with two consumers (sim.js startStratum and
+  assert(Array.isArray(pages) && pages.length >= 2,
+    'the manual is a pager of >= 2 pages');
+  assert(LAY && LAY.GUT >= 3,
+    'the two columns are separated by >= 3 columns of air (got ' + (LAY && LAY.GUT) + ')');
+  assert(A.help === pages[0].text,
+    'A.help stays the plain-text first page (the asset render falls back to)');
+
+  for (const p of pages) {
+    assert(typeof p.id === 'string' && p.id.length, 'every page is named');
+    const widths = new Set(p.text.map(l => l.length));
+    assertEq(widths.size, 1, p.id + ': every row is the same width (the page is a grid)');
+    assertEq(p.text[0].length, p.w, p.id + ': rows are the declared page width');
+    assertEq(p.text.length, p.h, p.id + ': text and grid agree on height');
+    assert(p.w <= 74, p.id + ' is <= 74 columns (got ' + p.w + ')');
+    assert(p.h <= D.ROWS - 2, p.id + ' fits the 33-row screen (got ' + p.h + ')');
+    assert(p.ink <= 0.60,
+      p.id + ' holds the air budget: ink ' + (p.ink * 100).toFixed(1) + '% <= 60%');
+    for (let y = 0; y < p.text.length; y++) {
+      // inside the two-column band the gutter is pure air; full-width
+      // sections (THE LINE, TIPS) are outside it and may span the page
+      if (p.colRows && y >= p.colRows[0] && y <= p.colRows[1]) {
+        assertEq(p.text[y].slice(LAY.CA + LAY.CAW, LAY.CB), ' '.repeat(LAY.GUT),
+          p.id + ' row ' + y + ': the column gutter is ' + LAY.GUT + ' columns of air');
+      }
+      for (const s of p.rows[y]) {
+        assertEq(p.text[y].slice(s.x, s.x + s.t.length), s.t,
+          p.id + ' row ' + y + ': the coloured span and the plain text are one grid');
+      }
+    }
+  }
+
+  // --- contrast: SPEC3 M-MANUAL asks for >= 4.5:1 on every text tier. Check
+  // the colours the pages ACTUALLY paint — tiers and lifted game colours — not
+  // the palette in the abstract. Hairlines are furniture, so they answer to the
+  // 3:1 non-text floor instead.
+  const painted = new Map();
+  for (const p of pages) {
+    for (const row of p.rows) {
+      for (const s of row) {
+        const col = R.helpColor(s.c);
+        painted.set(String(s.c) + (s.inv ? '/inv' : ''), col);
+        const cr = R.contrast(col, D.COLORS.bg);
+        if (s.inv) {
+          // a keycap is inverse: the page background becomes the letter
+          assert(R.contrast(D.COLORS.bg, col) >= R.MIN_CONTRAST,
+            'keycap face ' + col + ' carries its letter at >= ' + R.MIN_CONTRAST + ':1');
+        } else if (s.c === 'rule') {
+          assert(cr >= 3.0, 'the hairline rule clears the 3:1 non-text floor (got ' +
+            cr.toFixed(2) + ')');
+        } else {
+          assert(cr >= R.MIN_CONTRAST, 'manual colour ' + s.c + ' paints as ' + col +
+            ' at ' + cr.toFixed(2) + ':1, under the ' + R.MIN_CONTRAST + ':1 text floor');
+        }
+      }
+    }
+  }
+  MANUAL_COLORS = painted.size;
+  assert(MANUAL_COLORS >= 8,
+    'the manual is polychrome — a living legend, not one amber slab (got ' +
+    MANUAL_COLORS + ' colours)');
+  assertEq(R.legible(D.COLORS.amber, D.COLORS.bg), D.COLORS.amber,
+    'a colour that already reads is passed through untouched');
+  for (const k in D.TERRAIN) {
+    const raw = D.TERRAIN[k].color;
+    const lit = R.legible(raw, D.COLORS.bg);
+    assert(R.contrast(lit, D.COLORS.bg) >= R.MIN_CONTRAST,
+      'terrain colour ' + k + ' is lifted to a readable tone for the glossary');
+  }
+
+  // --- the descend vent: one number, two consumers (sim.js startStratum and
   // the manual). It used to be a literal in each, which is how the manual came
-  // to claim 40 while the sim vented 45 (CX-02). It now lives in data.js and
-  // BOTH sides read it — assert that here so the divergence cannot reopen: a
-  // future edit that re-inlines the number in sim.js fails this test.
+  // to claim 40 while the sim vented 45 (CX-02). Assert both sides still read
+  // the data key, so the divergence cannot reopen.
   const vent = D.DESCEND_VENT;
   assert(typeof vent === 'number' && isFinite(vent),
     'DESCEND_VENT is exposed in data.js (got ' + vent + ')');
@@ -421,68 +497,139 @@ SECTION = 'manual';
   assert(/D\.DESCEND_VENT/.test(ventLine[1]),
     'sim.js vents via D.DESCEND_VENT, not a literal (got "' + ventLine[1].trim() + '")');
   const artSrc = fs.readFileSync(path.join(__dirname, '../js/art.js'), 'utf8');
-  assert(/const\s+vent\s*=\s*n\(\s*D\.DESCEND_VENT\s*\)/.test(artSrc),
+  assert(/const\s+vent\s*=\s*num\(\s*D\.DESCEND_VENT\s*\)/.test(artSrc),
     'the manual composes its vent figure from D.DESCEND_VENT with no fallback literal');
+  // Same shape, second key: the SHIFT jump was a bare 5 in engine.js and a
+  // typed 5 in the manual until M-MANUAL moved it into data.js.
+  const engSrc = fs.readFileSync(path.join(__dirname, '../js/engine.js'), 'utf8');
+  assert(/e\.shiftKey \? D\.CURSOR_JUMP : 1/.test(engSrc),
+    'engine.js jumps the cursor by D.CURSOR_JUMP, not a literal');
+  assert(/const\s+jump\s*=\s*num\(\s*D\.CURSOR_JUMP\s*\)/.test(artSrc),
+    'the manual composes the SHIFT jump from D.CURSOR_JUMP');
+  // The pressure gauge is drawn against D.INSTAB_MAX; sim.js clamps to the
+  // same ceiling. art.js cannot reach into sim, so the test marries them.
+  assert(/U\.clamp\(run\.instability \+ instRate\(run\) \/ HZ, 0, 100\)/.test(simSrc),
+    'sim.js still clamps instability to 0..100');
+  assertEq(D.INSTAB_MAX, 100, 'D.INSTAB_MAX matches the ceiling sim.js clamps to');
 
-  const allowed = new Map();  // number -> what authorizes it
+  // --- every printed integer is authorized by data (or by an engine binding)
+  const allowed = new Map();
   const allow = (v, why) => allowed.set(Number(v), why);
-  for (let i = 1; i <= D.BUILD_ORDER.length; i++) allow(i, 'build hotkey');
+  for (let i = 1; i <= Math.max(D.BUILD_ORDER.length, pages.length); i++)
+    allow(i, 'build hotkey / page number');
   allow(D.DIG_ROCK / D.TICK_HZ, 'DIG_ROCK seconds');
   allow(D.DIG_RUBBLE / D.TICK_HZ, 'DIG_RUBBLE seconds');
+  allow(D.BUILDINGS.extractor.period / D.TICK_HZ, 'extractor seconds per ore');
+  allow(D.BUILDINGS.damper.coalTicks / D.TICK_HZ, 'damper seconds per coal');
   allow(D.OVERDRIVE.drillMult, 'OVERDRIVE.drillMult');
   allow(D.QUAKE.startInst, 'QUAKE.startInst');
   allow(D.BUILDINGS.damper.calm * 100, 'damper.calm %');
   allow(D.DAMPER_MAX, 'DAMPER_MAX');
   allow(D.REPAIR_COST, 'REPAIR_COST');
-  allow(1, 'REPAIR_COST with m_fix');
-  allow(D.FUEL_PER, 'FUEL_PER');
+  allow(D.FUEL_PER, 'FUEL_PER — and GRIT\'s "page 3" joke');
   allow(D.RECIPES.gear.in.ironPlate, 'gear recipe input');
   allow(D.RECIPES.charge.in.coal, 'charge recipe coal');
-  allow(5, 'engine.js SHIFT cursor jump');
+  allow(D.CURSOR_JUMP, 'CURSOR_JUMP (SHIFT jump)');
+  allow(D.STRATA_COUNT, 'strata down to the Core');
   allow(0, 'the death threshold (integrity 0)');
-  let chargeStratum = D.STRATA.length;
-  for (let i = 0; i < D.STRATA.length; i++)
-    if (D.STRATA[i].breach.charge > 0) { chargeStratum = i + 1; break; }
-  allow(chargeStratum, 'first stratum needing core charges');
   allow(vent, 'descend instability vent');
+  for (const k of D.BUILD_ORDER) {
+    const cost = D.BUILDINGS[k].cost;
+    for (const it in cost) allow(cost[it], 'build cost: ' + k + ' ' + it);
+  }
 
   const printed = new Set();
-  for (const row of help) {
-    const nums = row.match(/\d+(?:\.\d+)?/g) || [];
-    for (const t of nums) {
-      const v = Number(t);
-      printed.add(v);
-      assert(allowed.has(v), 'manual prints ' + t + ' which no data.js value ' +
-        'authorizes — the manual has drifted from the sim: ' + row.trim());
+  for (const p of pages) {
+    for (const row of p.text) {
+      const nums = row.match(/\d+(?:\.\d+)?/g) || [];
+      for (const t of nums) {
+        const v = Number(t);
+        printed.add(v);
+        assert(allowed.has(v), p.id + ' prints ' + t + ' which no data.js value ' +
+          'authorizes — the manual has drifted from the sim: ' + row.trim());
+      }
     }
   }
-  // the three CX-02/CX-03 numbers must actually be on the page
+  // the CX-02/CX-03 numbers must actually be on the page
   assert(printed.has(Number(D.QUAKE.startInst)),
-    'manual states the real quake onset (' + D.QUAKE.startInst + ')');
-  assert(printed.has(Number(vent)), 'manual states the real descend vent (' + vent + ')');
-  const joined = help.join('\n');
+    'the manual states the real quake onset (' + D.QUAKE.startInst + ')');
+  assert(printed.has(Number(vent)), 'the manual states the real descend vent (' + vent + ')');
+  const joined = pages.map(p => p.text.join('\n')).join('\n');
   assertEq((joined.match(new RegExp('\\b' + vent + '\\b', 'g')) || []).length, 2,
-    'both vent mentions (hazard column + chain footer) agree');
+    'both vent mentions (THE LINE on page 1, PRESSURE on page 2) agree');
 
-  // key bindings: arrows only, WASD is deliberately unbound
-  const engSrc = fs.readFileSync(path.join(__dirname, '../js/engine.js'), 'utf8');
+  // --- the drift probe. Everything above passes for a literal that happens to
+  // match today's data. Nothing passes this: retune data.js underneath the
+  // composer, rebuild art.js, and require the printed figure to have moved.
+  {
+    const artPath = require.resolve('../js/art.js');
+    const rebuild = () => {
+      delete require.cache[artPath];
+      require('../js/art.js');
+      return DC.Art.helpPages.map(p => p.text.join('\n')).join('\n');
+    };
+    const keep = {
+      dig: D.DIG_ROCK, vent: D.DESCEND_VENT, inst: D.QUAKE.startInst,
+      jump: D.CURSOR_JUMP, calm: D.BUILDINGS.damper.calm,
+      cost: D.BUILDINGS.smelter.cost.ironPlate, fuel: D.FUEL_PER,
+      dampers: D.DAMPER_MAX, strata: D.STRATA_COUNT,
+    };
+    const probes = [
+      ['DIG_ROCK',        () => { D.DIG_ROCK = 96; },                       'dig rock 12s'],
+      ['DESCEND_VENT',    () => { D.DESCEND_VENT = 37; },                   'venting −37'],
+      ['QUAKE.startInst', () => { D.QUAKE.startInst = 61; },                'quakes start at 61'],
+      ['CURSOR_JUMP',     () => { D.CURSOR_JUMP = 9; },                     'jump 9 tiles'],
+      ['damper.calm',     () => { D.BUILDINGS.damper.calm = 0.4; },         '−40%'],
+      ['smelter cost',    () => { D.BUILDINGS.smelter.cost.ironPlate = 77; }, '77'],
+      ['FUEL_PER',        () => { D.FUEL_PER = 6; },                        'coal per 6 smelts'],
+      ['DAMPER_MAX',      () => { D.DAMPER_MAX = 7; },                      'up to 7'],
+      ['STRATA_COUNT',    () => { D.STRATA_COUNT = 12; },                   '12 strata down'],
+    ];
+    for (const [name, mutate, expect] of probes) {
+      mutate();
+      const txt = rebuild();
+      assert(txt.indexOf(expect) >= 0, 'retuning ' + name + ' moves the manual — ' +
+        'expected "' + expect + '" on the rebuilt page (a typed literal fails here)');
+    }
+    D.DIG_ROCK = keep.dig; D.DESCEND_VENT = keep.vent; D.QUAKE.startInst = keep.inst;
+    D.CURSOR_JUMP = keep.jump; D.BUILDINGS.damper.calm = keep.calm;
+    D.BUILDINGS.smelter.cost.ironPlate = keep.cost; D.FUEL_PER = keep.fuel;
+    D.DAMPER_MAX = keep.dampers; D.STRATA_COUNT = keep.strata;
+    rebuild();
+    assertEq(DC.Art.helpPages.map(p => p.text.join('\n')).join('\n'), joined,
+      'the probe leaves the shipped manual exactly as it found it');
+  }
+
+  // --- key bindings: arrows only, WASD deliberately unbound, and every key
+  // the manual advertises is really handled in engine.js
   assert(/ArrowUp/.test(engSrc) && /ArrowLeft/.test(engSrc), 'engine binds arrow keys');
   assert(!/\bKeyW\b/.test(engSrc) && !/\bw:\s*0\b/.test(engSrc),
     'engine leaves WASD unbound (SPEC3 M-MANUAL)');
-  assert(!/WASD/i.test(joined), 'manual does not promise WASD');
-  assert(/↑↓←→/.test(joined), 'manual documents the arrow-key cursor');
+  assert(!/WASD/i.test(joined), 'the manual does not promise WASD');
+  assert(/↑↓←→/.test(joined), 'the manual documents the arrow-key cursor');
   for (const k of ['x', 'r', 'c', 'd', 'h']) {
     assert(new RegExp("case '" + k + "':").test(engSrc),
       'manual key ' + k.toUpperCase() + ' is really bound in engine.runKey');
   }
   assert(/if \(k === ' '\) \{ ui\.paused = true/.test(engSrc), 'SPACE pauses');
   assert(/if \(k === 'Enter'\) \{ contextAction/.test(engSrc), 'ENTER is the context action');
-  assert(/e\.shiftKey \? 5 : 1/.test(engSrc), 'SHIFT jumps the cursor 5 tiles');
+  // the pager keys the footer promises
+  assert(/case 'help':[\s\S]*ArrowRight[\s\S]*turnPage/.test(engSrc),
+    "engine turns the manual's pages on the arrow keys");
+  assert(/st\.ui\.helpPage = n/.test(engSrc),
+    'engine jumps straight to a page by its number');
   // build tool names/order come straight from data.js
   for (let i = 0; i < D.BUILD_ORDER.length; i++) {
     const nm = D.BUILDINGS[D.BUILD_ORDER[i]].name;
-    assert(new RegExp((i + 1) + ' ' + nm).test(joined),
-      'manual lists hotkey ' + (i + 1) + ' as ' + nm);
+    assert(new RegExp('\\b' + nm + '\\b').test(joined),
+      'the manual lists build tool ' + (i + 1) + ' as ' + nm);
+    assert(new RegExp(' ' + (i + 1) + ' ').test(pages[0].text[5 + i]),
+      'hotkey ' + (i + 1) + ' caps the ' + nm + ' row');
+  }
+  // and so do the goods in the CARGO legend
+  for (const id of D.ITEM_ORDER) {
+    assert(joined.indexOf(D.ITEMS[id].name) >= 0,
+      'the CARGO legend names ' + D.ITEMS[id].name + ' straight from data.js');
   }
 }
 
@@ -678,7 +825,9 @@ console.log('PASS barks | categories ' + CATALOG.length +
   ' | drive triggers ' + trigs.size + ' (' + Array.from(trigs).sort().join(',') + ')' +
   ' | barks in drive ' + d1.lines.length +
   ' | worst line overlap ' + DUP_WORST.toFixed(2) + '/' + DUP_MAX.toFixed(2) +
-  ' | manual ' + DC.Art.help[0].length + 'x' + DC.Art.help.length + ' data-composed' +
+  ' | manual ' + DC.Art.helpPages.length + 'pp ' + DC.Art.help[0].length + 'x' +
+  DC.Art.help.length + ' data-composed, ' + MANUAL_COLORS + ' colours, ink ' +
+  DC.Art.helpPages.map(p => (p.ink * 100).toFixed(0) + '%').join('/') +
   ' | scan lines ' + scanLines + ' <= ' + S.SCAN_W +
   ' | stock labels ' + D.ITEM_ORDER.length + ' unambiguous' +
   ' | prose ' + PROSE_N + ' lines wrap whole (LOG ' + DC.Render.LOG_MSG_ROWS +

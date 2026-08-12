@@ -158,113 +158,381 @@
     A.victory = lines;
   })();
 
-  // ---------------- help: field manual (74 x 30) ----------------
-  // CX-02/CX-03: every number and key binding in here is COMPOSED from
-  // DC.DATA (and cross-checked against engine.js's handlers) so the manual
-  // can never drift from the sim again. If you retune data.js, the manual
-  // retunes with it. Don't reintroduce literals.
+  // ---------------- help: THE FIELD MANUAL (two pages) ----------------
+  // M-MANUAL (SPEC3 §B). Two laws govern this block.
+  //
+  // 1. NOTHING IS TYPED. Every number, cost, duration, item name and glyph on
+  //    these pages is read out of DC.DATA at composition time; the key labels
+  //    are cross-checked against engine.js's real handlers by
+  //    test/barks_test.js, which also retunes data.js underneath the composer
+  //    and watches the page follow. CX-02/CX-03 were this manual claiming a
+  //    40-point descent vent while the sim vented 45, and quakes past 22 when
+  //    they start at 25. Copying a figure out of SPEC.md or out of the old
+  //    page reopens exactly that bug — read it from D.
+  //
+  // 2. STRUCTURE IS COLOUR, NOT BOXES. Each page is composed on a small
+  //    styled character grid. A cell carries either a TIER name — 'head',
+  //    'body', 'bright', 'key', 'rule', 'grit' — or a TRUE game colour taken
+  //    straight from data.js (items, ores, terrain, buildings), so the manual
+  //    is a living legend instead of a description of one. render.js resolves
+  //    the tiers, lifts any true colour too dark to read as text, and paints
+  //    'key' cells inverse — those are the keycaps. art.js stays DOM-free and
+  //    knows nothing about a canvas.
   (function () {
-    // pad-or-clip: a retuned constant can never break the box frame, and
-    // test/barks_test.js asserts nothing is actually being clipped.
-    const padTo = function (s, n) {
-      return s.length >= n ? s.slice(0, n) : s + sp(n - s.length);
-    };
-    const n = function (v) { return String(Math.round(v * 10) / 10); };
-    const secs = function (ticks) { return n(ticks / D.TICK_HZ); };
+    // ---- page geometry (SPEC3 M-MANUAL: gutters >= 3 columns of air) ----
+    const W = 72;                    // page width   (the screen allows 74)
+    const H = 31;                    // page height  (the screen's whole budget)
+    const CA = 1, CAW = 32;          // left column   x 1..32
+    const GUT = 4;                   // gutter        x 33..36
+    const CB = CA + CAW + GUT;       // right column  x 37..70
+    const CBW = W - CB - 1;
+    const CAPF = 7;                  // keycaps right-align into this field
+    const NAMES = ['OPERATE', 'SURVIVE'];
 
-    // --- values pulled from the balance source of truth ---
-    const digRock   = secs(D.DIG_ROCK);
-    const digRubble = secs(D.DIG_RUBBLE);
-    const odMult    = n(D.OVERDRIVE.drillMult);
-    const quakeInst = n(D.QUAKE.startInst);
-    const damper    = D.BUILDINGS.damper;
-    const calmPct   = n(damper.calm * 100);
-    const damperMax = n(D.DAMPER_MAX);
-    const repairPl  = n(D.REPAIR_COST);
-    const fuelPer   = n(D.FUEL_PER);
-    const gearIn    = D.RECIPES.gear.in.ironPlate;
-    const chgIn     = D.RECIPES.charge.in;
+    // A page is a character grid with a colour tier (or a true game colour)
+    // and an inverse flag per cell. Plain text and coloured spans are then two
+    // projections of the SAME grid, so the string the tests lint and the
+    // pixels the player reads can never disagree.
+    function Page(id, w, h) {
+      this.id = id; this.w = w; this.h = h;
+      this.ch = []; this.co = []; this.iv = [];
+      for (let y = 0; y < h; y++) {
+        this.ch.push(new Array(w).fill(' '));
+        this.co.push(new Array(w).fill(null));
+        this.iv.push(new Array(w).fill(false));
+      }
+    }
+    Page.prototype.put = function (x, y, s, c, inv) {
+      s = String(s);
+      for (let i = 0; i < s.length; i++) {
+        const X = x + i;
+        if (X < 0 || X >= this.w || y < 0 || y >= this.h) continue;
+        this.ch[y][X] = s[i];
+        this.co[y][X] = c || 'body';
+        this.iv[y][X] = !!inv;
+      }
+      return x + s.length;                       // next free column
+    };
+    // right-aligned: the string ENDS at rx-1. Returns its start column, so
+    // callers can keep walking leftwards.
+    Page.prototype.putR = function (rx, y, s, c, inv) {
+      const x = rx - String(s).length;
+      this.put(x, y, s, c, inv);
+      return x;
+    };
+    Page.prototype.rule = function (x, y, w) { return this.put(x, y, rep('─', w), 'rule'); };
+    // 'SECTION ─────────': the header word, then a hairline out to the column
+    // edge. Structure without a single decorative box.
+    Page.prototype.head = function (x, y, w, label) {
+      const e = this.put(x, y, label, 'head');
+      if (e + 2 <= x + w) this.rule(e + 1, y, x + w - e - 1);
+      return e;
+    };
+    Page.prototype.cap = function (x, y, label) {      // an inverse keycap
+      return this.put(x, y, ' ' + label + ' ', 'key', true);
+    };
+    Page.prototype.capR = function (rx, y, label) {
+      return this.putR(rx, y, ' ' + label + ' ', 'key', true);
+    };
+    Page.prototype.text = function () {
+      return this.ch.map(function (r) { return r.join(''); });
+    };
+    // runs of identical (colour, inverse) — what render paints, and the reason
+    // a redesign costs no per-cell draw calls.
+    Page.prototype.spans = function () {
+      const out = [];
+      for (let y = 0; y < this.h; y++) {
+        const row = [];
+        let x = 0;
+        while (x < this.w) {
+          const c = this.co[y][x], iv = this.iv[y][x];
+          if (c === null && !iv) { x++; continue; }
+          let e = x, t = '';
+          while (e < this.w && this.co[y][e] === c && this.iv[y][e] === iv) { t += this.ch[y][e]; e++; }
+          row.push({ x: x, t: t, c: c, inv: iv });
+          x = e;
+        }
+        out.push(row);
+      }
+      return out;
+    };
+    // The rows laid out as two columns. Full-width sections (THE LINE, TIPS)
+    // legitimately span the gutter; inside this band nothing may, and
+    // test/barks_test.js holds the band to SPEC3's >= 3 columns of air.
+    Page.prototype.cols = function (from, to) { this.colRows = [from, to]; };
+    // painted cells / total cells — SPEC3's air budget (<= 60% ink per page)
+    Page.prototype.ink = function () {
+      let k = 0;
+      for (let y = 0; y < this.h; y++)
+        for (let x = 0; x < this.w; x++)
+          if (this.iv[y][x] || this.ch[y][x] !== ' ') k++;
+      return k / (this.w * this.h);
+    };
+
+    // paint a run of differently-coloured fragments left to right:
+    // [['2 ', 'body'], ['▬', plate.color], [' → ', 'body'], ...]
+    function rich(p, x, y, parts) {
+      for (let i = 0; i < parts.length; i++) x = p.put(x, y, parts[i][0], parts[i][1]);
+      return x;
+    }
+
+    // ---- every figure on both pages, read out of the balance data ----
+    const C = D.COLORS;
+    const IT = D.ITEMS;
+    const num  = function (v) { return String(Math.round(v * 10) / 10); };
+    const secs = function (ticks) { return num(ticks / D.TICK_HZ) + 's'; };
+
+    const digRock    = secs(D.DIG_ROCK);
+    const digRubble  = secs(D.DIG_RUBBLE);
+    const orePeriod  = secs(D.BUILDINGS.extractor.period);
+    const damperCoal = secs(D.BUILDINGS.damper.coalTicks);
+    const odMult     = num(D.OVERDRIVE.drillMult);
+    const quakeInst  = num(D.QUAKE.startInst);
+    const calmPct    = num(D.BUILDINGS.damper.calm * 100);
+    const damperMax  = num(D.DAMPER_MAX);
+    const repairPl   = num(D.REPAIR_COST);
+    const fuelPer    = num(D.FUEL_PER);
+    const jump       = num(D.CURSOR_JUMP);
+    const gearIn     = num(D.RECIPES.gear.in.ironPlate);
+    const chgIn      = D.RECIPES.charge.in;
     // instability vented on descent — the same DATA key sim.js startStratum
     // subtracts, so retuning it retunes the manual and the sim together.
-    const vent      = n(D.DESCEND_VENT);
-    // first stratum whose breach needs core charges = when charges matter
-    let chargeStratum = D.STRATA.length;
-    for (let i = 0; i < D.STRATA.length; i++) {
-      if (D.STRATA[i].breach.charge > 0) { chargeStratum = i + 1; break; }
+    const vent       = num(D.DESCEND_VENT);
+    // The upgrade that makes repairs cheaper is NAMED, not quoted: the number
+    // it swaps in lives in meta.js, which the manual cannot compose from, and
+    // a figure this page cannot compose is a figure this page will not print.
+    let fixName = '';
+    for (let i = 0; i < D.META_UPGRADES.length; i++) {
+      if (D.META_UPGRADES[i].id === 'm_fix') fixName = D.META_UPGRADES[i].name;
     }
-    // build hotkeys, straight off BUILD_ORDER (engine maps '1'..'5' by index)
-    const tools = D.BUILD_ORDER.map(function (k, i) {
-      return (i + 1) + ' ' + D.BUILDINGS[k].name;
-    });
 
-    const L = [
-      'CONTROLS',
-      '1..' + tools.length + '   build tools:',
-      '       ' + padTo(tools[0], 12) + tools[1],
-      '       ' + padTo(tools[2], 12) + tools[3],
-      '       ' + tools[4],
-      'X      demolish · dig rock (' + digRock + 's)',
-      'R      rotate output side',
-      'C      overdrive: ' + odMult + 'x drill, +inst',
-      'D      descend when BREACH READY',
-      'SPACE  pause   ESC menu   H manual',
-      rep('─', 34),
-      'MOUSE OPTIONAL — cursor play:',
-      '↑↓←→   move cursor (SHIFT: x5)',
-      'ENTER  place · interact · repair',
-      '  belt tool: ENTER arms lay-mode,',
-      '  moving lays belts, corners turn;',
-      '  ENTER/ESC or tool swap disarms',
-      'mouse: hover=cursor · drag = belts',
-    ];
-    const R = [
-      'TERRAIN & HAZARDS',
-      '▓ rock      dig with X, ' + digRock + 's',
-      '█ obsidian  never yields',
-      '░ chasm     impassable void',
-      '≈ magma     spreads · melts all',
-      '☼ rubble    clear with X, ' + digRubble + 's',
-      rep('─', 29),
-      'instability always climbs. past',
-      'inst ' + quakeInst + ', quakes break machines',
-      'and bleed hull integrity. dampers',
-      'V slow it ' + calmPct + '% each (max ' + damperMax + ', coal).',
-      'descending vents ' + vent + ' instability.',
-      'integrity 0 = the rig is lost.',
-      rep('─', 29),
-      'ENTER/click on: hub = overdrive,',
-      'assembler = recipe, damaged',
-      'machine = repair (' + repairPl + '▬ · m_fix 1).',
-      'GRIT is on the intercom. ignore.',
-    ];
-    const chain = [
-      'PRODUCTION CHAIN ── belts into any rig tile deliver their cargo',
-      '≡ ore ──▶ [E]xtractor ──▶ ▶▶▶ belt ──▶ [S]melter ──▶ ▬ plate  (♠ 1/' +
-        fuelPer + ')',
-      rep('▬', gearIn) + ' ' + gearIn + ' iron plates ──▶ [A]ssembler ──▶ ¤ gear' +
-        ' ──▶ belt into [D]rill rig',
-      '♦ crystal + ▬ copper + ' + rep('♠', chgIn.coal) + ' coal ──▶ [A] ──▶ ' +
-        '‡ core charge  (stratum ' + chargeStratum + '+)',
-      'descend: goods carry on, machines are lost, instability vents −' + vent,
-    ];
-    const tips = [
-      'TIPS ▪ run two smelters — a lone smelter starves the assembler line',
-      '     ▪ do not camp: instability always wins — breach and move on',
-      '     ▪ bank iron plates for repairs; quakes never stop coming',
-    ];
-    const rows = [];
-    const title = '╡ DEEPCORE · FIELD MANUAL ╞';
-    const fl = (72 - title.length) >> 1;
-    rows.push('╔' + rep('═', fl) + title + rep('═', 72 - fl - title.length) + '╗');
-    for (let i = 0; i < L.length; i++) {
-      rows.push('║ ' + padTo(L[i], 34) + ' │ ' + padTo(R[i], 33) + ' ║');
+    // ---- furniture shared by both pages ----
+    function header(p, idx) {
+      p.put(CA, 0, '▌', 'head');
+      p.put(CA + 2, 0, 'DEEPCORE FIELD MANUAL', 'head');
+      let x = W - 1;                       // tab strip, right-aligned
+      for (let i = NAMES.length - 1; i >= 0; i--) {
+        x = (i === idx) ? p.capR(x, 0, NAMES[i]) : p.putR(x - 1, 0, NAMES[i], 'body') - 1;
+        x -= 1;
+      }
+      p.rule(CA, 1, W - CA - 1);
     }
-    rows.push('╟' + rep('─', 36) + '┴' + rep('─', 35) + '╢');
-    for (let i = 0; i < chain.length; i++) rows.push('║ ' + padTo(chain[i], 70) + ' ║');
-    rows.push('╟' + rep('─', 72) + '╢');
-    for (let i = 0; i < tips.length; i++) rows.push('║ ' + padTo(tips[i], 70) + ' ║');
-    rows.push('╚' + rep('═', 72) + '╝');
-    A.help = rows;
+    function footer(p, y) {
+      let x = p.cap(CA, y, '←');
+      x = p.cap(x + 1, y, '→');
+      x = p.put(x + 2, y, 'or', 'body');
+      for (let i = 0; i < NAMES.length; i++) x = p.cap(x + 1, y, String(i + 1));
+      p.put(x + 2, y, 'turn the page', 'body');
+      p.capR(p.putR(W - 1, y, 'leave the manual', 'body') - 1, y, 'ESC');
+    }
+
+    // ================= page 1 — OPERATE =================
+    function buildOperate() {
+      const p = new Page(NAMES[0], W, H);
+      header(p, 0);
+      p.cols(3, 17);                            // BUILD/CARGO | CURSOR
+
+      // --- BUILD: hotkey, the machine's own letter in its own colour, cost
+      p.head(CA, 3, CAW, 'BUILD');
+      for (let i = 0; i < D.BUILD_ORDER.length; i++) {
+        const b = D.BUILDINGS[D.BUILD_ORDER[i]];
+        const y = 5 + i;
+        p.cap(CA, y, String(i + 1));            // engine maps '1'..'n' by index
+        p.put(CA + 5, y, b.letter, b.color);
+        p.put(CA + 7, y, b.name, 'body');
+        let x = CA + CAW;                       // costs right-align to the edge
+        const keys = Object.keys(b.cost);
+        for (let j = keys.length - 1; j >= 0; j--) {
+          const it = IT[keys[j]];
+          x = p.putR(x, y, it.glyph, it.color);
+          x = p.putR(x - 1, y, String(b.cost[keys[j]]), 'bright') - 1;
+        }
+      }
+
+      // --- CARGO: the legend is the goods themselves, in their true colours
+      p.head(CA, 11, CAW, 'CARGO');
+      const half = Math.ceil(D.ITEM_ORDER.length / 2);
+      for (let i = 0; i < D.ITEM_ORDER.length; i++) {
+        const it = IT[D.ITEM_ORDER[i]];
+        const x = i < half ? CA : CA + 16;      // raws left, made goods right
+        const y = 13 + (i % half);
+        p.put(x, y, it.glyph, it.color);
+        p.put(x + 2, y, it.name, 'body');
+      }
+
+      // --- CURSOR: a real two-column key table, keycaps right-aligned so the
+      // descriptions share one left edge. Labels are cross-checked against
+      // engine.js's handlers by test/barks_test.js.
+      p.head(CB, 3, CBW, 'CURSOR · MOUSE OPTIONAL');
+      const keys = [
+        ['↑↓←→',  'move the cursor'],
+        ['SHIFT', 'hold: jump ' + jump + ' tiles'],
+        ['ENTER', 'place · use · repair'],
+        ['X',     'demolish · dig rock ' + digRock],
+        ['R',     'rotate the output side'],
+        ['C',     'overdrive: ' + odMult + '× drill'],
+        ['D',     'descend when BREACH READY'],
+        ['SPACE', 'pause the run'],
+        ['H',     'this manual'],
+        ['ESC',   'drop tool · then pause'],
+      ];
+      for (let i = 0; i < keys.length; i++) {
+        p.capR(CB + CAPF, 5 + i, keys[i][0]);
+        p.put(CB + CAPF + 2, 5 + i, keys[i][1], 'body');
+      }
+      p.put(CB, 15, 'ENTER on the rig: overdrive', 'body');
+      p.put(CB, 16, 'ENTER on an assembler: recipe', 'body');
+      p.put(CB, 17, 'mouse: hover moves · drag lays', 'body');
+
+      // --- THE LINE: the centrepiece. Ore falls down the page into the rig.
+      p.head(CA, 19, W - CA - 1, 'THE LINE');
+      let vx = CA + 2;
+      for (const k in D.ORE_GLYPHS) {
+        vx = p.put(vx, 21, D.ORE_GLYPHS[k].glyph, D.ORE_GLYPHS[k].color) + 1;
+      }
+      p.put(vx + 1, 21, 'ore veins in the rock', 'body');
+      rich(p, CB, 21, [[String(D.STRATA_COUNT), 'bright'],
+                       [' strata down to the Core', 'body']]);
+
+      const belt = D.BUILDINGS.belt;
+      const link = function (y, last, note) {
+        p.put(CA + 3, y, last ? '▼' : '│', 'rule');
+        p.put(CA + 6, y, rep(belt.letter, 3), belt.color);
+        if (note) p.put(CA + 10, y, note, 'body');
+      };
+      const stage = function (y, b, parts) {
+        p.put(CA + 3, y, b.letter, b.color);
+        p.put(CA + 5, y, b.name, 'bright');
+        rich(p, CA + 19, y, parts);
+      };
+      p.put(CA + 3, 22, '│', 'rule');
+      stage(23, D.BUILDINGS.extractor, [
+        ['on a vein · one ore every ' + orePeriod + ' out its marked side', 'body'],
+      ]);
+      link(24, false, 'belts carry it · corners turn themselves');
+      stage(25, D.BUILDINGS.smelter, [
+        [IT.ironOre.glyph, IT.ironOre.color], [' ore → ', 'body'],
+        [IT.ironPlate.glyph, IT.ironPlate.color], [' plate · one ', 'body'],
+        [IT.coal.glyph, IT.coal.color], [' coal per ' + fuelPer + ' smelts', 'body'],
+      ]);
+      link(26, false, 'ENTER arms lay-mode: move to lay a run');
+      stage(27, D.BUILDINGS.assembler, [
+        [gearIn + ' ', 'bright'], [IT.ironPlate.glyph, IT.ironPlate.color],
+        [' → ', 'body'], [IT.gear.glyph, IT.gear.color], [' gear    ', 'body'],
+        [rep(IT.crystal.glyph, chgIn.crystal), IT.crystal.color], [' + ', 'body'],
+        [rep(IT.copperPlate.glyph, chgIn.copperPlate), IT.copperPlate.color], [' + ', 'body'],
+        [rep(IT.coal.glyph, chgIn.coal), IT.coal.color], [' → ', 'body'],
+        [IT.charge.glyph, IT.charge.color], [' charge', 'body'],
+      ]);
+      link(28, true, 'any tile of the rig takes a delivery');
+      stage(29, D.BUILDINGS.hub, [
+        ['feed it ', 'body'], [IT.gear.glyph, IT.gear.color], [' and ', 'body'],
+        [IT.charge.glyph, IT.charge.color],
+        [' · D descends, venting −' + vent, 'body'],
+      ]);
+
+      footer(p, H - 1);
+      return p;
+    }
+
+    // ================= page 2 — SURVIVE =================
+    function buildSurvive() {
+      const p = new Page(NAMES[1], W, H);
+      header(p, 1);
+      p.cols(3, 21);                            // THE ROCK/DAMAGE | PRESSURE/DAMPER
+
+      // --- THE ROCK: the hazard glossary, every glyph its true map colour
+      p.head(CA, 3, CAW, 'THE ROCK');
+      const T = D.TERRAIN;
+      const rocks = [
+        [T.rock.glyph, T.rock.color, 'rock', 'dig it out', 'X', digRock],
+        [D.RUBBLE_GLYPH, C.gray, 'rubble', 'clear it', 'X', digRubble],
+        [T.obsidian.glyph, T.obsidian.color, 'obsidian', 'never yields'],
+        [T.chasm.glyph, T.chasm.color, 'chasm', 'no way across'],
+        [T.magma.glyph, T.magma.color, 'magma', 'spreads · melts all'],
+      ];
+      for (let i = 0; i < rocks.length; i++) {
+        const r = rocks[i], y = 5 + i;
+        p.put(CA, y, r[0], r[1]);
+        p.put(CA + 2, y, r[2], 'body');
+        const x = p.put(CA + 12, y, r[3], 'body');
+        if (r[4]) p.put(p.cap(x + 1, y, r[4]) + 1, y, r[5], 'bright');
+      }
+
+      // --- PRESSURE: the one number that ends every run
+      p.head(CB, 3, CBW, 'PRESSURE');
+      p.put(CB, 5, 'instability starts climbing the', 'body');
+      p.put(CB, 6, 'moment you land, and never stops.', 'body');
+      rich(p, CB, 8, [['past ', 'body'], [quakeInst, 'bright'],
+                      [' the quakes come — they', 'body']]);
+      p.put(CB, 9, 'crack machines and bleed the hull.', 'body');
+      // the gauge: the ░/▓ seam sits exactly where quakes begin, so the shape
+      // of the bar IS the number beside it (scale from D.INSTAB_MAX).
+      const GW = 18;
+      const seam = Math.round(D.QUAKE.startInst / D.INSTAB_MAX * GW);
+      const gx = p.put(CB, 11, 'calm ', 'body');
+      p.put(gx, 11, rep('░', seam), C.green);
+      p.put(gx + seam, 11, rep('▓', GW - seam), C.red);
+      p.put(gx + GW + 1, 11, 'collapse', 'body');
+      p.put(gx + seam, 12, '▲', 'bright');
+      // the caption follows the marker, but a retune that pushes the seam right
+      // must not shove it off the page — clamp it to the column instead
+      const cap = 'quakes start at ';
+      const capX = Math.min(gx + seam + 2, W - 1 - cap.length - quakeInst.length);
+      rich(p, capX, 12, [[cap, 'body'], [quakeInst, 'bright']]);
+
+      // --- DAMAGE & REPAIR
+      p.head(CA, 14, CAW, 'DAMAGE');
+      p.put(CA, 16, 'a cracked machine runs at half', 'body');
+      rich(p, CA, 17, [['speed · at ', 'body'], ['0', 'bright'], [' it is scrap.', 'body']]);
+      rich(p, p.cap(CA, 18, 'ENTER') + 1, 18, [
+        ['repairs it · ', 'body'], [repairPl, 'bright'], [' ', 'body'],
+        [IT.ironPlate.glyph, IT.ironPlate.color],
+      ]);
+      p.put(CA, 19, 'cheaper with ' + fixName + '.', 'body');
+      rich(p, CA, 20, [['hull ', 'body'], ['0', 'bright'], [' and the rig is lost.', 'body']]);
+
+      // --- THE DAMPER: the only lever on the pressure that is not the drill
+      p.head(CB, 14, CBW, 'THE DAMPER');
+      const dmp = D.BUILDINGS.damper;
+      p.put(CB, 16, dmp.letter, dmp.color);        // the machine, not a keycap
+      rich(p, CB + 2, 16, [
+        ['burns one ', 'body'], [IT.coal.glyph, IT.coal.color],
+        [' coal every ' + damperCoal, 'body'],
+      ]);
+      p.put(CB + 2, 17, 'and slows the climb −' + calmPct + '%', 'body');
+      p.put(CB + 2, 18, 'each · up to ' + damperMax + ' of them.', 'body');
+      p.put(CB, 20, 'descending vents −' + vent + ' pressure:', 'body');
+      p.put(CB, 21, 'the only real relief there is.', 'body');
+
+      // --- TIPS + the one line GRIT contributes to the documentation
+      p.head(CA, 23, W - CA - 1, 'TIPS');
+      const tips = [
+        'run two smelters — one alone starves the assembler and the line dies',
+        'do not camp: the pressure always wins. breach and move on',
+        'bank ▬ iron plates for repairs — the quakes never stop coming',
+      ];
+      for (let i = 0; i < tips.length; i++) {
+        p.put(CA, 25 + i, '▪', 'head');
+        p.put(CA + 2, 25 + i, tips[i], 'body');
+      }
+      p.put(CA, 29, 'GRIT ▸ "Page 3 fell in a chasm. You\'re welcome."', 'grit');
+
+      footer(p, H - 1);
+      return p;
+    }
+
+    const pages = [buildOperate(), buildSurvive()];
+    // The pager's asset: id, plain text (what the tests lint) and the coloured
+    // spans (what render paints) — two projections of one grid.
+    A.helpPages = pages.map(function (p) {
+      return { id: p.id, w: p.w, h: p.h, colRows: p.colRows,
+               text: p.text(), rows: p.spans(), ink: p.ink() };
+    });
+    A.HELP_LAYOUT = { W: W, H: H, CA: CA, CAW: CAW, GUT: GUT, CB: CB, CBW: CBW };
+    // A.help stays the plain-text page 1 — the asset render falls back to and
+    // the one the older suites already lint.
+    A.help = A.helpPages[0].text;
   })();
 
   // ---------------- mantle banner ----------------

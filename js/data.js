@@ -253,6 +253,16 @@
   // read by BOTH consumers, so the two can never drift again; test/barks_test
   // asserts sim.js references this key rather than a number.
   D.DESCEND_VENT = 45;
+  // The instability scale's ceiling. sim.js clamps instability to 0..100 and
+  // ramps the quake timer over the same span; the manual draws its pressure
+  // gauge against it (M-MANUAL). Declared here so the gauge is composed rather
+  // than eyeballed — test/barks_test.js asserts sim.js's clamp still agrees
+  // with this number, which is how the two stay married without touching sim.
+  D.INSTAB_MAX = 100;
+  // Cursor step while SHIFT is held (engine.js moveCursor). It was a bare
+  // literal in engine.js and a typed '5' in the manual — CX-02's exact shape.
+  // engine.js reads it and the manual composes from it (M-MANUAL).
+  D.CURSOR_JUMP = 5;
 
   // ---------------- run start ----------------
   D.START_STOCK = { ironPlate: 40, gear: 8 };
