@@ -6,6 +6,15 @@
      fire(run, trigger, ctx) discrete trigger; sets run.foreman
      epitaph(run)            gameover lines (cause-aware)
      toast(run)              victory screen line
+     core(run, kind, i)      M-CORELORE: the second voice. `kind` is one of
+                             'intrusion' | 'gate' | 'reveal' | 'mantle' —
+                             these ids are the shared hook other dispatches
+                             fire (M-WONDERS' Bell rings 'intrusion' early;
+                             M-EVENTS' dead-foreman logs corroborate it).
+                             Sets run.foreman with voice:'core' and schedules
+                             GRIT's paired deflection.
+     pause(run, kind)        M-GRITPLUS: a bark fired while the sim is frozen
+                             ('smokeBreak' | 'breakOver'), pre-typed
    run.foreman = { text, t0, until } — t0/until in run.totalT ticks.
    Each line used at most once per run (pool exhausted -> reuse allowed).
    Global cooldown ~6s except priority triggers, which always cut in. */
@@ -297,6 +306,17 @@
         grit: "Don't you touch that. It's lying. Probably. Drill.", offer: true },
       { core: "oh. you meant it. hah. hah. the little thing meant it.",
         grit: "That's a laugh. That thing LAUGHED. Hazard pay. Now. DRILL!" },
+    ],
+    // the victory screen, the moment the shell opens. GRIT has just finished
+    // his toast; this is what answers it, and then what he says about that.
+    // The crack alone is a picture — this is the picture landing.
+    reveal: [
+      { core: "thank you. it was getting so tight in here.",
+        grit: "...Kid. Kid, the hole is talking. The HOLE is TALKING. Back up." },
+      { core: "you opened it from the outside. how kind of you.",
+        grit: "We didn't drill a bottom. We drilled a doorbell. Oh, hell." },
+      { core: "shhh. i am still coming out.",
+        grit: "Nope. Bonus declined. Whatever that is, it can keep the core." },
     ],
     // the Mantle: past the shell, and done being entertained
     mantle: [

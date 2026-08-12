@@ -1208,6 +1208,35 @@
     try { return A.crackSphere(lines) || lines; } catch (e) { return lines; }
   }
 
+  // A stable pick out of an authored pool, keyed on the run and a slot name.
+  // FNV-1a over the seed: same run, same line, every frame and every redraw,
+  // without ever touching run.rng (SPEC3 rule 4 — render must not feed back
+  // into sim, and on the victory screen the Mantle's map is still unrolled).
+  function seedPick(run, slot, n) {
+    let h = 0x811c9dc5;
+    const s = String(((run && run.seed) >>> 0)) + ':' + slot;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    return n > 0 ? (h >>> 1) % n : 0;
+  }
+  // M-CORELORE's payoff. Once the shell is open the Core says one line and
+  // GRIT answers it — the same call-and-response as the foreman bar, on the
+  // one screen that has no foreman bar. Absent barks.js: nothing is drawn and
+  // the victory screen is exactly what it was.
+  function drawReveal(run, row) {
+    const pool = DC.Barks && DC.Barks.CORE && DC.Barks.CORE.reveal;
+    if (!Array.isArray(pool) || !pool.length || row + 1 > ROWS - 3) return;
+    const pair = pool[seedPick(run, 'reveal', pool.length)];
+    if (!pair) return;
+    const gold = C.gold || C.amber;
+    const said = fxTyped('reveal', String(pair.core), 8);   // slow: it has time
+    ctext(row, said, gold);
+    if (said.length >= String(pair.core).length && pair.grit)
+      ctext(row + 1, 'GRIT ▸ ' + fxTyped('revealGrit', String(pair.grit), 16), C.cyan);
+  }
+
   function drawVictory(state, phase) {
     // The toast is typed FIRST (the call is keyed and idempotent) because the
     // sphere behind it needs to know whether GRIT has finished talking: the
@@ -1224,6 +1253,10 @@
     statsBlock(y, fallbackResult(state.run, true));
     ctext(y + 5, '+' + D.WIN_CORES + ' ◈ CORE BONUS', phase ? C.magenta : shade(C.magenta, 0.6));
     if (full && y + 7 < 31) ctext(y + 7, 'GRIT ▸ ' + typed, C.cyan);
+    // ...and then the shell answers him. The pair is chosen by a pure hash of
+    // the run's seed — render must never draw from run.rng, and on this screen
+    // the run is still live (the Mantle is one keypress away).
+    if (full && typed.length >= full.length) drawReveal(state.run, y + 9);
     ctext(30, '[TAB] RUN RECAP CARD', C.amberDim);
     ctext(31, '[ENTER] ASCEND      [C] CONTINUE INTO THE MANTLE', C.amber);
   }
