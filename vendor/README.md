@@ -1,3 +1,40 @@
+# vendor/ — the font subset (M-HIRES Phase 2.5, 2026-08-12)
+
+**Status: §3 below has now been done.** `deepcore-mono.woff2` is a subset of
+DejaVu Sans Mono renamed "Deepcore Mono", carrying exactly the inventory
+`node tools/glyphs.js` reports (204 codepoints — printable ASCII plus the 109
+non-ASCII glyphs the game can draw). 8.3 KiB as WOFF2, 11.9 KiB once base64'd
+into `deepcore-mono.css` as a data URI. Regenerate with `node tools/font.js`
+after adding any glyph; that script subsets against the audit, so the two
+cannot drift. It needs Python with fontTools + brotli, which are **build-time
+only** — the generated files are committed, so the game, the five suites and
+`tools/build.js` need none of it.
+
+Three things worth knowing:
+
+- **The advances are identical to the source face** (1233/2048 = 0.602 em for
+  every glyph, verified after subsetting). That matters more than it sounds:
+  `flush()` batches a whole run of cells into one `fillText` scaled by
+  `cw / adv`, so a face whose advance differs from the fallback's shears the
+  row on swap.
+- **It loads asynchronously and `Render.init()` measures once.** `render.js`
+  re-measures on `document.fonts.ready` *and* explicitly calls
+  `document.fonts.load()`, because nothing in the DOM uses the face — the page
+  paints through a canvas — so it might otherwise never become pending.
+  `font-display: block`, because `swap` would paint a frame in the fallback
+  and then reflow, which on a character grid is a visible shear of every row.
+- **The system stack is still behind it.** If the webfont is blocked, the game
+  runs on DejaVu Sans Mono / Menlo / Consolas exactly as before; the advance is
+  measured from whatever is actually in use, so nothing shears either way.
+
+`tools/glyphs.js` scans raw source text, so it also reports glyphs that appear
+only in *comments* — `≫` (U+226B) is one, and it is genuinely absent from
+DejaVu Sans Mono, which is why `sim.js` draws `»` instead and says so. Being
+over-inclusive is the safe direction: a spare glyph costs bytes, a missing one
+is a tofu box on screen. `tools/subset_font.py` prints anything it had to skip.
+
+---
+
 # vendor/ — deliberately empty (M-MANUAL, 2026-08-11)
 
 SPEC3 rule 7 permits vendored dependencies "when they demonstrably improve the

@@ -30,8 +30,16 @@
   //   Monaco            older macOS, before Menlo shipped
   //   Cascadia Mono / Consolas   Windows
   // `node tools/glyphs.js` prints the inventory any candidate must cover.
-  const FONT_STACK = '"DejaVu Sans Mono", Menlo, Monaco, "Cascadia Mono", ' +
-                     'Consolas, "Courier New", monospace';
+  //
+  // M-HIRES Phase 2.5 puts a VENDORED face at the head of it: "Deepcore Mono",
+  // a subset of DejaVu Sans Mono carrying exactly that inventory, embedded as
+  // a data URI by vendor/deepcore-mono.css. The system stack stays behind it
+  // as the fallback chain — if the webfont is blocked or fails, the game must
+  // still be playable — but when it loads, every machine draws the same grid
+  // and we stop guessing about platforms we cannot see.
+  const FONT_FAMILY = 'Deepcore Mono';
+  const FONT_STACK = '"' + FONT_FAMILY + '", "DejaVu Sans Mono", Menlo, Monaco, ' +
+                     '"Cascadia Mono", Consolas, "Courier New", monospace';
   // Scale limits. Below 1 the glyphs stop being legible faster than the extra
   // fit is worth, so a phone-sized viewport keeps the full 800x627 and lets
   // style.css's max-width/max-height letterbox it. Above ~2.25 a 16px font has
@@ -69,6 +77,7 @@
   // pitch, so a whole batched run stays grid-aligned at any size.
   let scale = 1, cw = CW, ch = CH, fontPx = FONT_PX;
   let font = FONT_PX + 'px ' + FONT_STACK;
+  let fontReady = false;             // the vendored face has loaded and been measured
 
   // Render's own animation clock (M-HIRES Phase 0). Same contract as fx.js's:
   // driven by elapsed milliseconds, expressed in virtual 60 fps frames, so the
@@ -1526,7 +1535,39 @@
       canvas = cv;
       ctx = cv.getContext('2d');
       DC.Render.resize();
+      DC.Render.watchFont();
     },
+
+    // A webfont loads ASYNCHRONOUSLY, while init() measures the glyph advance
+    // exactly once. Until the face lands, `adv` describes the fallback; the
+    // moment it swaps in, every batched run is scaled by the wrong number and
+    // the whole grid shears. So re-measure when the font is really ready —
+    // which is the same re-measure resize() already owed Phase 1, reached
+    // through the same call. One fix, two callers.
+    //
+    // Both hooks are used on purpose: fonts.load() forces the face to load
+    // even though the page paints only through a canvas (nothing in the DOM
+    // uses it, so it might otherwise never become pending), and fonts.ready
+    // catches the general case including a font that was already cached.
+    watchFont: function () {
+      const remeasure = function () {
+        if (ctx) { measureAdv(); fontReady = true; }
+      };
+      try {
+        const f = root.document && root.document.fonts;
+        if (!f) return false;
+        if (typeof f.load === 'function') {
+          const p = f.load(font);
+          if (p && p.then) p.then(remeasure, function () { /* blocked: fallback */ });
+        }
+        if (f.ready && typeof f.ready.then === 'function') {
+          f.ready.then(remeasure, function () { /* nothing to do */ });
+        }
+        return true;
+      } catch (e) { return false; }   // no document, or a hostile CSP
+    },
+    fontReady: function () { return fontReady; },
+    FONT_FAMILY: FONT_FAMILY,
 
     // Fit the grid to the viewport, preserving aspect. Called on load, on
     // every (debounced) window resize, and whenever devicePixelRatio changes

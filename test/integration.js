@@ -2871,6 +2871,97 @@ function scalingSection() {
   return Object.keys(scales).map((k) => scales[k].toFixed(2)).join('/');
 }
 
+// =========================================================================
+// SECTION 12 — the vendored face loads asynchronously (M-HIRES Phase 2.5)
+// Render.init() measures the glyph advance ONCE, but a webfont arrives later.
+// Until it does, `adv` describes the FALLBACK face; the instant the vendored
+// one swaps in, flush() is still dividing whole batched runs by the old
+// number and every row shears. The fix is to re-measure on
+// document.fonts.ready — the same re-measure resize() owes Phase 1.
+// The stub gives the two faces DIFFERENT advances, which is the entire point:
+// if the re-measure is dropped, the numbers below stop matching.
+// =========================================================================
+function fontSection() {
+  SECTION = 'font';
+  const R = DC.Render;
+  const FALLBACK_EM = 0.55, VENDORED_EM = ADV_EM;   // 0.602, DejaVu's real advance
+  let faceLoaded = false;
+  const ctxStub = {
+    fillStyle: '', font: '', textBaseline: '', textAlign: '',
+    setTransform: function () {}, fillRect: function () {},
+    save: function () {}, restore: function () {}, scale: function () {},
+    fillText: function () {},
+    measureText: function () {
+      return { width: parseFloat(this.font) * (faceLoaded ? VENDORED_EM : FALLBACK_EM) };
+    },
+  };
+  const canvasStub = {
+    width: 0, height: 0, style: {},
+    getContext: function () { return ctxStub; },
+    addEventListener: function () {},
+    getBoundingClientRect: function () {
+      return { left: 0, top: 0, width: parseFloat(this.style.width) || 0,
+               height: parseFloat(this.style.height) || 0 };
+    },
+  };
+
+  let resolveReady = null;
+  const ready = new Promise(function (res) { resolveReady = res; });
+  let askedFor = null;
+  const cssVars = {};
+  global.document = {
+    documentElement: {
+      style: { setProperty: function (k, v) { cssVars[k] = v; } },
+    },
+    fonts: {
+      ready: ready,
+      load: function (f) { askedFor = f; return ready; },
+    },
+  };
+
+  R.init(canvasStub);
+  const before = R.metrics();
+  assert(Math.abs(before.adv - before.fontPx * FALLBACK_EM) < 1e-9,
+    'at init the advance is measured from whatever face is loaded NOW');
+  assert(R.fontReady() === false, 'and the vendored face is not claimed to be ready yet');
+  assert(askedFor && askedFor.indexOf(R.FONT_FAMILY) >= 0,
+    'render asks document.fonts to load the vendored family by name (got ' + askedFor + ')');
+  assert(/Deepcore Mono/.test(askedFor), 'which is "Deepcore Mono"');
+
+  // style.css's scanline period is a custom property render sets from the
+  // cell size — a fixed 3px pattern reads twice as dense at 2x scale.
+  assertEq(cssVars['--scanline'], '3px', 'the scanline period is 3px at scale 1');
+  R.resize(1920, 1080);
+  assertEq(cssVars['--scanline'], '5px',
+    'and it scales with the cell (1.72x -> 5px), so the CRT overlay does not ' +
+    'double in density and muddy the art');
+  R.resize(800, 627);
+
+  faceLoaded = true;                       // the webfont lands
+  resolveReady();
+  // let render's two .then handlers run before looking
+  return ready.then(function () {})
+    .then(function () {})
+    .then(function () {
+      const after = R.metrics();
+      assert(Math.abs(after.adv - after.fontPx * VENDORED_EM) < 1e-9,
+        're-measured on document.fonts.ready (adv ' + after.adv.toFixed(3) + ', wanted ' +
+        (after.fontPx * VENDORED_EM).toFixed(3) + '; the stale fallback value was ' +
+        (after.fontPx * FALLBACK_EM).toFixed(3) + ')');
+      assert(R.fontReady(), 'and the renderer knows the vendored face is in use');
+
+      // It must degrade rather than throw: a browser that blocks webfonts, or
+      // any host with no font API at all, still has to run the game on the
+      // system stack behind it.
+      delete global.document;
+      assertEq(R.watchFont(), false,
+        'with no document.fonts the watch reports absent instead of throwing');
+      const still = R.metrics();
+      assert(still.adv > 0, 'and the grid still has a usable advance');
+      return (after.adv / after.fontPx).toFixed(3);
+    });
+}
+
 // -------------------------------------------------------------------- main
 const SEED = process.env.DC_SEED ? (parseInt(process.env.DC_SEED, 10) | 0) : 1337;
 try {
@@ -2890,13 +2981,20 @@ try {
   const fxRows = fxSection(SEED + 31);
   const blinks = clockSection(SEED + 41);
   const scaleSummary = scalingSection();
-  console.log('PASS integration seed=' + SEED + ' | ' + drivenSummary +
-    ' | fx rows ' + fxRows + ' | recap card ' + cardRows + ' rows' +
-    ' | clock 60=144Hz (' + blinks + ' blinks/4s)' +
-    ' | scale ' + scaleSummary +
-    ' | cadence 16/12/10 | overdrive x2 | damper ok | charge+bronze ok | mantle ok' +
-    ' | engine+barks ok | ' + (Date.now() - t0) + 'ms');
-  process.exit(0);
+  // The webfont section is the one asynchronous check in the suite — a
+  // document.fonts.ready handler cannot be driven synchronously — so the
+  // PASS line waits on it rather than racing it.
+  fontSection().then(function (advEm) {
+    console.log('PASS integration seed=' + SEED + ' | ' + drivenSummary +
+      ' | fx rows ' + fxRows + ' | recap card ' + cardRows + ' rows' +
+      ' | clock 60=144Hz (' + blinks + ' blinks/4s)' +
+      ' | scale ' + scaleSummary + ' | webfont re-measured ' + advEm + 'em' +
+      ' | cadence 16/12/10 | overdrive x2 | damper ok | charge+bronze ok | mantle ok' +
+      ' | engine+barks ok | ' + (Date.now() - t0) + 'ms');
+    process.exit(0);
+  }, function (e) {
+    fail('exception: ' + (e && e.stack || e));
+  });
 } catch (e) {
   fail('exception: ' + (e && e.stack || e));
 }
