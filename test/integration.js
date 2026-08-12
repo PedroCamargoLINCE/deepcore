@@ -103,7 +103,8 @@ function dirBetween(a, b) {
 }
 
 // ------------------------------------------------------- event drain harness
-const EVENT_TYPES = ['quake', 'magma', 'depleted', 'breachReady', 'death', 'won', 'descend'];
+const EVENT_TYPES = ['quake', 'magma', 'depleted', 'breachReady', 'death', 'won',
+                     'descend', 'core'];
 function mkDrainer(run) {
   const seen = {};              // type -> count
   const samples = {};           // type -> first event object
@@ -1418,6 +1419,65 @@ function engineBarksSection(seed) {
   key(' ');
   assert(!st.ui.paused, 'space unpauses');
 
+  // --- M-GRITPLUS: the smoke break, measured on the wall clock -------------
+  // The sim is frozen while paused, so this cannot ride run.totalT: the engine
+  // times the pause off the rAF clock and barks through Barks.pause, which
+  // back-dates the reveal so a frozen typewriter still shows the whole line.
+  {
+    key(' ');
+    assert(st.ui.paused, 'space pauses again');
+    frames(8);                                         // 1s of pause
+    assert(!run.foreman || B.POOLS.smokeBreak.indexOf(run.foreman.text) < 0,
+      'no smoke break in the first seconds of a pause');
+    frames(30 * HZ);                                   // 30s+ on the stub clock
+    assert(run.foreman && B.POOLS.smokeBreak.indexOf(run.foreman.text) >= 0,
+      'after 30s paused GRIT lights one');
+    const smokeLine = run.foreman.text;
+    const shown = Math.floor((run.totalT - run.foreman.t0) * 2);
+    assert(shown >= smokeLine.length,
+      'and the line is legible while the sim is frozen (' + shown + '/' +
+      smokeLine.length + ')');
+    frames(20 * HZ);
+    assertEq(run.foreman.text, smokeLine, 'he only lights one');
+    key(' ');
+    assert(!st.ui.paused, 'space resumes');
+    frames(1);
+    assert(run.foreman && B.POOLS.breakOver.indexOf(run.foreman.text) >= 0,
+      'resuming puts him back on shift');
+  }
+
+  // --- M-GRITPLUS: EGG-420, the typed route --------------------------------
+  // Discoverable, never gating: the digits are NOT consumed (4 and 2 still
+  // pick their build tools), a stale buffer forgets itself, and nothing about
+  // the run's progress depends on any of it.
+  {
+    frames(2);
+    key('4'); key('2');
+    assertEq(st.ui.tool, D.BUILD_ORDER[1], 'the egg code never eats the build hotkeys');
+    frames(20);                                        // 2.5s: the buffer forgets
+    key('0');
+    assertEq(run.egg, null, 'a stale code does not open the window');
+    key('4'); key('2'); key('0');
+    assert(run.egg && run.totalT < run.egg.until, 'typing 4 2 0 opens the window');
+    assertEq(run.eggSeen, true, 'the run remembers it happened (M-ACHIEVE hook)');
+    assert(run.messages.some(m => /botanical/.test(m.text)),
+      'the LOG notices immediately');
+    // the bar goes mellow as soon as the global bark cooldown lets it (GRIT
+    // was mid-sentence about his smoke break)
+    let mellow = null;
+    for (let i = 0; i < 10 * HZ && !mellow; i++) {
+      frames(1);
+      if (run.foreman && B.POOLS.egg420.indexOf(run.foreman.text) >= 0) mellow = run.foreman.text;
+    }
+    assert(mellow, 'and the bar goes mellow');
+    const until = run.egg.until;
+    key('4'); key('2'); key('0');
+    assertEq(run.egg.until, until, 're-typing the code does not extend the window');
+    frames(2);
+    run.egg = null;                                    // scaffold: back to work
+    st.ui.tool = null;
+  }
+
   // --- engine wiring: run.shake -> quake bark; event drain -> bigQuake ---
   guard = 0;
   while (run.totalT - run._barks.lastAt < B.COOLDOWN + 8 && guard++ < 30 * HZ) frames(1);
@@ -2634,6 +2694,341 @@ function fxSection(seed) {
   return all.length;
 }
 
+// =========================================================================
+// SECTION 12 — M-CORELORE + M-GRITPLUS
+// The two writing briefs where they touch machinery: the Core Gate's beats
+// coming out of the sim at s8, the second voice taking the foreman bar in
+// gold, the prompt that lies, the named collapses, the 42-second botanical
+// window (and the promise that it costs the RNG stream nothing), the wall
+// that slides past on a descent, and the egg cracking on GRIT's last word.
+// Render is driven on the recording surface, so every claim is checked as
+// cells on the grid rather than as intent.
+// =========================================================================
+function coreLoreSection(seed) {
+  SECTION = 'corelore+gritplus seed=' + seed;
+  require('../js/barks.js');
+  require('../js/fx.js');
+  require('../js/render.js');
+  const B = DC.Barks, R = DC.Render, FX = DC.FX, A = DC.Art;
+  const ctxStub = {
+    fillStyle: '', font: '', textBaseline: '', textAlign: '',
+    setTransform: function () {}, fillRect: function () {},
+    save: function () {}, restore: function () {}, scale: function () {},
+    fillText: function () {}, measureText: function () { return { width: 10 }; },
+  };
+  R.init({ style: {}, getContext: function () { return ctxStub; } });
+
+  // ---- sim: the Core Gate beats, at s8 and nowhere else -------------------
+  {
+    const run = S.newRun(defEffects(), seed);
+    run.depth = D.STRATA_COUNT;
+    S.startStratum(run);
+    run.breachReq = { gear: 20, charge: 20 };          // scaffold: a round 40
+    assertEq(S.breachFrac(run), 0, 'a fresh floor is 0% fed');
+    const beats = [];
+    function feed(g, c) {
+      run.gearsFed = g; run.chargesFed = c;
+      S.tick(run);
+      for (const ev of run.events.splice(0, run.events.length))
+        if (ev.type === 'core') beats.push([ev.data.beat, S.breachFrac(run)]);
+    }
+    feed(4, 0);                                        // 10%
+    assertEq(beats.length, 0, 'the Core says nothing at a tenth of the feed');
+    feed(10, 0);                                       // 25%
+    assertEq(beats.length, 1, 'beat 0 fires at 25% of the breach feed');
+    assertEq(beats[0][0], 0, 'and it is announced as beat 0');
+    feed(20, 4);                                       // 60%
+    feed(20, 18);                                      // 95%
+    assertEq(beats.map(b => b[0]).join(','), '0,1,2', 'three beats, in order');
+    for (let i = 0; i < 3; i++)
+      assert(beats[i][1] >= D.CORE.beat[i],
+        'beat ' + i + ' waited for ' + D.CORE.beat[i] + ' (fired at ' +
+        beats[i][1].toFixed(2) + ')');
+    feed(20, 20);                                      // 100% — nothing left
+    assertEq(beats.length, 3, 'the gate is a 3-beat sequence, once per run');
+
+    // ...and it is stratum 8's alone
+    const shallow = S.newRun(defEffects(), seed + 1);
+    shallow.depth = 4; S.startStratum(shallow);
+    shallow.breachReq = { gear: 4, charge: 0 };
+    shallow.gearsFed = 4;
+    S.tick(shallow);
+    assert(!shallow.events.some(e => e.type === 'core'),
+      'no Core Gate above stratum ' + D.STRATA_COUNT);
+    const mantle = S.newRun(defEffects(), seed + 2);
+    mantle.depth = D.STRATA_COUNT; mantle.mantle = true;
+    S.startStratum(mantle);
+    mantle.breachReq = { gear: 4, charge: 0 };
+    mantle.gearsFed = 4;
+    S.tick(mantle);
+    assert(!mantle.events.some(e => e.type === 'core'),
+      'the gate does not re-open for a Mantle run passing back through');
+  }
+
+  // ---- sim: named collapses (M-GRITPLUS) ----------------------------------
+  {
+    const run = S.newRun(defEffects(), seed + 3);
+    run.instability = 100;
+    const names = [];
+    for (let i = 0; i < 400 * HZ && names.length < 4; i++) {
+      run.instability = 100;
+      const n0 = run.messages.length;
+      S.tick(run);
+      for (let m = n0; m < run.messages.length; m++) {
+        const hit = /TREMOR ([IVXLC]+)$/.exec(run.messages[m].text);
+        if (hit) names.push(hit[1]);
+      }
+    }
+    assertEq(names.slice(0, 4).join(','), 'I,II,III,IV',
+      'collapse quakes are numbered as they come (got ' + names.join(',') + ')');
+    assertEq(S.roman(9), 'IX', 'the numeral is ASCII roman, not the Unicode block');
+    // and the count is per stratum: a new floor starts the list again
+    run.depth = 2;
+    S.startStratum(run);
+    assertEq(run.tremor, 0, 'the tremor list resets on a new stratum');
+  }
+
+  // ---- sim: EGG-420 costs the RNG stream nothing --------------------------
+  {
+    function rngCalls(useEgg) {
+      const run = S.newRun(defEffects(), seed + 5);
+      let n = 0;
+      const real = run.rng;
+      run.rng = function () { n++; return real(); };
+      if (useEgg) S.startEgg(run, 'code');
+      for (let i = 0; i < (D.EGG420.sec - 2) * HZ; i++) S.tick(run);
+      return { n: n, inst: run.instability };
+    }
+    const off = rngCalls(false), on = rngCalls(true);
+    assertEq(on.n, off.n, 'opening the window draws no extra numbers from run.rng');
+    assert(on.inst < off.inst,
+      'the stratum relaxes too: instability ' + on.inst.toFixed(2) + ' < ' +
+      off.inst.toFixed(2));
+    const ratio = on.inst / off.inst;
+    assert(Math.abs(ratio - D.EGG420.instMult) < 0.02,
+      'instability rises at x' + D.EGG420.instMult + ' during the window (got x' +
+      ratio.toFixed(3) + ')');
+  }
+
+  // ---- sim: the damper is a chill unit, and the panel still fits ----------
+  {
+    const run = S.newRun(defEffects(), seed + 7);
+    run.inv.copperPlate = 10;                          // scaffold: afford a damper
+    let spot = null;
+    for (let y = 1; y < D.MAP_H - 1 && !spot; y++)
+      for (let x = 1; x < D.MAP_W - 1 && !spot; x++)
+        if (S.canPlace(run, 'damper', x, y, 1).ok) spot = { x: x, y: y };
+    assert(spot && S.place(run, 'damper', spot.x, spot.y, 1), 'scaffold: damper placed');
+    const plain = S.describeTile(run, spot.x, spot.y).map(l => l.text);
+    assert(plain.some(t => /^DAMPER/.test(t)), 'a damper is a DAMPER');
+    S.startEgg(run, 'code');
+    const chill = S.describeTile(run, spot.x, spot.y);
+    assert(chill.some(l => /^CHILL UNIT/.test(l.text)),
+      'during the window the tooltip reads chill unit');
+    for (const l of chill)
+      assert(l.text.length <= S.SCAN_W,
+        'the relabelled tooltip still fits the SCAN panel: ' + JSON.stringify(l.text));
+  }
+
+  // ---- render: the second voice takes the bar -----------------------------
+  const run = S.newRun(defEffects(), seed + 11);
+  const st = {
+    screen: 'run', meta: DC.Meta.newProfile(), run: run,
+    ui: { tool: null, facing: 1, hover: null, cursor: { x: run.hub.x + 1, y: run.hub.y + 1 },
+          dragging: false, dragLast: null, laying: false, paused: false,
+          descendAnim: 0, shakeUntil: 0, flash: null },
+  };
+  function frames(n) { for (let i = 0; i < n; i++) R.frame(st); }
+  function rowText(r, x0, w) {
+    let s = '';
+    for (let c = x0; c < x0 + w; c++) s += R.cellAt(c, r).ch;
+    return s;
+  }
+  {
+    run.depth = D.STRATA_COUNT;
+    B.fire(run, 'runStart');
+    run.totalT += 20;                                   // let the typewriter run
+    frames(1);
+    assert(rowText(31, 0, 6).indexOf('GRIT') >= 0, 'GRIT is tagged on the bar');
+    assertEq(R.cellAt(7, 31).fg, D.COLORS.cyan, 'and GRIT speaks in cyan');
+
+    run.totalT += 200;
+    const line = B.core(run, 'gate', 0);
+    frames(1);
+    assertEq(rowText(31, 0, 6).indexOf('GRIT'), -1,
+      'the Core is not tagged — it has no name to give');
+    assertEq(R.cellAt(5, 31).ch, '▸', 'a bare gold caret marks the second voice');
+    // half speed: after 6 ticks GRIT would have shown 12 characters
+    run.totalT += 6;
+    frames(1);
+    const shown = rowText(31, 7, R.FOREMAN_ROW_W).replace(/ +$/, '');
+    assertEq(shown, line.slice(0, shown.length), 'the Core types its own line');
+    assert(shown.length <= 8, 'the Core types at half GRIT\'s speed (' +
+      shown.length + ' chars in 6 ticks)');
+    assertEq(R.cellAt(7, 31).fg, D.COLORS.gold, 'and it is gold, not cyan');
+    assert(R.contrast(D.COLORS.gold, D.COLORS.bg) >= R.MIN_CONTRAST,
+      'the Core clears the contrast floor on the bar background');
+    run.totalT += 400;                                  // let it fade out
+  }
+
+  // ---- render: the prompt that lies ---------------------------------------
+  {
+    assertEq(run.coreOffer, null, 'no prompt without the beat that raises it');
+    frames(1);
+    let found = -1;
+    for (let r = D.MAP_Y; r < D.MAP_Y + D.MAP_H; r++)
+      if (rowText(r, D.MAP_X, D.MAP_W).indexOf('ASCEND') >= 0) found = r;
+    assertEq(found, -1, 'the map shows no ascend prompt of its own');
+    run.coreOffer = { t0: run.totalT, until: run.totalT + 9 * HZ };
+    frames(1);
+    for (let r = D.MAP_Y; r < D.MAP_Y + D.MAP_H; r++)
+      if (rowText(r, D.MAP_X, D.MAP_W).indexOf('[ENTER] ASCEND') >= 0) found = r;
+    assert(found > 0, 'the Core Gate raises a prompt that looks exactly real');
+    // it breathes like the game's real prompts do; both halves are the Core's
+    // gold, and both halves clear the text floor
+    const px = D.MAP_X + rowText(found, D.MAP_X, D.MAP_W).indexOf('[');
+    const tones = {};
+    for (let i = 0; i < 8; i++) { run.t++; frames(1); tones[R.cellAt(px, found).fg] = 1; }
+    const tk = Object.keys(tones);
+    assertEq(tk.length, 2, 'the prompt breathes (got tones ' + tk.join(',') + ')');
+    assert(tk.indexOf(D.COLORS.gold) >= 0, 'drawn in the liar\'s own gold');
+    for (const t of tk)
+      assert(R.contrast(t, D.COLORS.bg) >= R.MIN_CONTRAST,
+        'the prompt reads at ' + R.contrast(t, D.COLORS.bg).toFixed(2) + ':1 in tone ' + t);
+    run.totalT = run.coreOffer.until + 1;
+    frames(1);
+    let still = false;
+    for (let r = D.MAP_Y; r < D.MAP_Y + D.MAP_H; r++)
+      if (rowText(r, D.MAP_X, D.MAP_W).indexOf('ASCEND') >= 0) still = true;
+    assertEq(still, false, 'and it takes the offer away again');
+  }
+
+  // ---- render: the EGG-420 wash tints, and never paints --------------------
+  {
+    // the promise in one assertion: no colour the game draws comes out of the
+    // wash reading worse than it went in
+    for (const k in D.COLORS) {
+      const c = D.COLORS[k];
+      if (typeof c !== 'string' || c[0] !== '#') continue;
+      const t = R.eggTint(c);
+      const c0 = R.contrast(c, D.COLORS.bg), c1 = R.contrast(t, D.COLORS.bg);
+      if (c0 >= R.MIN_CONTRAST)
+        assert(c1 >= R.MIN_CONTRAST, 'the wash demoted ' + k + ' (' + c + ' -> ' + t +
+          ', ' + c0.toFixed(2) + ':1 -> ' + c1.toFixed(2) + ':1)');
+      assert(c1 >= c0 * 0.8, 'the wash dulls ' + k + ' too far (' +
+        c0.toFixed(2) + ':1 -> ' + c1.toFixed(2) + ':1)');
+      assert(t !== c || c === D.COLORS.leaf, 'the wash actually reaches ' + k);
+    }
+    for (const k in D.TERRAIN) {
+      const c = D.TERRAIN[k].color;
+      assert(R.contrast(R.eggTint(c), D.COLORS.bg) >= R.contrast(c, D.COLORS.bg) * 0.8,
+        'terrain ' + k + ' survives the wash');
+    }
+    // and on the live map: same glyphs in the same places, different colours
+    run.coreOffer = null;
+    frames(1);
+    const before = [];
+    for (let y = 0; y < D.MAP_H; y++)
+      for (let x = 0; x < D.MAP_W; x++) before.push(R.cellAt(D.MAP_X + x, D.MAP_Y + y));
+    S.startEgg(run, 'code');
+    frames(1);
+    let moved = 0, glyphChanged = 0;
+    for (let y = 0, i = 0; y < D.MAP_H; y++)
+      for (let x = 0; x < D.MAP_W; x++, i++) {
+        const now = R.cellAt(D.MAP_X + x, D.MAP_Y + y);
+        if (now.ch !== before[i].ch) glyphChanged++;
+        if (now.fg !== before[i].fg) moved++;
+      }
+    assertEq(glyphChanged, 0, 'the wash changes no glyph — tint, do not paint');
+    assert(moved > 100, 'but the map really is washed (' + moved + ' cells re-tinted)');
+    run.egg = null;
+  }
+
+  // ---- render: the wall slides past on a descent --------------------------
+  {
+    assertEq(typeof R.graffitiFor, 'function', 'render exports the graffiti pick');
+    run.depth = 3;                                      // dropping to stratum 4
+    const pick = R.graffitiFor(run, run.depth + 1);
+    assert(A.graffiti.indexOf(pick) >= 0, 'the pick comes from the pool');
+    assertEq(R.graffitiFor(run, 4), pick, 'the same descent shows the same wall');
+    assert(R.graffitiFor(run, 5) !== pick || A.graffiti.length < 2,
+      'a different floor shows a different wall');
+    const spread = {};
+    for (let s = 1; s <= 60; s++) spread[R.graffitiFor({ seed: s * 7919 }, 3)] = 1;
+    assert(Object.keys(spread).length >= 8,
+      'the pick spreads across the pool (' + Object.keys(spread).length + ' in 60 seeds)');
+    // render must not steal a number from the run to choose it
+    const real = run.rng;
+    let drew = 0;
+    run.rng = function () { drew++; return real(); };
+    st.screen = 'descend';
+    run.status = 'breachReady';
+    st.ui.descendAnim = 0;
+    let seenRow = -1, seenText = '';
+    for (let i = 0; i < 120; i++) {
+      frames(1);
+      for (let r = 20; r < D.ROWS; r++) {
+        const t = rowText(r, 0, D.COLS);
+        if (t.indexOf(pick) >= 0) { seenRow = r; seenText = pick; }
+      }
+    }
+    run.rng = real;
+    assertEq(drew, 0, 'the descent screen drew ' + drew + ' numbers from run.rng (must be 0)');
+    assertEq(seenText, pick, 'the graffiti is drawn during the descent');
+    assert(seenRow >= 20, 'and it rides the band under the frames (row ' + seenRow + ')');
+  }
+
+  // ---- render: the egg cracks on GRIT's last character --------------------
+  {
+    const art = A.victory;
+    const cracked = A.crackSphere(art);
+    let cx = -1, cy = -1;
+    for (let y = 0; y < art.length && cy < 0; y++)
+      for (let x = 0; x < art[y].length; x++)
+        if (art[y][x] !== cracked[y][x]) { cx = x; cy = y; break; }
+    assert(cy >= 0, 'the shipped sphere has a crack cell to look for');
+    const col = cx + Math.max(0, (D.COLS - art[cy].length) >> 1);
+    const row = 1 + cy;                                  // drawVictory draws at row 1
+
+    // The toast line a run will get is a pure function of its seed, so it can
+    // be read off a probe run without disturbing the one being rendered. The
+    // screen is primed with a DIFFERENT toast first: fx keys its typewriter on
+    // the string, and priming guarantees the reveal restarts here rather than
+    // inheriting a finished one from an earlier section.
+    function toastOf(s) { return B.toast(S.newRun(defEffects(), s)); }
+    const res = { depth: 8, breaches: 8, timeSec: 700, cores: 18, won: true };
+    const sV = seed + 51;
+    const want = toastOf(sV).slice(0, 70);
+    let sOther = seed + 52;
+    while (toastOf(sOther).slice(0, 70) === want) sOther++;
+    st.screen = 'victory';
+    st.run = S.newRun(defEffects(), sOther);
+    st.run.status = 'won'; st.run.result = res;
+    frames(2);
+    const vic = S.newRun(defEffects(), sV);
+    vic.status = 'won'; vic.result = res;
+    st.run = vic;
+    frames(1);
+    assertEq(R.cellAt(col, row).ch, art[cy][cx],
+      'while GRIT is still talking the shell is whole');
+    function toastRow() {
+      for (let r = 20; r < D.ROWS; r++)
+        if (rowText(r, 0, D.COLS).indexOf(want) >= 0) return r;
+      return -1;
+    }
+    let guard = 0;
+    while (toastRow() < 0 && guard++ < 60 * FX.FPS) frames(1);
+    assert(toastRow() > 0, 'the victory toast finished typing');
+    frames(1);
+    assertEq(R.cellAt(col, row).ch, ' ',
+      'on the toast\'s last character the sphere opens a hairline');
+    // the reveal is an overlay, not an edit: the asset is untouched
+    assertEq(A.victory[cy][cx], art[cy][cx],
+      'the crack never writes back into DC.Art.victory');
+  }
+  return A.graffiti.length;
+}
+
 // -------------------------------------------------------------------- main
 const SEED = process.env.DC_SEED ? (parseInt(process.env.DC_SEED, 10) | 0) : 1337;
 try {
@@ -2651,8 +3046,10 @@ try {
   engineBarksSection(SEED + 29);
   const cardRows = recapSection(SEED + 37);
   const fxRows = fxSection(SEED + 31);
+  const walls = coreLoreSection(SEED + 41);
   console.log('PASS integration seed=' + SEED + ' | ' + drivenSummary +
     ' | fx rows ' + fxRows + ' | recap card ' + cardRows + ' rows' +
+    ' | core gate 3 beats | ' + walls + ' walls' +
     ' | cadence 16/12/10 | overdrive x2 | damper ok | charge+bronze ok | mantle ok' +
     ' | engine+barks ok | ' + (Date.now() - t0) + 'ms');
   process.exit(0);
