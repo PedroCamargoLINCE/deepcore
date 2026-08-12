@@ -19,6 +19,10 @@
   let helpFrom = 'title';    // screen to return to from help
   let recapFrom = 'gameover';// screen to return to from the recap card
   let gesture = {};          // "x,y" -> true: belts placed in the current drag/lay gesture
+  let pauseAt = 0;           // rAF timestamp the current pause began (0 = running)
+  let smoked = false;        // GRIT already took his smoke break on this pause
+  let eggBuf = '';           // EGG-420: the last few digits typed, in order
+  let eggKeyAt = 0;          // rAF-clock stamp of the last digit (buffer decay)
 
   // ---------------- startup ----------------
 
@@ -82,9 +86,31 @@
     } else {
       acc = 0;
     }
+    smokeBreak(st, now);
     // NOTE: ui.descendAnim is advanced by Render.frame (SPEC §7), not here —
     // incrementing in both places played the descent animation at double speed.
     DC.Render.frame(st);
+  }
+
+  // M-GRITPLUS: the smoke break. The sim is frozen while paused, so this is
+  // measured on the rAF wall clock — 30 seconds of pause and GRIT lights one
+  // (fx.js is already curling smoke into the corner by then); resuming gets
+  // him back on shift. Barks.pause is used rather than bark() because a frozen
+  // run.totalT would leave the typewriter stuck at zero characters.
+  function smokeBreak(st, now) {
+    const paused = st.screen === 'run' && st.ui && st.ui.paused && st.run;
+    if (!paused) {
+      if (pauseAt && smoked && st.run) pauseSay(st, 'breakOver');
+      pauseAt = 0; smoked = false;
+      return;
+    }
+    if (!pauseAt) { pauseAt = now; return; }
+    if (!smoked && now - pauseAt > 30000) { smoked = true; pauseSay(st, 'smokeBreak'); }
+  }
+  function pauseSay(st, kind) {
+    const B = DC.Barks;
+    if (!B || !B.pause || !st.run) return;
+    try { B.pause(st.run, kind); } catch (e) { /* barks stay optional */ }
   }
 
   function afterTick(st) {
@@ -132,7 +158,17 @@
       if (ev.type === 'quake' && ev.data && ev.data.dmg >= 8) bark('bigQuake', ev.data);
       else if (ev.type === 'magma') bark('magmaSpread');
       else if (ev.type === 'depleted') bark('veinDepleted');
+      // M-CORELORE: the Core Gate. sim.js says WHEN (breach fractions at s8);
+      // barks.js says what, and answers itself in GRIT's voice a beat later.
+      else if (ev.type === 'core') coreBeat(run, ev.data);
     }
+  }
+
+  // Optional Core wiring — no-op unless js/barks.js exposes the second voice.
+  function coreBeat(run, data) {
+    const B = DC.Barks;
+    if (!B || !B.core || !run) return;
+    try { B.core(run, 'gate', (data && data.beat) | 0); } catch (e) {}
   }
 
   // Optional Foreman wiring — no-op unless js/barks.js is loaded.
@@ -302,8 +338,19 @@
     st.ui.copied = 'NO CLIPBOARD HERE — SELECT IT BY HAND';
   }
 
+  // EGG-420's trophy (SPEC3 M-ACHIEVE: "High Score" — win a run that included
+  // the window). M-ACHIEVE may not exist in this tree, so the hook is a hard
+  // no-op unless meta.js grew an award function; the run still records
+  // run.eggSeen either way, which is all a later dispatch needs.
+  function eggTrophy(st) {
+    const M = DC.Meta;
+    if (!st.run || !st.run.eggSeen || !M || typeof M.awardTrophy !== 'function') return;
+    try { M.awardTrophy(st.meta, 'high_score'); } catch (e) {}
+  }
+
   function handleWon(st) {
     awardRun(st);
+    eggTrophy(st);
     bark('victory');
     st.screen = 'victory';
   }
@@ -474,8 +521,25 @@
     if (handled) e.preventDefault();
   }
 
+  // EGG-420 (M-GRITPLUS): a 3-key buffer, live during a run. The digits are
+  // NOT consumed — 4 and 2 still pick their build tools, which is half the
+  // joke — and nothing about progression depends on any of this. The window
+  // itself is sim state, so a pause or a descent carries it correctly.
+  function eggKeys(st, k) {
+    const EG = D.EGG420;
+    if (!EG || !st.run || k.length !== 1 || k < '0' || k > '9') return;
+    if (lastTime - eggKeyAt > EG.codeGapMs) eggBuf = '';
+    eggKeyAt = lastTime;
+    eggBuf = (eggBuf + k).slice(-EG.code.length);
+    if (eggBuf !== EG.code) return;
+    eggBuf = '';
+    if (DC.Sim.eggActive && DC.Sim.eggActive(st.run)) return;   // already lit
+    if (DC.Sim.startEgg && DC.Sim.startEgg(st.run, 'code')) bark('egg420');
+  }
+
   function runKey(st, e, k, lk) {
     const ui = st.ui, run = st.run;
+    eggKeys(st, k);
     if (ui.paused) {
       if (k === 'Escape' || k === 'Enter' || k === ' ') ui.paused = false;
       else if (lk === 'a') {

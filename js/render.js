@@ -119,6 +119,28 @@
   }
   function resolveColor(c) { return c ? (C[c] || c) : null; }
 
+  // ---------------- EGG-420 (M-GRITPLUS) ----------------
+  // The window is sim state (run.egg, in run.totalT) — render reads it and
+  // never writes it. The wash is a MIX toward leaf green, floored back to
+  // readable by legible(): the map may look mellow, it may not look worse.
+  function eggOn(run) {
+    return !!(run && run.egg && D.EGG420 && run.totalT < run.egg.until);
+  }
+  function eggTint(hex) {
+    if (!hex || hex[0] !== '#' || hex.length !== 7) return hex;
+    const k = 'E' + hex;
+    if (colCache[k]) return colCache[k];
+    const leaf = C.leaf || C.green;
+    let v = mix(hex, leaf, D.EGG420.tint);
+    // The wash may not DEMOTE a colour: anything that cleared the text floor
+    // before the window still clears it inside the window. (The floor tint and
+    // the other deliberately-dim furniture are left dim — lifting those would
+    // be painting, and would wreck the map's hierarchy for a joke.)
+    if (contrast(hex, C.bg) >= MIN_CR && contrast(v, C.bg) < MIN_CR) v = legible(v, C.bg);
+    colCache[k] = v;
+    return v;
+  }
+
   // ---------------- drawing primitives ----------------
   function box(col, row, w, h, color, title, titleColor) {
     const horiz = '─'.repeat(Math.max(0, w - 2));
@@ -416,6 +438,19 @@
       text(D.MAP_X + Math.max(0, (D.MAP_W - s.length) >> 1), D.MAP_Y + 11, s, C.bg, fc);
     }
 
+    // M-CORELORE: the Core Gate's middle beat offers you the surface back. The
+    // prompt is a lie — nothing is bound to it, ENTER still does what ENTER
+    // always does, and GRIT talks over it a beat later. It is drawn in the
+    // Core's gold rather than the game's green, so the screen is at least
+    // honest about WHO is lying to you.
+    const off = run.coreOffer;
+    if (off && run.totalT < (off.until || 0)) {
+      const gold = C.gold || C.amber;
+      const s = '[ENTER] ASCEND — THE SURFACE IS STILL THERE';
+      text(D.MAP_X + Math.max(0, (D.MAP_W - s.length) >> 1), D.MAP_Y + 14, s,
+           phase ? gold : shade(gold, 0.55));
+    }
+
     // pause menu overlay
     if (ui.paused) {
       const bw = 26, bh = 8, bx = (48 - bw) >> 1, by = 12;
@@ -448,6 +483,7 @@
       (((run.gearsFed || 0) < req.gear && (inv.gear || 0) > 0) ||
        ((run.gearsFed || 0) >= req.gear && (run.chargesFed || 0) < req.charge && (inv.charge || 0) > 0));
     const hubRed = run.integrity < 25;
+    const egg = eggOn(run);
 
     // v1.1 §C.3 "chromed" tell: machine types buffed by an active schematic
     // render their anchor letter in COLORS.white.
@@ -517,6 +553,12 @@
           const o = FX.tile(run, tile, x, y, ch, fg);
           if (o) { ch = o[0]; fg = o[1]; }
         }
+        // EGG-420: the botanical wash. TINT, DON'T PAINT — every glyph keeps
+        // its own colour and its own identity, nudged a sixth of the way
+        // toward leaf green and then held to the 4.5:1 floor. Coal still reads
+        // as coal, magma still reads as magma, and the map is never harder to
+        // read during the 42 seconds than it was before them (SPEC3 §0 law 6).
+        if (egg) fg = eggTint(fg);
         put(gc, gr, ch, fg);
       }
     }
@@ -778,15 +820,35 @@
 
   // Foreman bar (v1.1 §F) — GRIT-tag amber, text cyan, typewriter ~2 chars/tick
   // from t0, hold to `until`, then 2 s dim fade. Only barks.js populates it.
+  //
+  // M-CORELORE: the same bar carries the game's second voice. When barks marks
+  // the line `voice: 'core'` it is the planet talking, and everything about
+  // the draw changes so you know that before you have read a word: no GRIT
+  // tag (just a gold ▸ where his name should be), gold instead of cyan, and
+  // half the typing speed — it is not in a hurry and never has been. The
+  // geometry is untouched, so the 2×41 wrap contract holds for both voices.
   function drawForeman(run) {
     const f = run.foreman;
     if (!f || !f.text) return;
     const until = f.until || 0;
     if (run.totalT > until + 2 * D.TICK_HZ) return;          // faded out
     const fading = run.totalT > until;
+    const core = f.voice === 'core';
     const full = String(f.text);
-    const shown = U.clamp(Math.floor((run.totalT - (f.t0 || 0)) * 2), 0, full.length);
+    const shown = U.clamp(Math.floor((run.totalT - (f.t0 || 0)) * (core ? 1 : 2)),
+                          0, full.length);
     const w = SB - 1 - 7;                                    // 41 cols per row
+    if (core) {
+      const gold = C.gold || C.amber;
+      const rows = wrapClamp(full, w, 2);
+      put(5, 31, '▸', fading ? shade(gold, 0.55) : gold);
+      let left = shown;
+      for (let i = 0; i < rows.length && left > 0; i++) {
+        text(7, 31 + i, rows[i].slice(0, left), fading ? shade(gold, 0.55) : gold);
+        left -= rows[i].length + 1;
+      }
+      return;
+    }
     // Two rows, split on a WORD boundary. The old split was a raw column cut,
     // so GRIT's longer lines broke as 'Gravi / ty agrees' on the most-read
     // line in the game. The typewriter is unchanged: `shown` characters of the
@@ -869,6 +931,38 @@
   }
 
   // ================= DESCEND =================
+  // M-GRITPLUS: elevator graffiti. One line of shaft wall slides UP the screen
+  // while the cage goes down, in the band under the descent frames — the
+  // A2 interstitial's slot if that dispatch landed, plain rows below the art
+  // if it did not. Which line you get is a pure hash of the run seed and the
+  // floor you are leaving: render never touches run.rng (a draw here would
+  // change the map the player is dropping into), and the same descent always
+  // shows the same wall.
+  function graffitiFor(run, target) {
+    const pool = DC.Art && DC.Art.graffiti;
+    if (!Array.isArray(pool) || !pool.length) return null;
+    let h = 0x811c9dc5;
+    const s = String(((run && run.seed) >>> 0)) + ':' + target;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    return pool[(h >>> 1) % pool.length];
+  }
+  function drawGraffiti(run, target, prog, band) {
+    const line = graffitiFor(run, target);
+    if (!line || band >= ROWS - 1) return;
+    const rows = Math.max(1, ROWS - 1 - band);            // the band it rides
+    const row = band + Math.floor((1 - U.clamp(prog, 0, 1)) * rows);
+    if (row < band || row >= ROWS) return;
+    const s = String(line).slice(0, D.COLS - 4);
+    // it passes the light: bright at eye level, dim as it leaves the frame
+    const mid = band + (rows >> 1);
+    const near = Math.abs(row - mid) <= 1;
+    const lit = legible(C.rock, C.bg);                    // spray paint, but readable
+    ctext(row, s, near ? lit : shade(lit, 0.7));
+  }
+
   function drawDescend(state) {
     const run = state.run, ui = state.ui || {};
     const frames = artFrames();
@@ -890,8 +984,10 @@
       const d0 = (target - 1) * D.DEPTH_M;
       const prog = animLen ? anim / animLen : 1;
       const dm = Math.min(target * D.DEPTH_M, d0 + Math.floor(prog * D.DEPTH_M));
-      ctext(Math.min(ROWS - 2, 8 + fh + 1),
+      const depthRow = Math.min(ROWS - 2, 8 + fh + 1);
+      ctext(depthRow,
         'DEPTH -' + fxOdometer('descend', target * D.DEPTH_M, prog, String(dm)) + 'm', C.gray);
+      drawGraffiti(run, target, prog, depthRow + 1);
       return;
     }
 
@@ -1099,8 +1195,25 @@
     ctext(31, '[ENTER] RETURN TO THE SURFACE', phase ? C.white : C.amber);
   }
 
+  // M-CORELORE, the reveal. On the toast's last character the sphere gains a
+  // hairline crack — it was an egg, and you did not beat the planet's door,
+  // you knocked on something's. The crack is applied as an OVERLAY on whatever
+  // rows the victory art hands over (Art.crackSphere is a pure function of
+  // those rows), so it composes with any core art at any resolution and needs
+  // nothing from this module but the moment. Missing art helper, missing fx,
+  // missing toast: the sphere simply draws whole, as it always did.
+  function crackedCore(lines) {
+    const A = DC.Art;
+    if (!A || typeof A.crackSphere !== 'function') return lines;
+    if (!DC.FX || typeof DC.FX.typedDone !== 'function') return lines;
+    let done = 0;
+    try { done = DC.FX.typedDone('toast'); } catch (e) { return lines; }
+    if (!done) return lines;
+    try { return A.crackSphere(lines) || lines; } catch (e) { return lines; }
+  }
+
   function drawVictory(state, phase) {
-    const lines = art('victory');
+    const lines = crackedCore(art('victory'));
     drawArt(lines, 1, artColor('victory', C.magmaHot));
     layout.artBlock = { row: 1, h: lines.length };   // fx: the core sphere pulses
     const y = Math.min(1 + lines.length + 1, 24);
@@ -1395,6 +1508,10 @@
     MIN_CONTRAST: MIN_CR,
     contrast: contrast,
     legible: legible,
+    // M-GRITPLUS: the EGG-420 wash and the descent's graffiti pick, exported
+    // so the suites can prove the tint never demotes a colour and that the
+    // wall a given descent shows is a pure function of the run (never rng).
+    eggTint: eggTint, graffitiFor: graffitiFor,
     helpColor: helpColor,
     HELP_TIER: HELP_TIER,
 

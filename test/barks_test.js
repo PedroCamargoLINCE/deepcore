@@ -438,6 +438,280 @@ let REVIEW_N = 0;
   }
 }
 
+// ============================== M-CORELORE: the second voice ==============
+// The brief's whole promise is that the Core reads as a DIFFERENT character
+// from GRIT, so the contrast is asserted mechanically and not left to taste:
+// the Core is lowercase throughout (GRIT shouts, the planet never needs to),
+// never says "kid" (his word, and the relationship it implies is his), and
+// every line ships with the deflection GRIT throws over the top of it. The
+// register lives in one structure so a later dispatch cannot add an unpaired
+// Core line without failing here.
+SECTION = 'corelore';
+let CORE_N = 0;
+{
+  assertEq(typeof B.core, 'function', 'DC.Barks.core is a function');
+  assert(B.CORE && typeof B.CORE === 'object', 'DC.Barks.CORE is exposed');
+  assertEq(Object.keys(B.CORE).length, CORE_KINDS.length,
+    'no Core register ships without a test contract');
+  assert(B.CORE.intrusion.length >= 8,
+    'the stratum-6+ intrusion pool is deep enough not to repeat (got ' +
+    B.CORE.intrusion.length + ')');
+  assertEq(B.CORE.gate.length, 3, 'the Core Gate is a 3-beat sequence');
+  assert(B.CORE.mantle.length >= 3, 'the Mantle gets >= 3 authored Core lines');
+  for (const k of CORE_KINDS) {
+    for (const p of B.CORE[k]) {
+      CORE_N += 2;
+      assert(typeof p.core === 'string' && p.core.length, k + ': every beat has a Core line');
+      assert(typeof p.grit === 'string' && p.grit.length,
+        k + ': every Core line is authored with GRIT\'s reply: ' + p.core);
+      assert(!/[A-Z]/.test(p.core),
+        k + ': the Core is lowercase — it is not shouting: ' + p.core);
+      assert(!/\bkid\b/i.test(p.core),
+        k + ': "kid" is GRIT\'s word, not the planet\'s: ' + p.core);
+      assert(/[A-Z]/.test(p.grit), k + ': GRIT still talks like GRIT: ' + p.grit);
+    }
+  }
+  // exactly one beat carries the fake ascend prompt, and it is the middle one
+  const offers = B.CORE.gate.map(p => !!p.offer);
+  assertEq(offers.join(','), 'false,true,false',
+    'only the Core Gate\'s second beat offers the surface back');
+
+  // --- the beat, end to end: gold voice, untagged LOG mirror, GRIT's answer
+  {
+    const run = S.newRun(defEffects(), 616);
+    run.depth = D.STRATA_COUNT;
+    const line = B.core(run, 'gate', 0);
+    assertEq(line, B.CORE.gate[0].core, 'gate beat 0 speaks its authored line');
+    assert(run.foreman && run.foreman.text === line, 'the Core takes the foreman bar');
+    assertEq(run.foreman.voice, 'core', 'the bar is marked as the Core speaking');
+    const tail = run.messages[run.messages.length - 1];
+    assertEq(tail.text.indexOf('GRIT'), -1, 'the Core is never tagged as GRIT in the LOG');
+    assertEq(tail.color, D.COLORS.gold, 'the Core mirrors into the LOG in gold');
+    assertEq(B.core(run, 'gate', 0), null, 'a gate beat fires at most once per run');
+    assertEq(run.coreOffer, null, 'beat 0 puts no prompt on the screen');
+
+    // GRIT's deflection is scheduled, not immediate: it lands as the gold line
+    // finishes typing, which is the beat the joke needs.
+    let guard = 0;
+    while (run.foreman.voice === 'core' && guard++ < 40 * HZ) { S.tick(run); B.tick(run); }
+    assertEq(run.foreman.voice, 'grit', 'GRIT answers the Core');
+    assertEq(run.foreman.text, B.CORE.gate[0].grit, 'and he answers with HIS paired line');
+    assert(guard > 2, 'the deflection waits for the Core to finish (' + guard + ' ticks)');
+
+    // beat 2 is the lie: it puts a prompt on the screen with a real expiry
+    run.totalT += 100;
+    B.core(run, 'gate', 1);
+    assert(run.coreOffer && run.coreOffer.until > run.totalT,
+      'the Core Gate\'s middle beat raises the fake ASCEND prompt');
+    assertEq(run.coreOffer.until - run.totalT, D.CORE.offer * HZ,
+      'the prompt is displayed for D.CORE.offer seconds');
+  }
+
+  // --- the ambient intrusion: never above D.CORE.depth, once per stratum
+  {
+    const shallow = S.newRun(defEffects(), 617);
+    shallow.depth = D.CORE.depth - 1;
+    shallow.t = 60 * HZ;
+    for (let i = 0; i < 40 * HZ; i++) { shallow.totalT++; B.tick(shallow); }
+    const heard = (shallow.messages || []).some(m => m.color === D.COLORS.gold);
+    assertEq(heard, false, 'the Core is silent above stratum ' + D.CORE.depth);
+
+    const deep = S.newRun(defEffects(), 618);
+    deep.depth = D.CORE.depth;
+    deep.t = D.CORE.armT * HZ + 1;
+    let golds = 0, seenVoice = null;
+    for (let i = 0; i < 3000; i++) {
+      deep.totalT++; deep.t++;
+      const before = (deep.foreman && deep.foreman.text) || null;
+      B.tick(deep);
+      if (deep.foreman && deep.foreman.voice === 'core' && deep.foreman.text !== before) {
+        golds++;
+        seenVoice = deep.foreman.text;
+      }
+    }
+    assertEq(golds, 1, 'the Core intrudes exactly once on a stratum (got ' + golds + ')');
+    assert(B.CORE.intrusion.some(p => p.core === seenVoice),
+      'the intrusion came from the stratum-6+ pool: ' + JSON.stringify(seenVoice));
+  }
+
+  // --- the Mantle register: past the shell it stops being amused
+  {
+    const run = S.newRun(defEffects(), 619);
+    run.depth = D.STRATA_COUNT + 1;
+    run.mantle = true;
+    run.t = D.CORE.armT * HZ + 1;
+    let said = null;
+    for (let i = 0; i < 4000 && !said; i++) {
+      run.totalT++; run.t++;
+      B.tick(run);
+      if (run.foreman && run.foreman.voice === 'core') said = run.foreman.text;
+    }
+    assert(said && B.CORE.mantle.some(p => p.core === said),
+      'in the Mantle the Core draws from the Mantle pool (got ' + JSON.stringify(said) + ')');
+  }
+}
+
+// ============================== M-GRITPLUS ================================
+SECTION = 'gritplus';
+let GRAFFITI_N = 0;
+{
+  // --- the idle ladder: three rungs, at the thresholds data.js declares
+  assert(Array.isArray(D.IDLE_LADDER) && D.IDLE_LADDER.length === 3,
+    'D.IDLE_LADDER declares three rungs');
+  for (const p of ['idle', 'idle2', 'idle3'])
+    assert(Array.isArray(B.POOLS[p]) && B.POOLS[p].length >= 4,
+      'idle rung "' + p + '" has a pool of >= 4 lines');
+  {
+    const run = S.newRun(defEffects(), 620);
+    const rungs = [];
+    let last = null;
+    for (let i = 0; i < 200 * HZ; i++) {
+      S.tick(run); B.tick(run);
+      const f = run.foreman;
+      if (f && f.text !== last) {
+        last = f.text;
+        for (const p of ['idle', 'idle2', 'idle3'])
+          if (B.POOLS[p].indexOf(f.text) >= 0) rungs.push([p, Math.round(run.totalT / HZ)]);
+      }
+    }
+    assertEq(rungs.map(r => r[0]).join(','), 'idle,idle2,idle3',
+      'the idle ladder climbs gentle -> sarcasm -> documentary (got ' +
+      JSON.stringify(rungs) + ')');
+    for (let i = 0; i < 3; i++)
+      assert(rungs[i][1] >= D.IDLE_LADDER[i],
+        'rung ' + (i + 1) + ' waits its ' + D.IDLE_LADDER[i] + 's (fired at ' + rungs[i][1] + 's)');
+    // and any real work resets the whole ladder
+    run.stats.lastPlaceT = run.totalT;
+    let more = 0;
+    for (let i = 0; i < 40 * HZ; i++) {
+      S.tick(run); B.tick(run);
+      const f = run.foreman;
+      if (f && f.text !== last) { last = f.text; more++; }
+    }
+    assertEq(more, 0, 'placing something resets the ladder — GRIT stops needling');
+  }
+
+  // --- the smoke break: fired while the sim is FROZEN, so the line must
+  // already be typed out (run.totalT does not advance during a pause)
+  {
+    const run = S.newRun(defEffects(), 621);
+    assertEq(typeof B.pause, 'function', 'DC.Barks.pause is a function');
+    const line = B.pause(run, 'smokeBreak');
+    assert(B.POOLS.smokeBreak.indexOf(line) >= 0, 'the smoke-break line comes from its pool');
+    const shown = Math.floor((run.totalT - run.foreman.t0) * 2);
+    assert(shown >= line.length,
+      'a bark fired mid-pause is already fully typed (' + shown + '/' + line.length + ')');
+    assert(run.foreman.until > run.totalT, 'and it still expires once the sim resumes');
+    const back = B.pause(run, 'breakOver');
+    assert(B.POOLS.breakOver.indexOf(back) >= 0, 'resuming gets him back on shift');
+  }
+
+  // --- EGG-420: the bar goes mellow, priority lines still land, the window
+  // closes with the munchies, and none of it touches progression
+  {
+    const run = S.newRun(defEffects(), 622);
+    assertEq(typeof S.startEgg, 'function', 'Sim.startEgg opens the window');
+    assertEq(B.eggOpen(run), false, 'no window on a fresh run');
+    S.startEgg(run, 'code');
+    assertEq(B.eggOpen(run), true, 'the code opens the window');
+    assertEq(run.egg.until - run.totalT, D.EGG420.sec * HZ, 'the window is 42 seconds');
+    run.totalT += 100;
+    const mellow = B.fire(run, 'quake');
+    assert(B.POOLS.egg420.indexOf(mellow) >= 0,
+      'while the window is open the bar draws mellow: ' + JSON.stringify(mellow));
+    run.totalT += 100;
+    const dead = B.fire(run, 'death');
+    assert(B.POOLS.death.indexOf(dead) >= 0,
+      'priority lines still say what they came to say: ' + JSON.stringify(dead));
+    // expiry: the exit line fires once, and only once
+    run.totalT = run.egg.until + 1;
+    let ends = 0;
+    for (let i = 0; i < 30 * HZ; i++) {
+      run.totalT++;
+      const before = run.foreman && run.foreman.text;
+      B.tick(run);
+      if (run.foreman && run.foreman.text !== before &&
+          B.POOLS.egg420End.indexOf(run.foreman.text) >= 0) ends++;
+    }
+    assertEq(ends, 1, 'the window closes with exactly one munchies line');
+    assertEq(B.eggOpen(run), false, 'and the window is shut');
+  }
+
+  // --- elevator graffiti: 40 walls, none of them too wide to read, none of
+  // them repeated, all of them under the same guardrails as the barks
+  {
+    const A = DC.Art;
+    assert(Array.isArray(A.graffiti) && A.graffiti.length >= 40,
+      'the shaft carries >= 40 lines of graffiti (got ' +
+      (A.graffiti && A.graffiti.length) + ')');
+    const seenG = new Set();
+    for (const g of A.graffiti) {
+      GRAFFITI_N++;
+      assert(typeof g === 'string' && g.length > 0, 'every graffito is a string');
+      assert(g.length <= A.GRAFFITI_W, 'graffito fits ' + A.GRAFFITI_W +
+        ' columns (' + g.length + '): ' + g);
+      assert(!seenG.has(g), 'the same wall is not painted twice: ' + g);
+      seenG.add(g);
+    }
+  }
+
+  // --- the crack overlay: a PURE function of whatever sphere it is handed.
+  // M-HIRES is redrawing the victory sphere at higher fidelity in parallel, so
+  // this must never assume the shipped art: it is checked against the shipped
+  // rows AND against a synthetic sphere at a different resolution.
+  {
+    const A = DC.Art;
+    assertEq(typeof A.crackSphere, 'function', 'Art.crackSphere is a function');
+    function cracks(rows, label) {
+      const before = rows.slice();
+      const out = A.crackSphere(rows);
+      assertEq(rows.join('\n'), before.join('\n'),
+        label + ': crackSphere does not mutate the rows it is given');
+      assertEq(out.length, rows.length, label + ': the block keeps its height');
+      let opened = 0, widest = 0;
+      for (let y = 0; y < rows.length; y++) {
+        assertEq(out[y].length, rows[y].length, label + ': row ' + y + ' keeps its width');
+        let run0 = 0;
+        for (let x = 0; x < rows[y].length; x++) {
+          if (out[y][x] === rows[y][x]) { run0 = 0; continue; }
+          assertEq(out[y][x], ' ', label + ': the crack is void, not a new glyph');
+          assert(A.CRACK_INK.indexOf(rows[y][x]) >= 0,
+            label + ': the crack only opens shading ink, never lettering (' +
+            JSON.stringify(rows[y][x]) + ' at ' + x + ',' + y + ')');
+          opened++;
+          if (++run0 > widest) widest = run0;
+        }
+      }
+      assert(opened >= rows.length / 2, label + ': the crack reaches through the shell (' +
+        opened + ' cells)');
+      assert(widest <= 2, label + ': it stays a hairline — widest run ' + widest);
+      // deterministic: no rng, no frame clock, no hidden state — the same
+      // sphere cracks the same way every time it is drawn
+      assertEq(A.crackSphere(rows).join('\n'), out.join('\n'),
+        label + ': crackSphere is deterministic');
+      return opened;
+    }
+    const shipped = cracks(A.victory, 'shipped sphere');
+    // a taller, wider sphere in different ink proportions — i.e. whatever
+    // M-HIRES hands over at merge time
+    const big = [];
+    for (let y = -12; y <= 12; y++) {
+      let s = '';
+      for (let x = -40; x <= 40; x++) {
+        const d = (x * x) / 1600 + (y * y) / 144;
+        s += d <= 0.1 ? '☼' : d <= 0.4 ? '█' : d <= 0.7 ? '▓' : d <= 1 ? '▒' : ' ';
+      }
+      big.push(s);
+    }
+    cracks(big, 'hi-res sphere');
+    assert(shipped > 0, 'the shipped sphere really cracks');
+    // and it is inert on anything that is not a sphere
+    assertEq(A.crackSphere([]).length, 0, 'no rows in, no rows out');
+    assertEq(A.crackSphere(['no ink here']).join(''), 'no ink here',
+      'art with no shading ink is returned untouched');
+  }
+}
+
 // ------------------------------------------- CX-07: no duplicate punchlines
 // Same joke twice is worse than one fewer joke. Exact repeats are banned
 // outright; near-repeats are caught by content-word overlap (Jaccard over
@@ -955,6 +1229,9 @@ SECTION = 'prose-panels';
 
 console.log('PASS barks | categories ' + CATALOG.length +
   ' | lines ' + allLines.length +
+  ' | core ' + CORE_N + ' (' + B.CORE.intrusion.length + ' intrusions, ' +
+  B.CORE.gate.length + ' gate beats, ' + B.CORE.mantle.length + ' mantle)' +
+  ' | graffiti ' + GRAFFITI_N +
   ' | reviews ' + REVIEW_N + ' in ' + REVIEW_TIERS.length + ' tiers' +
   ' | drive triggers ' + trigs.size + ' (' + Array.from(trigs).sort().join(',') + ')' +
   ' | barks in drive ' + d1.lines.length +
