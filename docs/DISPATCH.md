@@ -47,9 +47,9 @@ with `git add -A`).
 |---|---|---|---|
 | 1 | ~~M-POLISH (alone, on master)~~ ✅ **merged 2026-08-11** | — | — |
 | 2 | ~~M-ANIM-1 + M-ANIM-2~~ ✅ | ~~M-RECAP~~ ✅ | ~~M-MANUAL~~ ✅ **all merged 2026-08-11** |
-| 2.5 | **M-HIRES** (alone — see below) | — | — |
-| 3 | M-CORELORE + M-GRITPLUS | M-WONDERS | — |
-| 4 | M-EVENTS (big) | — | — |
+| 2.5 | ~~M-HIRES (alone)~~ ✅ **merged 2026-08-12** | — | — |
+| 3 | ~~M-CORELORE + M-GRITPLUS~~ ✅ | ~~M-WONDERS~~ ✅ **merged 2026-08-12** | — |
+| 4 | **M-EVENTS** (big — dispatched to cloud 2026-08-12) | — | — |
 | 5 | M-MANTLE + M-SCHEMS2 | M-TIER2 | — |
 | 6 | M-WORMS | M-ACHIEVE + M-RIGSKINS | M-SOUND |
 
