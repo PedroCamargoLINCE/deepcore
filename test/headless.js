@@ -10,6 +10,7 @@ require('../js/art.js');
 require('../js/map.js');
 require('../js/sim.js');
 require('../js/meta.js');
+require('../js/events.js');   // M-EVENTS: dig finds, vignettes, the cat
 const DC = globalThis.DC;
 const D = DC.DATA;
 const S = DC.Sim;
@@ -651,6 +652,24 @@ function checkSave() {
   assert(M.recordSplits(p, [{ depth: 5, sec: 90 }, { depth: 6, sec: 80 }, null]) === 2,
     'recordSplits banks a whole run and survives holes in the list');
 
+  // M-EVENTS: the logbook and the cat. Both are optional fields a v1/v2 save
+  // has never heard of, so both must default rather than fail (checked in the
+  // migration block below), and the book must never hold the same entry twice.
+  assert(Array.isArray(fresh.logbook) && fresh.logbook.length === 0,
+    'a fresh profile has an empty logbook');
+  assert(fresh.catFound === false, 'a fresh profile has no cat yet');
+  assert(M.recordLog(p, 4) === true, 'a found log entry is filed');
+  assert(M.recordLog(p, 4) === false, 'the same entry is never filed twice');
+  assert(M.recordLog(p, 1) === true, 'a second entry is filed');
+  assert(M.logbook(p).join(',') === '1,4', 'the book reads in entry order');
+  assert(M.hasLog(p, 4) === true && M.hasLog(p, 9) === false,
+    'the book knows what it holds');
+  assert(M.recordLog(p, -1) === false && M.recordLog(p, M.LOGBOOK_MAX) === false,
+    'an out-of-range entry is refused rather than stored');
+  assert(M.catFound(p) === false, 'the cat is not found by default');
+  assert(M.findCat(p) === true && M.catFound(p) === true, 'the cat is found once');
+  assert(M.findCat(p) === false, '...and cannot be found twice');
+
   // the Daily Shaft: one seed per UTC date, one ranked attempt per date
   assert(M.dailyKey(Date.UTC(2026, 0, 5, 23, 59, 59)) === '2026-01-05', 'dailyKey is UTC');
   assert(M.dailyKey(Date.UTC(2026, 0, 6, 0, 0, 1)) === '2026-01-06', 'dailyKey rolls at UTC midnight');
@@ -690,14 +709,28 @@ function checkSave() {
       'a v1 profile loads with no ghosts rather than undefined');
     assert(old.dailyHistory.length === 0,
       'a v1 profile loads with an empty daily history rather than undefined');
+    assert(Array.isArray(old.logbook) && old.logbook.length === 0,
+      'a v1 profile loads with an empty logbook rather than undefined');
+    assert(old.catFound === false, 'a v1 profile loads without a cat');
     // it can then take new records and round-trip them
     M.recordSplit(old, 2, 88.5);
     M.recordDaily(old, { date: '2026-02-02', depth: 3, timeSec: 300, cores: 2 });
+    M.recordLog(old, 11);
+    M.findCat(old);
     M.save(old);
     const back = M.load();
     assert(back.bestSplits['2'] === 88.5, 'a new record round-trips through the save');
     assert(back.dailyHistory.length === 1 && back.dailyHistory[0].date === '2026-02-02',
       'the daily history round-trips through the save');
+    assert(back.logbook.join(',') === '11', 'the logbook round-trips through the save');
+    assert(back.catFound === true, 'the cat round-trips through the save');
+    // and a save full of nonsense is sanitized, never trusted
+    cell[D.SAVE_KEY] = JSON.stringify({ logbook: [3, 3, -1, 'x', 999, 2], catFound: 'yes' });
+    const junk = M.load();
+    assert(junk.logbook.join(',') === '2,3',
+      'a corrupt logbook is filtered and deduped, not repaired (got ' +
+      junk.logbook.join(',') + ')');
+    assert(junk.catFound === true, 'a truthy cat flag reads as a cat');
 
     // a save corrupted in the NEW fields must degrade, never throw
     cell[D.SAVE_KEY] = JSON.stringify({
@@ -725,9 +758,194 @@ function checkSave() {
   assert(M.recordSplit(legacy, 2, 100) === true, 'a v1 profile can still take a record');
 }
 
+// ======================================================================
+// M-EVENTS — dig finds at the sim layer.
+// The find table is exercised directly (a 4000-dig sweep is the only honest
+// way to see an 8% roll), and the SIM HOOK is proved separately by digging a
+// real hole through the public API and watching the counter move. The two
+// halves matter: a perfect find table nobody calls is a perfect no-op.
+// ======================================================================
+function checkDigFinds() {
+  const E = DC.Events;
+  assert(E && typeof E.rollDig === 'function', 'DC.Events.rollDig exists');
+  assert(typeof E.tick === 'function', 'DC.Events.tick exists');
+  const eff = DC.Meta.effects(DC.Meta.newProfile());
+
+  // ---- the table: rate, coverage, and every payload ---------------------
+  const r0 = S.newRun(eff, 4242);
+  const seen = {};
+  const N = 4000;
+  for (let i = 0; i < N; i++) {
+    const id = E.rollDig(r0, 5, 5);
+    if (id) seen[id] = (seen[id] || 0) + 1;
+    r0.instability = 0;       // keep the gas pockets from ending the run
+    r0.ev.rigTaken = false;   // scaffold: the per-floor lock is checked below
+  }
+  const st0 = E.peek(r0);
+  assert(st0.digs === N, 'every excavation is counted (' + st0.digs + ')');
+  const rate = st0.finds / st0.digs;
+  assert(rate > 0.05 && rate < 0.11,
+    'about 8% of excavations yield (got ' + (rate * 100).toFixed(1) + '%)');
+  for (const f of D.FINDS)
+    assert(seen[f.id] > 0, 'find "' + f.id + '" turned up in ' + N + ' digs');
+
+  // ---- the payloads, one at a time, on a clean run ----------------------
+  function forced(id, at) {
+    // Drive the stream until the wanted find comes up, then report the run it
+    // came up on. Cheaper and far clearer than stubbing the rng.
+    const run = S.newRun(eff, 99);
+    // The dig site matters for exactly one find (the Old Shaft reveals map
+    // around it), so callers may say where the hole is; everything else is
+    // indifferent to it.
+    const p = at || { x: 20, y: 12 };
+    for (let i = 0; i < 20000; i++) {
+      const before = {
+        inv: JSON.parse(JSON.stringify(run.inv)),
+        inst: run.instability,
+        revealed: countRevealed(run),
+        msgs: run.messages.length,
+      };
+      const got = E.rollDig(run, p.x, p.y);
+      if (got === id) return { run: run, before: before };
+      run.instability = 0;
+      run.ev.rigTaken = false;
+    }
+    fail('never rolled the "' + id + '" find in 20000 digs');
+  }
+  function countRevealed(run) {
+    let n = 0;
+    for (let y = 0; y < D.MAP_H; y++)
+      for (let x = 0; x < D.MAP_W; x++) if (run.grid[y][x].revealed) n++;
+    return n;
+  }
+  function invTotal(inv, keys) {
+    let n = 0;
+    for (const k of keys) n += inv[k] || 0;
+    return n;
+  }
+
+  {  // ore pocket: 6-10 of one of THIS stratum's ores, straight to the hub
+    const { run, before } = forced('ore');
+    const ores = Object.keys(D.STRATA[run.depth - 1].ores);
+    const gained = invTotal(run.inv, ores) - invTotal(before.inv, ores);
+    assert(gained >= 6 && gained <= 10,
+      'an ore pocket pays 6-10 ore (got ' + gained + ')');
+  }
+  {  // cache: 8-15 plates
+    const { run, before } = forced('cache');
+    const gained = (run.inv.ironPlate || 0) - (before.inv.ironPlate || 0);
+    assert(gained >= 8 && gained <= 15,
+      'a cache pays 8-15 plates (got ' + gained + ')');
+  }
+  for (const quiet of ['lunchbox', 'bones']) {
+    const { run, before } = forced(quiet);
+    assert(JSON.stringify(run.inv) === JSON.stringify(before.inv),
+      'a ' + quiet + ' pays nothing but a story');
+    assert(run.messages.length > before.msgs, '...and it does tell the story');
+  }
+  {  // gas pocket: a second of warning, THEN the pressure
+    const { run, before } = forced('gas');
+    const S0 = E.peek(run);
+    assert(S0.gas && S0.gas.at === run.t + D.EVENTS.gasFuse,
+      'the gas pocket arms a one-second fuse');
+    assert(run.instability === before.inst, 'the hiss costs nothing by itself');
+    const inst0 = run.instability;
+    for (let i = 0; i < D.EVENTS.gasFuse; i++) { run.t++; E.tick(run); }
+    assert(Math.abs(run.instability - (inst0 + 8)) < 1e-9,
+      'the pocket pops for +8 pressure (got +' +
+      (run.instability - inst0).toFixed(2) + ')');
+    assert(E.peek(run).gas === null, 'and the fuse is spent, not repeating');
+  }
+  {  // the Old Shaft: a 6-radius chunk of map, revealed
+    // dug in the corner furthest from the rig, which is the only place the
+    // opening scan has certainly not already lit up
+    const probe = S.newRun(eff, 99);
+    const far = { x: probe.hub.x < D.MAP_W / 2 ? D.MAP_W - 2 : 1,
+                  y: probe.hub.y < D.MAP_H / 2 ? D.MAP_H - 2 : 1 };
+    const { run, before } = forced('shaft', far);
+    const gained = countRevealed(run) - before.revealed;
+    assert(gained > 0,
+      'the old shaft reveals map the scan had not reached (got ' + gained + ')');
+    assert(gained <= Math.PI * D.EVENTS.shaftR * D.EVENTS.shaftR + 8,
+      'and it reveals a 6-radius chunk, not the floor (got ' + gained + ')');
+  }
+  {  // the dead rig: 12 plates, a log entry, and only once per stratum
+    const { run, before } = forced('rig');
+    assert((run.inv.ironPlate || 0) - (before.inv.ironPlate || 0) === 12,
+      'a dead rig salvages 12 plates');
+    const st = E.peek(run);
+    assert(st.logs.length === 1, 'a dead rig hands over one foreman log');
+    assert(typeof E.logText(st.logs[0]) === 'string', '...and it is a real entry');
+    assert(st.rigTaken === true, 'the floor remembers it has been salvaged');
+    let more = 0;
+    for (let i = 0; i < 5000; i++) if (E.rollDig(run, 5, 5) === 'rig') more++;
+    assert(more === 0, 'the same floor never yields a second dead rig');
+    run.depth++;                                  // scaffold: descend a floor
+    E.tick(run);
+    assert(E.peek(run).rigTaken === false, 'the next floor has its own wreck');
+  }
+
+  // ---- the contract that protects every balance number ------------------
+  // events.js draws from a stream derived from run.seed, never from run.rng.
+  // If that ever changes, the number of holes a player dug starts deciding
+  // which tiles the next quake eats.
+  {
+    function stream(withDigs) {
+      const run = S.newRun(eff, 8080);
+      if (withDigs) for (let i = 0; i < 500; i++) { E.rollDig(run, 5, 5); run.instability = 0; }
+      return [run.rng(), run.rng(), run.rng()].join(',');
+    }
+    assert(stream(true) === stream(false),
+      'digging never moves the sim rng stream');
+    // ...and it is still deterministic on the seed
+    function finds(seed) {
+      const run = S.newRun(eff, seed);
+      const out = [];
+      for (let i = 0; i < 300; i++) { out.push(E.rollDig(run, 5, 5)); run.instability = 0; }
+      return out.join(',');
+    }
+    assert(finds(31337) === finds(31337), 'the same seed digs up the same things');
+    assert(finds(31337) !== finds(31338), 'a different seed digs up different things');
+  }
+
+  // ---- the sim hook: a real hole in real rock ---------------------------
+  {
+    const run = S.newRun(eff, 606);
+    let dug = 0, rubbles = 0;
+    for (let y = 0; y < D.MAP_H && dug < 60; y++)
+      for (let x = 0; x < D.MAP_W && dug < 60; x++) {
+        const t = run.grid[y][x];
+        if (t.t !== 'rock' || t.lm) continue;
+        t.revealed = true;
+        if (!S.demolishAt(run, x, y).ok) continue;
+        dug++;
+      }
+    assert(dug > 0, 'the scaffold found rock to excavate');
+    for (let i = 0; i < D.DIG_ROCK + 2; i++) S.tick(run);
+    const st = E.peek(run);
+    assert(st && st.digs === dug,
+      'sim.js reports every completed excavation to events.js (' +
+      (st && st.digs) + ' of ' + dug + ')');
+    // rubble is not rock: clearing it is housekeeping, not prospecting
+    const before = st.digs;
+    for (let y = 0; y < D.MAP_H && rubbles < 5; y++)
+      for (let x = 0; x < D.MAP_W && rubbles < 5; x++) {
+        const t = run.grid[y][x];
+        if (t.t !== 'floor' || t.machine !== null || t.belt || t.lm) continue;
+        t.rubble = true; t.revealed = true;
+        if (S.demolishAt(run, x, y).ok) rubbles++;
+      }
+    assert(rubbles > 0, 'the scaffold found rubble to clear');
+    for (let i = 0; i < D.DIG_RUBBLE + 2; i++) S.tick(run);
+    assert(E.peek(run).digs === before, 'clearing rubble is not an excavation');
+  }
+  return st0.finds;
+}
+
 function main() {
   checkArt();
   checkSave();
+  const digFinds = checkDigFinds();
   const lmSweep = checkLandmarkSweep();
 
   const eff = DC.Meta.effects(DC.Meta.newProfile());
@@ -785,6 +1003,7 @@ function main() {
     ' | quakes ' + (shakes - shakes0) + ' (' + quakeMsgs.length + ' msgs)' +
     ' | integrity ' + integ0 + '->' + run.integrity +
     ' | status ' + run.status +
+    ' | dig finds ' + digFinds + '/4000, all 7 kinds' +
     ' | landmarks ' + lmSweep.withLm + '/' + lmSweep.maps + ' maps, ' +
     lmSweep.cells + ' cells, ' + Object.keys(lmSweep.ids).length + ' kinds, ' +
     'veins+connectivity held');

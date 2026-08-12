@@ -29,6 +29,7 @@ require('../js/barks.js');
 require('../js/map.js');
 require('../js/sim.js');
 require('../js/meta.js');
+require('../js/events.js');    // M-EVENTS: the finds, the logbook, the vignettes
 const DC = globalThis.DC;
 const D = DC.DATA;
 const S = DC.Sim;
@@ -145,6 +146,62 @@ assert(allLines.length >= 120, '>= 120 lines total (got ' + allLines.length + ')
 // share a fake content word and poison the overlap lint below.
 for (const t of REVIEW_TIERS)
   for (const l of B.REVIEWS[t]) allLines.push(['review:' + t, l]);
+
+// M-EVENTS: the Dead Foremen. These are NOT GRIT — they are quotes found in
+// the rock, and they join the corpus for the width and guardrail lints (they
+// are drawn into the same LOG panel every bark is) but deliberately NOT for
+// the near-duplicate lint below. The whole design of the logbook is that the
+// entries rhyme with each other and with the elevator graffiti: several are
+// meant to say the same thing about the singing and the warmth in different
+// men's handwriting, which is the jigsaw. `logLines` is checked for exact
+// repeats and for its own house style in the block right after this one.
+const logLines = [];
+for (const l of (DC.Events && DC.Events.LOGS) || []) logLines.push(['log', l]);
+// Every authored string the vignettes carry, flattened. Defined as a function
+// because the vignette catalog lands later in this brief than the logbook did
+// — an absent DC.Events.VIGNETTES is simply no lines, never a crash.
+function eventLines() {
+  const out = [];
+  for (const v of (DC.Events && DC.Events.VIGNETTES) || []) {
+    out.push(['vignette:' + v.id, v.title]);
+    for (const p of v.text || []) out.push(['vignette:' + v.id, p]);
+    for (const c of v.choices || []) {
+      out.push(['vignette:' + v.id + ' choice', c.label]);
+      if (c.result) out.push(['vignette:' + v.id + ' result', c.result]);
+    }
+  }
+  return out;
+}
+{
+  SECTION = 'logbook';
+  const E = DC.Events;
+  assert(E && Array.isArray(E.LOGS), 'DC.Events.LOGS is the corpus');
+  assertEq(E.LOGS.length, 20, 'twenty foremen did not come back up');
+  const seenL = new Set();
+  const names = new Set();
+  for (const l of E.LOGS) {
+    assert(typeof l === 'string' && l.length > 0 && l.length <= 70,
+      'log entry within 70 chars (' + l.length + '): ' + l);
+    assert(!seenL.has(l), 'the same log is not found twice: ' + l);
+    seenL.add(l);
+    // House style, because the logbook is read as a PAGE of twenty and any
+    // entry that breaks the shape reads as a bug rather than as a voice:
+    // "Log <n>: <the thing he wrote> -Fmn. <name>".
+    const m = /^Log (\d+): .+ -Fmn\. ([A-Z][a-z]+)$/.exec(l);
+    assert(m, 'log entry is "Log N: ... -Fmn. Name": ' + l);
+    names.add(m[2]);
+  }
+  assert(names.size >= 8, 'the book is more than a couple of foremen (' +
+    names.size + ' names)');
+  // ...and the jigsaw actually corroborates M-CORELORE. These are the three
+  // beats the Core is written around; if the logbook stops mentioning them it
+  // has become trivia instead of foreshadowing.
+  const all = E.LOGS.join(' ').toLowerCase();
+  for (const beat of ['singing', 'warm', 'keeps time'])
+    assert(all.indexOf(beat) >= 0, 'the logbook still corroborates "' + beat + '"');
+  assert(E.logText(0) === E.LOGS[0] && E.logText(999) === null,
+    'Events.logText reads the book and refuses what is not in it');
+}
 
 // line text -> trigger id (for classifying what the drive fired)
 const TRIG_OF = {};
@@ -806,7 +863,10 @@ SECTION = 'guardrails';
     [/\b(jews?|muslims?|christians?|blacks|whites|asians?|arabs?|gays?|lesbians?|trannies|immigrants?|foreigners?|retard\w*|cripples?)\b/i,
       'demographic targeting'],
   ];
-  for (const [tag, l] of allLines) {
+  // M-EVENTS' authored text answers to the same guardrails GRIT does — the
+  // logbook, and every line of every vignette (which is why they are gathered
+  // here rather than trusted for being "lore").
+  for (const [tag, l] of allLines.concat(logLines, eventLines())) {
     for (const [re, why] of BANNED) {
       if (re && re.test(l)) fail('guardrail (' + why + ') in ' + tag + ': ' + l);
     }
@@ -1248,7 +1308,40 @@ SECTION = 'prose-panels';
     '▼ Descending — stratum 99.',
   ];
   for (const t of lits.concat(dyn)) checkWrap(t, LW, LR, 'LOG sim message');
-  PROSE_N = allLines.length * 2 + lits.length + dyn.length;
+
+  // M-EVENTS writes into the same LOG panel. The dead foremen are the tight
+  // case — 70 columns of somebody else's handwriting has to survive three
+  // rows of 29 — and events.js's own messages get the same treatment as
+  // sim.js's, worst case filled in.
+  for (const [, l] of logLines) checkWrap(l, LW, LR, 'LOG foreman entry');
+  const evSrc = fs.readFileSync(path.join(__dirname, '../js/events.js'), 'utf8');
+  const evLits = [];
+  const evRe = /msg\(\s*run\s*,/g;
+  let em;
+  while ((em = evRe.exec(evSrc)) !== null) {
+    const seg = evSrc.slice(em.index, em.index + 400);
+    const cut = seg.indexOf(');');
+    const body = cut > 0 ? seg.slice(0, cut) : seg;
+    const litRe2 = /'((?:[^'\\]|\\.)*)'/g;
+    let x2;
+    while ((x2 = litRe2.exec(body)) !== null) {
+      const s = x2[1].replace(/\\'/g, "'");
+      if (s.length > 3) evLits.push(s);
+    }
+  }
+  assert(evLits.length >= 6, 'found the static events.js log messages (' +
+    evLits.length + ')');
+  const longestItem = Object.keys(D.ITEMS)
+    .map(k => D.ITEMS[k].name).sort((a, b) => b.length - a.length)[0];
+  const evDyn = [
+    'An ore pocket spills open — 10 ' + longestItem + '.',
+    'A pre-collapse cache — 15 plates, still greased.',
+    'Gas pocket — the air goes sour (+99 pressure).',
+    'A dead rig, gutted. Salvage: +99 plates.',
+  ];
+  for (const t of evLits.concat(evDyn)) checkWrap(t, LW, LR, 'LOG event message');
+  PROSE_N = allLines.length * 2 + lits.length + dyn.length +
+            logLines.length + evLits.length + evDyn.length;
 }
 
 console.log('PASS barks | categories ' + CATALOG.length +
@@ -1257,6 +1350,8 @@ console.log('PASS barks | categories ' + CATALOG.length +
   B.CORE.gate.length + ' gate beats, ' + B.CORE.reveal.length + ' reveal, ' +
   B.CORE.mantle.length + ' mantle)' +
   ' | graffiti ' + GRAFFITI_N +
+  ' | logbook ' + logLines.length +
+  ' | vignette lines ' + eventLines().length +
   ' | reviews ' + REVIEW_N + ' in ' + REVIEW_TIERS.length + ' tiers' +
   ' | drive triggers ' + trigs.size + ' (' + Array.from(trigs).sort().join(',') + ')' +
   ' | barks in drive ' + d1.lines.length +

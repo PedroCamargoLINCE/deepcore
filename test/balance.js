@@ -54,6 +54,11 @@ require('../js/art.js');
 require('../js/map.js');
 require('../js/sim.js');
 require('../js/meta.js');
+// M-EVENTS: loaded because the shipped game loads it — the bot digs, and a
+// sweep that measures a rig the rock never pays is measuring a different game.
+// The finds roll on their own derived stream, so this changes what the bot
+// FINDS, never when the quakes land (see the header of js/events.js).
+require('../js/events.js');
 const DC = globalThis.DC;
 const D = DC.DATA;
 const S = DC.Sim;

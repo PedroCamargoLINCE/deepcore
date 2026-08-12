@@ -3884,6 +3884,142 @@ function wondersSection(seed) {
   return D.LANDMARKS.length + ' kinds, mechanics verified';
 }
 
+// =========================================================================
+// SECTION 15 — M-EVENTS: dig finds, the logbook, vignettes and the cat
+// headless.js proves the rolls and the payloads. This proves the WIRING: a
+// find reaches GRIT's mouth through the real event queue, a foreman's log
+// reaches the profile on disk the instant it is read (not at the end of the
+// run — a rig that dies on the next quake keeps what it learned), and the
+// vignette screen is a real screen with real keys.
+// =========================================================================
+function eventsSection(seed) {
+  SECTION = 'events seed=' + seed;
+  require('../js/barks.js');
+  require('../js/events.js');
+  require('../js/fx.js');
+  require('../js/render.js');
+  require('../js/engine.js');
+  const B = DC.Barks, E = DC.Events, M = DC.Meta;
+  assert(E && typeof E.rollDig === 'function', 'events.js is loaded');
+
+  const handlers = {};
+  const drawn = [];
+  const ctxStub = {
+    fillStyle: '', font: '', textBaseline: '', textAlign: '',
+    setTransform: function () {}, fillRect: function () {},
+    save: function () {}, restore: function () {}, scale: function () {},
+    fillText: function (s) { drawn.push(String(s)); },
+    measureText: function () { return { width: 10 }; },
+  };
+  const canvasStub = {
+    style: {},
+    getContext: function () { return ctxStub; },
+    addEventListener: function (t, fn) { handlers[t] = fn; },
+    getBoundingClientRect: function () {
+      return { left: 0, top: 0, width: D.COLS * 10, height: D.ROWS * 19 };
+    },
+  };
+  global.window = { addEventListener: function (t, fn) { handlers[t] = fn; } };
+  global.document = { getElementById: function () { return canvasStub; } };
+  global.location = { search: '?seed=' + seed };
+  let rafCb = null;
+  global.requestAnimationFrame = function (fn) { rafCb = fn; };
+  const cell = {};
+  global.localStorage = {
+    getItem: (k) => (k in cell ? cell[k] : null),
+    setItem: (k, v) => { cell[k] = String(v); },
+  };
+
+  let now = 2e7;
+  function frames(n) {
+    for (let i = 0; i < n; i++) {
+      now += 1000 / HZ;
+      const cb = rafCb;
+      assert(cb, 'rAF loop stays scheduled');
+      rafCb = null;
+      cb(now);
+    }
+  }
+  function key(k) {
+    handlers.keydown({ key: k, shiftKey: false, preventDefault: function () {} });
+  }
+  function paint() { drawn.length = 0; frames(1); }
+  function shown(s) { return drawn.some(x => x.indexOf(s) >= 0); }
+
+  try {
+    DC.Engine.start();
+    const st = DC.state;
+    key('Enter');
+    const run = st.run;
+    assert(run, 'a run is running');
+
+    // --- a find reaches GRIT through the real queue -----------------------
+    // The find is injected as the sim's own event record rather than waited
+    // for on a lucky seed: what is under test here is the engine's drain, and
+    // the roll that produces the record is headless.js's business.
+    // Jumping totalT clears the 6s bark cooldown; the idle ladder measures
+    // against the same clock, so the activity stamps move with it or GRIT
+    // starts heckling the player for standing still and eats the find line.
+    function skipCooldown() {
+      run.totalT += 60 * HZ;
+      run.stats.lastPlaceT = run.totalT;
+      run.stats.lastFeedT = run.totalT;
+    }
+    skipCooldown();
+    run.events.push({ type: 'find', t: run.totalT, data: { id: 'bones', bark: 'bones' } });
+    frames(1);
+    assert(run.foreman && B.POOLS.bones.indexOf(run.foreman.text) >= 0,
+      'a dig find gets GRIT\'s answer: "' + (run.foreman && run.foreman.text) + '"');
+    // a find whose pool barks.js has not grown is quiet, never a crash
+    skipCooldown();
+    frames(1);
+    assertEq(run.foreman, null, 'the bar is clear again');
+    run.events.push({ type: 'find', t: run.totalT, data: { id: 'x', bark: 'nosuchpool' } });
+    frames(1);
+    assertEq(run.foreman, null, 'an unwritten find pool is silence, not an error');
+
+    // --- a foreman's log is filed the instant it is read ------------------
+    assertEq(M.logbook(st.meta).length, 0, 'the book starts empty');
+    run.events.push({ type: 'foremanLog', t: run.totalT, data: { index: 5 } });
+    frames(1);
+    assert(M.hasLog(st.meta, 5), 'the entry is in the profile');
+    const saved = JSON.parse(cell[D.SAVE_KEY] || '{}');
+    assert(Array.isArray(saved.logbook) && saved.logbook.indexOf(5) >= 0,
+      'and on disk, before the run is over');
+    run.events.push({ type: 'foremanLog', t: run.totalT, data: { index: 5 } });
+    frames(1);
+    assertEq(M.logbook(st.meta).length, 1, 'reading it twice does not file it twice');
+
+    // --- and the whole path, for real: dig a hole, take what is in it -----
+    // Excavate every reachable rock tile on the floor and let the sim run the
+    // digs out. With ~8% of a few hundred excavations paying, this finds
+    // something on any seed; the assertion is on the counter, not on luck.
+    let holes = 0;
+    for (let y = 0; y < D.MAP_H; y++)
+      for (let x = 0; x < D.MAP_W; x++) {
+        const t = run.grid[y][x];
+        if (t.t !== 'rock' || t.lm) continue;
+        t.revealed = true;
+        if (DC.Sim.demolishAt(run, x, y).ok) holes++;
+      }
+    assert(holes > 100, 'the floor had rock in it (' + holes + ' holes)');
+    frames(D.DIG_ROCK + 4);
+    const ev = E.peek(run);
+    assertEq(ev.digs, holes, 'every hole was reported to events.js');
+    assert(ev.finds > 0, 'digging out a whole floor found something (' +
+      ev.finds + ' finds in ' + holes + ' holes)');
+    assert(run.messages.some(m => /pocket|cache|lunchbox|Bones|shaft|dead rig|tin/i.test(m.text)),
+      'and the LOG says what it was');
+    return ev.finds + ' finds / ' + holes + ' holes';
+  } finally {
+    delete global.window;
+    delete global.document;
+    delete global.location;
+    delete global.requestAnimationFrame;
+    delete global.localStorage;
+  }
+}
+
 // -------------------------------------------------------------------- main
 const SEED = process.env.DC_SEED ? (parseInt(process.env.DC_SEED, 10) | 0) : 1337;
 try {
@@ -3909,6 +4045,7 @@ try {
   // the victory sphere and would otherwise inherit whichever mode ran last.
   const walls = coreLoreSection(SEED + 43);
   const wonders = wondersSection(SEED + 47);
+  const events = eventsSection(SEED + 53);
   // The webfont section is the one asynchronous check in the suite — a
   // document.fonts.ready handler cannot be driven synchronously — so the
   // PASS line waits on it rather than racing it.
@@ -3920,6 +4057,7 @@ try {
       ' | braille probe->blocks (' + rimGlyphs + ' rim glyphs)' +
       ' | core gate 3 beats | ' + walls + ' walls' +
       ' | wonders ' + wonders +
+      ' | events ' + events +
       ' | cadence 16/12/10 | overdrive x2 | damper ok | charge+bronze ok | mantle ok' +
       ' | engine+barks ok | ' + (Date.now() - t0) + 'ms');
     process.exit(0);
