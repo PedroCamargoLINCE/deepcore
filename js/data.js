@@ -427,6 +427,9 @@
   // reaches the rig clearing for free — an aura is a reason to move the base,
   // never a bonus the opening layout collects by accident.
   D.LANDMARK_MIN_DIST = 12;
+  // Seconds into a stratum before the discovery bark may fire. The arrival
+  // line holds the foreman bar until ~12s; this waits it out (see sim.js).
+  D.LANDMARK_BARK_T = 14;
 
   D.SAVE_KEY = 'deepcore_save_v1';
   // Display only (title-screen corner). v1.1 is the shipped feature set —

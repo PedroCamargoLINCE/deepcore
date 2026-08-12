@@ -179,6 +179,16 @@
       // M-CORELORE: the Core Gate. sim.js says WHEN (breach fractions at s8);
       // barks.js says what, and answers itself in GRIT's voice a beat later.
       else if (ev.type === 'core') coreBeat(run, ev.data);
+      // M-WONDERS: the stratum's landmark, found by the sweep or used by the
+      // player. The Bell is the one that reaches past GRIT: ringing it is
+      // heard, and something far below answers early (SPEC3 M-CORELORE hook).
+      else if (ev.type === 'landmark' && ev.data) {
+        if (ev.data.act === 'find') bark('landmarkFound', ev.data.id);
+        else {
+          bark('landmarkUse', ev.data.id);
+          if (ev.data.id === 'bell') coreBeat(run, { kind: 'intrusion' });
+        }
+      }
     }
   }
 
@@ -186,7 +196,8 @@
   function coreBeat(run, data) {
     const B = DC.Barks;
     if (!B || !B.core || !run) return;
-    try { B.core(run, 'gate', (data && data.beat) | 0); } catch (e) {}
+    const kind = (data && data.kind) || 'gate';
+    try { B.core(run, kind, (data && data.beat) | 0); } catch (e) {}
   }
 
   // Optional Foreman wiring — no-op unless js/barks.js is loaded.

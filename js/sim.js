@@ -141,7 +141,7 @@
     run.landmark = gen.landmark
       ? { id: gen.landmark.id, x: gen.landmark.x, y: gen.landmark.y,
           cx: gen.landmark.cx, cy: gen.landmark.cy, cells: gen.landmark.cells,
-          on: false, onAt: 0, jam: false, fired: false }
+          on: false, onAt: 0, jam: false, fired: false, found: false }
       : null;
     run.t = 0;
     run.instability = Math.max(0, run.instability - D.DESCEND_VENT);
@@ -175,7 +175,6 @@
       run._lastRevealR = 9999;
     }
     updateReveal(run);
-    if (run.landmark) pushEvent(run, 'landmark', { id: run.landmark.id, act: 'arrive' });
   }
 
   // ---------------- M-WONDERS: stratum landmarks (SPEC3) ----------------
@@ -236,6 +235,21 @@
   function stepLandmark(run) {
     const lm = run.landmark, def = lmDef(run);
     if (!lm || !def) return;
+    // Discovery, not arrival: GRIT reacts when the scan actually finds the
+    // thing. The delay is not flavour — the stratum-arrival bark flushes off
+    // the queue around 6s and holds the bar for another 6, so a line fired the
+    // moment the sweep touched a landmark would be silently swallowed on most
+    // strata. This waits for the far side of that window.
+    if (!lm.found && run.t > (D.LANDMARK_BARK_T || 14) * HZ) {
+      for (const c of lm.cells) {
+        const t = tileAt(run, c.x, c.y);
+        if (t && t.revealed) {
+          lm.found = true;
+          pushEvent(run, 'landmark', { id: def.id, act: 'find' });
+          break;
+        }
+      }
+    }
     if (def.mirror && !lm.fired) {
       let seen = true;
       for (const c of lm.cells) {
@@ -345,6 +359,7 @@
             add(run.inv, ld.dig.yield, 1);
             msg(run, 'A spire comes down — 1 ' + D.ITEMS[ld.dig.yield].name + '.',
                 D.ITEMS[ld.dig.yield].color);
+            pushEvent(run, 'landmark', { id: ld.id, act: 'use' });
           } else if (t.t === 'rock') t.t = 'floor';
           t.rubble = false;
         }
@@ -796,13 +811,16 @@
         const t = tileAt(run, tx, ty);
         if (!t) return { ok: false, reason: 'out of bounds' };
         if (!t.revealed) return { ok: false, reason: 'unscanned ground' };
+        // M-WONDERS: a wonder answers before the terrain does, so the refusal
+        // names what is actually in the way. Only the Warm Spot's marker is
+        // standable floor, and paving it would hide the tile that names the
+        // zone; the rest are solid anyway and would have said 'needs open
+        // floor', which tells the player nothing about what they are looking at.
+        if (t.lm) return { ok: false, reason: 'landmark ground' };
         if (t.t !== 'floor') return { ok: false, reason: 'needs open floor' };
         if (t.rubble) return { ok: false, reason: 'blocked by rubble' };
         if (t.machine !== null) return { ok: false, reason: 'blocked by structure' };
         if (t.belt) return { ok: false, reason: 'blocked by belt' };
-        // M-WONDERS: only the Warm Spot's marker is standable floor, and
-        // paving over it would hide the one tile that names the zone.
-        if (t.lm) return { ok: false, reason: 'landmark ground' };
       }
     if (type === 'extractor' && !tileAt(run, x, y).ore)
       return { ok: false, reason: 'needs an ore vein' };
