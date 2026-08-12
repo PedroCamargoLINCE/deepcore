@@ -12,11 +12,14 @@
   const U = DC.util;
 
   const COLS = D.COLS, ROWS = D.ROWS;
-  const CW = 10, CH = 19;
+  // The BASE cell and its font size — the grid as it was authored, 80x33 of
+  // 10x19 = 800x627. Everything on screen is this multiplied by `scale`
+  // (M-HIRES Phase 1); nothing below ever hardcodes 10 or 19 again.
+  const CW = 10, CH = 19, FONT_PX = 16;
   // Readability is a design objective (SPEC3 §0 law 6), and on a character
   // grid it starts with the font: a missing glyph is a tofu box and a
   // wrong-width one shears the whole row, because flush() batches a run of
-  // cells into one fillText scaled by CW/adv.
+  // cells into one fillText scaled by cw/adv.
   // The stack is ordered by coverage, one entry per platform:
   //   DejaVu Sans Mono  Linux, and the face every glyph here was chosen against
   //   Menlo             macOS — derived from the same Bitstream Vera ancestor
@@ -27,8 +30,22 @@
   //   Monaco            older macOS, before Menlo shipped
   //   Cascadia Mono / Consolas   Windows
   // `node tools/glyphs.js` prints the inventory any candidate must cover.
-  const FONT = '16px "DejaVu Sans Mono", Menlo, Monaco, "Cascadia Mono", ' +
-               'Consolas, "Courier New", monospace';
+  //
+  // M-HIRES Phase 2.5 puts a VENDORED face at the head of it: "Deepcore Mono",
+  // a subset of DejaVu Sans Mono carrying exactly that inventory, embedded as
+  // a data URI by vendor/deepcore-mono.css. The system stack stays behind it
+  // as the fallback chain — if the webfont is blocked or fails, the game must
+  // still be playable — but when it loads, every machine draws the same grid
+  // and we stop guessing about platforms we cannot see.
+  const FONT_FAMILY = 'Deepcore Mono';
+  const FONT_STACK = '"' + FONT_FAMILY + '", "DejaVu Sans Mono", Menlo, Monaco, ' +
+                     '"Cascadia Mono", Consolas, "Courier New", monospace';
+  // Scale limits. Below 1 the glyphs stop being legible faster than the extra
+  // fit is worth, so a phone-sized viewport keeps the full 800x627 and lets
+  // style.css's max-width/max-height letterbox it. Above ~2.25 a 16px font has
+  // become 36px and the terminal reads as a toy — a 4K panel gets margins
+  // rather than 55px text.
+  const MIN_SCALE = 1, MAX_SCALE = 2.25;
   const UNREV_BG = '#050504';        // near-black for unrevealed tiles (SPEC §7)
   const SB = 49, SBW = 31;           // sidebar box: cols 49..79
   const SBC = 50, SCW = 29;          // sidebar content col + width
@@ -54,7 +71,37 @@
   };
 
   let canvas = null, ctx = null, dpr = 1, adv = CW; // adv = measured glyph advance
-  let frameN = 0;
+  // Live metrics: the base cell times the current scale. `adv` is measured
+  // from the font at `fontPx` and is therefore STALE the instant scale
+  // changes — resize() re-measures it, and flush() maps it onto the `cw`
+  // pitch, so a whole batched run stays grid-aligned at any size.
+  let scale = 1, cw = CW, ch = CH, fontPx = FONT_PX;
+  let font = FONT_PX + 'px ' + FONT_STACK;
+  let fontReady = false;             // the vendored face has loaded and been measured
+  let brailleOK = false;             // braille is present AND cell-width (probed)
+
+  // Render's own animation clock (M-HIRES Phase 0). Same contract as fx.js's:
+  // driven by elapsed milliseconds, expressed in virtual 60 fps frames, so the
+  // gameover/victory blink, the flashPart pulse and the descent animation run
+  // at wall speed on a 144 Hz monitor instead of 2.4x too fast. Throwaway
+  // render state — nothing here ever feeds back into the sim.
+  const RFPS = 60, RMS_PER_FRAME = 1000 / RFPS, RMAX_DT = 250;
+  let clockMs = 0, frameN = 0, dFrames = 1, lastNow = null;
+  function advanceClock(nowMs) {
+    const prev = frameN;
+    if (typeof nowMs !== 'number' || !isFinite(nowMs)) {
+      clockMs += RMS_PER_FRAME;              // no host clock (tests): nominal step
+    } else if (lastNow === null) {
+      lastNow = nowMs;
+      clockMs += RMS_PER_FRAME;
+    } else {
+      const dt = nowMs - lastNow;
+      lastNow = nowMs;
+      if (dt > 0) clockMs += Math.min(dt, RMAX_DT);
+    }
+    frameN = Math.round(clockMs * RFPS / 1000);
+    dFrames = frameN - prev;
+  }
 
   // ---------------- cell buffer ----------------
   const chB = [], fgB = [], bgB = [];
@@ -127,11 +174,30 @@
     text(col, row + h - 1, '└' + horiz + '┘', color);
     if (title) text(col + 2, row, (' ' + title + ' ').slice(0, Math.max(0, w - 4)), titleColor || color);
   }
+  // M-HIRES Phase 2: gauges fill in EIGHTHS of a cell, not whole cells.
+  // A 13-cell integrity bar used to quantise to 7.7 points of hull; it now
+  // resolves to under one, so the bar moves when the rig takes a hit instead
+  // of sitting still for six of them and then jumping. That is the single
+  // cheapest readability win in the brief (§0 law 6), and it costs one glyph
+  // per bar — the partial cell is drawn in the FILL colour so the boundary
+  // between "filled" and "track" stays unambiguous at a glance.
+  //
+  // Falls back to whole cells if art.js is absent (render is defensive about
+  // its assets by contract) — the bar is never wrong, only coarser.
   function bar(col, row, width, frac, color) {
     frac = U.clamp(frac || 0, 0, 1);
-    const n = Math.round(frac * width);
-    if (n > 0) text(col, row, '█'.repeat(n), color);
-    if (n < width) text(col + n, row, '░'.repeat(width - n), C.darkgray);
+    const R = DC.Art && DC.Art.raster;
+    if (!R || !R.bar) {
+      const n = Math.round(frac * width);
+      if (n > 0) text(col, row, '█'.repeat(n), color);
+      if (n < width) text(col + n, row, '░'.repeat(width - n), C.darkgray);
+      return;
+    }
+    const b = R.bar(frac, width);
+    let x = col;
+    if (b.full > 0) { text(x, row, '█'.repeat(b.full), color); x += b.full; }
+    if (b.part) { put(x, row, b.part, color); x += 1; }
+    if (b.rest > 0) text(x, row, '░'.repeat(b.rest), C.darkgray);
   }
   function wrap(str, w) {
     const out = [];
@@ -220,6 +286,11 @@
     const inner = ' ' + name + ' ';
     const h = '─'.repeat(inner.length);
     return ['┌' + h + '┐', '│' + inner + '│', '└' + h + '┘'];
+  }
+  function artWidth(lines) {
+    let w = 0;
+    for (const ln of lines) if (ln.length > w) w = ln.length;
+    return w;
   }
   function art(name) {
     const A = DC.Art;
@@ -879,7 +950,7 @@
     const accent = nst.accent || C.amber;
 
     if (anim < animLen || !run || !run.pendingOffers) {
-      ui.descendAnim = anim + 1;                  // render advances the anim counter (SPEC §7)
+      ui.descendAnim = anim + dFrames;            // render advances the anim counter (SPEC §7)
       ctext(2, '»» DESCENDING ««', C.amber);
       // SPEC3 §A2 interstitial: the name types itself in the accent while the
       // odometer rolls its digits down to the depth you are arriving at.
@@ -1100,9 +1171,22 @@
   }
 
   function drawVictory(state, phase) {
-    const lines = art('victory');
+    // M-HIRES Phase 3: the sphere's rim is drawn at whatever sub-cell
+    // resolution this machine can actually render. `art('victory')` is the
+    // block build and is always safe; the braille build is taken ONLY when
+    // the probe measured braille at the cell advance. Guarded so an art.js
+    // without coreSphere (or a throw inside it) still draws the sphere.
+    let lines = art('victory');
+    if (DC.Art && typeof DC.Art.coreSphere === 'function' && brailleOK) {
+      try {
+        const hi = DC.Art.coreSphere('braille');
+        if (Array.isArray(hi) && hi.length) lines = hi;
+      } catch (e) { /* keep the block build */ }
+    }
     drawArt(lines, 1, artColor('victory', C.magmaHot));
-    layout.artBlock = { row: 1, h: lines.length };   // fx: the core sphere pulses
+    // fx: the core sphere pulses. `w` is published so the pulse bands against
+    // the sphere's real half-width instead of a hardcoded one (M-HIRES).
+    layout.artBlock = { row: 1, h: lines.length, w: artWidth(lines) };
     const y = Math.min(1 + lines.length + 1, 24);
     statsBlock(y, fallbackResult(state.run, true));
     ctext(y + 5, '+' + D.WIN_CORES + ' ◈ CORE BONUS', phase ? C.magenta : shade(C.magenta, 0.6));
@@ -1294,11 +1378,87 @@
     ctext(ROWS - 1, '[TAB] STATS   [C] COPY CARD   [ENTER] RETURN TO THE SURFACE', C.amber);
   }
 
+  // ================= viewport scaling (M-HIRES Phase 1) =================
+  // The canvas used to be a fixed 800x627 island: init() set a CSS pixel size
+  // once on load and nothing ever resized it. Canvas text is RE-RENDERED at
+  // the new cell size rather than upscaled, so drawing the same 80x33 grid
+  // larger produces genuinely more pixels of glyph — this sharpens, it does
+  // not stretch. The aspect is preserved by construction: one scalar `s`
+  // multiplies both axes, so the grid can never distort.
+  function fitScale(vw, vh) {
+    const s = Math.min(vw / (COLS * CW), vh / (ROWS * CH));
+    if (!(s > 0) || !isFinite(s)) return 1;
+    return U.clamp(s, MIN_SCALE, MAX_SCALE);
+  }
+  // Re-measure the glyph advance. MUST run after every scale change: `adv`
+  // comes from measureText at the old font size and flush() divides by it.
+  function measureAdv() {
+    ctx.font = font;
+    const m = ctx.measureText('█');
+    adv = (m && m.width > 0) ? m.width : cw;
+    probeBraille();
+  }
+
+  // ---- braille coverage probe (M-HIRES Phase 3) -------------------------
+  // Braille (U+2800-28FF) is NOT in DejaVu Sans Mono — verified per codepoint
+  // with fc-match, not assumed — and the fallback face is the PROPORTIONAL
+  // DejaVu Sans, whose braille advances 1500/2048 em against the grid's
+  // 1233/2048. That is 21.7% wide, and flush() batches a whole run of cells
+  // into one fillText scaled by cw/adv where adv came from '█': five braille
+  // glyphs in a row drift a full cell and the row is corrupted. So the
+  // failure mode is not a missing dot, it is a wrecked line of text.
+  //
+  // Hence: never emit braille without measuring first, every time the font
+  // changes. A vendored face does not excuse the probe — browsers block
+  // webfonts, users override fonts, and the check is two measureText calls.
+  const BRAILLE_EPS = 0.02;          // 2% of a cell; the real gap is 21.7%
+  function probeBraille() {
+    brailleOK = false;
+    try {
+      ctx.font = font;
+      const blk = ctx.measureText('█').width;
+      const brl = ctx.measureText('⣿').width;
+      if (!(blk > 0) || !(brl > 0)) return false;
+      brailleOK = Math.abs(brl - blk) <= blk * BRAILLE_EPS;
+    } catch (e) { brailleOK = false; }
+    return brailleOK;
+  }
+  // The CRT scanline period is a fixed 3px in style.css; at 2x scale that
+  // reads twice as dense and muddies the art. Hand the sheet the current cell
+  // height so the overlay scales with the picture.
+  function setScanlinePeriod() {
+    try {
+      const el = root.document && root.document.documentElement;
+      if (el && el.style && el.style.setProperty) {
+        el.style.setProperty('--scanline', Math.max(3, Math.round(3 * scale)) + 'px');
+      }
+    } catch (e) { /* headless, or a canvas with no page around it */ }
+  }
+  function applyScale(s) {
+    scale = s;
+    cw = CW * s;
+    ch = CH * s;
+    // Rounded, and then USED rounded: the font string is what the browser
+    // measures, so metrics().fontPx must be the same number or `adv` and the
+    // reported size disagree by a hair that compounds across an 80-cell run.
+    fontPx = Math.round(FONT_PX * s * 100) / 100;
+    font = fontPx + 'px ' + FONT_STACK;
+    const pw = COLS * cw, ph = ROWS * ch;
+    canvas.width = Math.round(pw * dpr);
+    canvas.height = Math.round(ph * dpr);
+    if (canvas.style) {
+      canvas.style.width = pw + 'px';
+      canvas.style.height = ph + 'px';
+    }
+    measureAdv();
+    setScanlinePeriod();
+  }
+
   // ================= flush (batched fillText) =================
   function flush() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = C.bg;
-    ctx.fillRect(0, 0, COLS * CW, ROWS * CH);
+    ctx.fillRect(0, 0, COLS * cw, ROWS * ch);
     // background runs
     for (let r = 0; r < ROWS; r++) {
       let c = 0;
@@ -1308,19 +1468,19 @@
         let e = c + 1;
         while (e < COLS && bgB[r][e] === b) e++;
         ctx.fillStyle = b;
-        ctx.fillRect(c * CW, r * CH, (e - c) * CW, CH);
+        ctx.fillRect(c * cw, r * ch, (e - c) * cw, ch);
         c = e;
       }
     }
     // text runs: same-color spans in one fillText; x-scale maps the measured
-    // glyph advance onto the CW cell pitch so long runs stay grid-aligned
-    ctx.font = FONT;
+    // glyph advance onto the `cw` cell pitch so long runs stay grid-aligned
+    ctx.font = font;
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'left';
     ctx.save();
-    ctx.scale(CW / adv, 1);
+    ctx.scale(cw / adv, 1);
     for (let r = 0; r < ROWS; r++) {
-      const yy = r * CH + CH * 0.55;
+      const yy = r * ch + ch * 0.55;
       let c = 0;
       while (c < COLS) {
         if (chB[r][c] === ' ') { c++; continue; }
@@ -1373,7 +1533,8 @@
   surface.layout = layout;
 
   DC.Render = {
-    CW: CW, CH: CH,
+    // The BASE cell. The drawn cell is this times metrics().scale.
+    CW: CW, CH: CH, FONT_PX: FONT_PX,
     layout: layout,
     // M-POLISH/CX-11: the STOCK row contract, exported so test/barks_test.js
     // can prove every D.ITEMS.short survives the name field unclipped and
@@ -1411,15 +1572,76 @@
     init: function (cv) {
       canvas = cv;
       ctx = cv.getContext('2d');
-      dpr = (root.devicePixelRatio || 1);
-      cv.width = COLS * CW * dpr;
-      cv.height = ROWS * CH * dpr;
-      cv.style.width = (COLS * CW) + 'px';
-      cv.style.height = (ROWS * CH) + 'px';
-      ctx.font = FONT;
-      const m = ctx.measureText('█');
-      adv = (m && m.width) ? m.width : CW;
+      DC.Render.resize();
+      DC.Render.watchFont();
     },
+
+    // A webfont loads ASYNCHRONOUSLY, while init() measures the glyph advance
+    // exactly once. Until the face lands, `adv` describes the fallback; the
+    // moment it swaps in, every batched run is scaled by the wrong number and
+    // the whole grid shears. So re-measure when the font is really ready —
+    // which is the same re-measure resize() already owed Phase 1, reached
+    // through the same call. One fix, two callers.
+    //
+    // Both hooks are used on purpose: fonts.load() forces the face to load
+    // even though the page paints only through a canvas (nothing in the DOM
+    // uses it, so it might otherwise never become pending), and fonts.ready
+    // catches the general case including a font that was already cached.
+    watchFont: function () {
+      const remeasure = function () {
+        if (ctx) { measureAdv(); fontReady = true; }
+      };
+      try {
+        const f = root.document && root.document.fonts;
+        if (!f) return false;
+        if (typeof f.load === 'function') {
+          const p = f.load(font);
+          if (p && p.then) p.then(remeasure, function () { /* blocked: fallback */ });
+        }
+        if (f.ready && typeof f.ready.then === 'function') {
+          f.ready.then(remeasure, function () { /* nothing to do */ });
+        }
+        return true;
+      } catch (e) { return false; }   // no document, or a hostile CSP
+    },
+    fontReady: function () { return fontReady; },
+    FONT_FAMILY: FONT_FAMILY,
+
+    // Which sub-cell technique the art may use on THIS machine, right now.
+    // 'braille' only when the probe measured braille at exactly the cell
+    // advance; otherwise 'blocks', which needs nothing but the system font.
+    // Art asks this rather than assuming, so the block path is not a
+    // degraded mode — it is the default, and braille is the upgrade.
+    subcellMode: function () { return brailleOK ? 'braille' : 'blocks'; },
+    probeBraille: function () { return ctx ? probeBraille() : false; },
+
+    // Fit the grid to the viewport, preserving aspect. Called on load, on
+    // every (debounced) window resize, and whenever devicePixelRatio changes
+    // — dragging the window between a laptop panel and an external monitor
+    // changes dpr without changing innerWidth, and the backing store has to
+    // follow or the text goes soft. `vw`/`vh` default to the window but are
+    // arguments so the scaling can be tested without a DOM.
+    resize: function (vw, vh) {
+      if (!ctx) return scale;
+      vw = (typeof vw === 'number' && vw > 0) ? vw : (root.innerWidth || COLS * CW);
+      vh = (typeof vh === 'number' && vh > 0) ? vh : (root.innerHeight || ROWS * CH);
+      dpr = (root.devicePixelRatio || 1);
+      applyScale(fitScale(vw, vh));
+      return scale;
+    },
+
+    // Metrics, live. `scale` is fractional by design: glyphs are vector, so
+    // there is no nearest-neighbour argument for integer steps here.
+    metrics: function () {
+      return {
+        scale: scale, cw: cw, ch: ch, fontPx: fontPx, adv: adv, dpr: dpr,
+        width: COLS * cw, height: ROWS * ch,
+        deviceWidth: canvas ? canvas.width : 0,
+        deviceHeight: canvas ? canvas.height : 0,
+      };
+    },
+    MIN_SCALE: MIN_SCALE,
+    MAX_SCALE: MAX_SCALE,
 
     // SPEC3 §A test surface: the cell buffer after a frame, so a stub-canvas
     // frame-advance test can prove an FX row actually landed on a cell.
@@ -1428,15 +1650,19 @@
       return { ch: chB[row][col], fg: fgB[row][col], bg: bgB[row][col] };
     },
 
-    frame: function (state) {
+    frame: function (state, nowMs) {
       if (!ctx || !state) return;
-      frameN++;
-      const phase = Math.floor(frameN / 30) % 2;   // blink phase off the run clock
+      // A window dragged between displays changes devicePixelRatio without
+      // firing `resize`. One property read a frame is cheaper than a
+      // matchMedia dance and catches every case.
+      if ((root.devicePixelRatio || 1) !== dpr) DC.Render.resize();
+      advanceClock(nowMs);
+      const phase = Math.floor(frameN / 30) % 2;   // 1 Hz blink, wall time
       clearBuf();
       // SPEC3 §A: fx.js advances its frame clock and takes its per-frame read
       // of the world BEFORE anything draws; its overlay lands after everything.
       if (DC.FX && DC.FX.begin) {
-        try { DC.FX.begin(state, surface); } catch (e) { /* fx never kills a frame */ }
+        try { DC.FX.begin(state, surface, nowMs); } catch (e) { /* fx never kills a frame */ }
       }
       try {
         switch (state.screen) {

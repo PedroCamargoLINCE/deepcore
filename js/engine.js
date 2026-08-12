@@ -56,11 +56,26 @@
       },
     };
     window.addEventListener('keydown', onKey);
+    // M-HIRES Phase 1: the canvas fits the viewport, so it has to be told when
+    // the viewport changes. Debounced — a drag-resize fires this continuously,
+    // and each call re-measures the font and reallocates the backing store.
+    window.addEventListener('resize', onResize);
     canvas.addEventListener('mousemove', onMouseMove);
     canvas.addEventListener('mousedown', onMouseDown);
     canvas.addEventListener('mouseup', onMouseUp);
     canvas.addEventListener('mouseleave', onMouseLeave);
     requestAnimationFrame(loop);
+  }
+
+  // ---------------- resize ----------------
+
+  let resizeTimer = 0;
+  function onResize() {
+    if (resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function () {
+      resizeTimer = 0;
+      DC.Render.resize();
+    }, 100);
   }
 
   // ---------------- main loop ----------------
@@ -84,7 +99,10 @@
     }
     // NOTE: ui.descendAnim is advanced by Render.frame (SPEC §7), not here —
     // incrementing in both places played the descent animation at double speed.
-    DC.Render.frame(st);
+    // The rAF timestamp drives render's and fx.js's animation clocks: this
+    // loop is not throttled, so without it every frame-measured animation
+    // would run 2.4x too fast on a 144 Hz display (M-HIRES Phase 0).
+    DC.Render.frame(st, now);
   }
 
   function afterTick(st) {
