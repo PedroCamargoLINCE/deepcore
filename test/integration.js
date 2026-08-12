@@ -3025,6 +3025,38 @@ function coreLoreSection(seed) {
     // the reveal is an overlay, not an edit: the asset is untouched
     assertEq(A.victory[cy][cx], art[cy][cx],
       'the crack never writes back into DC.Art.victory');
+
+    // ...and then the shell says something, and GRIT answers it. Render must
+    // pick that pair without drawing a number out of the still-live run.
+    const realV = vic.rng;
+    let drewV = 0;
+    vic.rng = function () { drewV++; return realV(); };
+    let core = null, reply = null;
+    for (let i = 0; i < 40 * FX.FPS && !reply; i++) {
+      frames(1);
+      for (let r = 20; r < D.ROWS; r++) {
+        const t = rowText(r, 0, D.COLS);
+        for (const p of B.CORE.reveal) {
+          if (t.indexOf(p.core) >= 0) core = p.core;
+          if (core === p.core && t.indexOf(p.grit) >= 0) reply = p.grit;
+        }
+      }
+    }
+    vic.rng = realV;
+    assert(core, 'the opened shell speaks');
+    assert(reply, 'and GRIT answers the thing he just drilled into');
+    assertEq(drewV, 0, 'the victory screen drew ' + drewV +
+      ' numbers from run.rng (the Mantle is one keypress away)');
+    // the pair is stable — a redraw is not a re-roll
+    let goldRow = -1;
+    for (let r = 20; r < D.ROWS; r++)
+      if (rowText(r, 0, D.COLS).indexOf(core) >= 0) goldRow = r;
+    assert(goldRow > 0, 'the Core line holds its row');
+    const gx = rowText(goldRow, 0, D.COLS).indexOf(core[0]);
+    assertEq(R.cellAt(gx, goldRow).fg, D.COLORS.gold, 'and it is the Core, in gold');
+    frames(30);
+    assert(rowText(goldRow, 0, D.COLS).indexOf(core) >= 0,
+      'the reveal does not re-roll on redraw');
   }
   return A.graffiti.length;
 }

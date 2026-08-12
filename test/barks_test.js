@@ -99,7 +99,7 @@ for (const l of B.TOASTS) allLines.push(['toast', l]);
 // guardrail / wrap lints run over. The Core's line is untagged in the bar and
 // in the LOG (4 columns of prefix, not 7), so checking it against GRIT's tag
 // below is the conservative measurement.
-const CORE_KINDS = ['intrusion', 'gate', 'mantle'];
+const CORE_KINDS = ['intrusion', 'gate', 'reveal', 'mantle'];
 for (const k of CORE_KINDS) {
   for (const p of (B.CORE[k] || [])) {
     allLines.push(['core:' + k, p.core]);
@@ -458,6 +458,9 @@ let CORE_N = 0;
     B.CORE.intrusion.length + ')');
   assertEq(B.CORE.gate.length, 3, 'the Core Gate is a 3-beat sequence');
   assert(B.CORE.mantle.length >= 3, 'the Mantle gets >= 3 authored Core lines');
+  assert(B.CORE.reveal.length >= 3,
+    'the reveal has >= 3 authored lines — the crack is a picture, this is\n'
+    + '    the picture landing');
   for (const k of CORE_KINDS) {
     for (const p of B.CORE[k]) {
       CORE_N += 2;
@@ -1230,7 +1233,8 @@ SECTION = 'prose-panels';
 console.log('PASS barks | categories ' + CATALOG.length +
   ' | lines ' + allLines.length +
   ' | core ' + CORE_N + ' (' + B.CORE.intrusion.length + ' intrusions, ' +
-  B.CORE.gate.length + ' gate beats, ' + B.CORE.mantle.length + ' mantle)' +
+  B.CORE.gate.length + ' gate beats, ' + B.CORE.reveal.length + ' reveal, ' +
+  B.CORE.mantle.length + ' mantle)' +
   ' | graffiti ' + GRAFFITI_N +
   ' | reviews ' + REVIEW_N + ' in ' + REVIEW_TIERS.length + ' tiers' +
   ' | drive triggers ' + trigs.size + ' (' + Array.from(trigs).sort().join(',') + ')' +
