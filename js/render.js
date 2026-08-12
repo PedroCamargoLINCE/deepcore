@@ -1202,25 +1202,28 @@
   // those rows), so it composes with any core art at any resolution and needs
   // nothing from this module but the moment. Missing art helper, missing fx,
   // missing toast: the sphere simply draws whole, as it always did.
-  function crackedCore(lines) {
+  function crackedCore(lines, done) {
     const A = DC.Art;
-    if (!A || typeof A.crackSphere !== 'function') return lines;
-    if (!DC.FX || typeof DC.FX.typedDone !== 'function') return lines;
-    let done = 0;
-    try { done = DC.FX.typedDone('toast'); } catch (e) { return lines; }
-    if (!done) return lines;
+    if (!done || !A || typeof A.crackSphere !== 'function') return lines;
     try { return A.crackSphere(lines) || lines; } catch (e) { return lines; }
   }
 
   function drawVictory(state, phase) {
-    const lines = crackedCore(art('victory'));
+    // The toast is typed FIRST (the call is keyed and idempotent) because the
+    // sphere behind it needs to know whether GRIT has finished talking: the
+    // crack lands on his last character. With fx.js absent there is no
+    // typewriter at all, the line is complete on frame one, and the shell is
+    // already open — which is the same statement, told at the speed that build
+    // tells everything else.
+    const full = toastSafe(state.run).slice(0, 70);
+    const typed = full ? fxTyped('toast', full, 14) : '';
+    const lines = crackedCore(art('victory'), full && typed.length >= full.length);
     drawArt(lines, 1, artColor('victory', C.magmaHot));
     layout.artBlock = { row: 1, h: lines.length };   // fx: the core sphere pulses
     const y = Math.min(1 + lines.length + 1, 24);
     statsBlock(y, fallbackResult(state.run, true));
     ctext(y + 5, '+' + D.WIN_CORES + ' ◈ CORE BONUS', phase ? C.magenta : shade(C.magenta, 0.6));
-    const tl = toastSafe(state.run);
-    if (tl && y + 7 < 31) ctext(y + 7, 'GRIT ▸ ' + fxTyped('toast', tl.slice(0, 70), 14), C.cyan);
+    if (full && y + 7 < 31) ctext(y + 7, 'GRIT ▸ ' + typed, C.cyan);
     ctext(30, '[TAB] RUN RECAP CARD', C.amberDim);
     ctext(31, '[ENTER] ASCEND      [C] CONTINUE INTO THE MANTLE', C.amber);
   }
