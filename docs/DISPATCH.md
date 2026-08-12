@@ -319,6 +319,27 @@ M-CORELORE-GRITPLUS and do ALL your work there — another session is working in
 parallel, so never edit the main working copy. Branch from current
 origin/master.
 
+CONCURRENCY — M-HIRES is running right now and owns js/render.js's coordinate
+basis. Read this before you touch render or art:
+
+  - M-HIRES is rewriting ONLY the pixel-metric region of render.js: the CW/CH
+    constants, flush() and init(). Every screen-drawing function works in CELL
+    coordinates through text()/put(), which is where all of your work lives —
+    the foreman bar's gold intrusions, the fake ASCEND prompt, the descent
+    graffiti, the EGG-420 tint. Stay in the cell-coordinate draw functions and
+    you will not collide. Do NOT touch flush(), init(), pxToCell(), or the
+    CW/CH constants for any reason.
+
+  - THE ONE REAL COLLISION IS THE VICTORY CORE SPHERE. M-CORELORE cracks it
+    open (the egg reveal — the game's biggest narrative payoff), and M-HIRES is
+    separately redrawing that same asset at higher sub-cell fidelity. So do NOT
+    edit the sphere's art in place. Implement the crack as an OVERLAY: a pure
+    function that takes the sphere rows as input and returns them with the
+    hairline crack applied, driven by the toast's final character. Written that
+    way it composes with whatever sphere exists at merge time, at any
+    resolution, and neither brief has to know about the other. Same principle
+    anywhere else the two briefs want the same asset.
+
 Read SPEC.md, SPEC2.md, and SPEC3.md sections M-CORELORE and M-GRITPLUS in
 full, plus js/data.js and js/barks.js. You are implementing BOTH — they are
 paired deliberately because both are writing work in the same voice, and
@@ -333,7 +354,12 @@ reintroduce that shape. The Core's voice must read as a DIFFERENT character
 from GRIT — that contrast is the whole point of M-CORELORE.
 
 M-GRITPLUS includes EGG-420, the marijuana easter egg. Keep it a genuine easter
-egg: discoverable, funny, never gating progression.
+egg: discoverable, funny, never gating progression. Its green wash obeys SPEC3
+§0 law 6 — readability is a primary objective, not a constraint. The brief says
+"tint, don't paint" and means it: if the map reads worse during those 42
+seconds, the effect is wrong no matter how funny the bit is. Same test for the
+Core's gold intrusions — vast and amused still has to be legible against the
+foreman bar's background at the contrast floor M-POLISH set.
 
 Both briefs name other modules as dependency hooks (M-ANIM-2's descent
 interstitial slot, M-EVENTS' dig-find weight). Those may not exist in your tree.
