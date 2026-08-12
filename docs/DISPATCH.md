@@ -101,6 +101,22 @@ Two more cloud flags worth knowing:
   restarted, it is resumed from its last pushed checkpoint — which is the whole
   reason the checkpoint rule now pushes.
 
+**A private repo needs the GitHub App granted access, or the session cannot
+push.** M-EVENTS hit this: the cloud clone had no `origin` remote and its
+`GH_TOKEN` got a 403 from `api.github.com/repos/PedroCamargoLINCE/deepcore`, so
+six finished commits were stranded in the workspace. Grant access once at
+**github.com/settings/installations** -> Claude -> add `deepcore`, and cloud
+sessions clone and push normally.
+
+If a session is already stranded, do not abandon it — the work is recoverable:
+
+- `cd` into the repo and `claude --teleport <session_id>`. Teleport moves a
+  session between cloud and local and carries git state as a bundle
+  (`teleport_git_bundle_upload`), so the branch comes with it. Run it from the
+  REPO ROOT: the CLI checks for a repo mismatch.
+- Failing that, `git format-patch master..<branch> --stdout` in the session and
+  `git am` the result locally. Clumsy for a large brief, but a guaranteed floor.
+
 The prompts below assume a local machine. Two substitutions make any of them
 cloud-ready:
 
