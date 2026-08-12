@@ -357,12 +357,31 @@
       for (let oi = 0; oi < order.length && !landmark; oi++) {
         const def = order[oi];
         const minCells = def.scatter ? Math.ceil(def.scatter.n * 0.6) : 0;
+        // TWO PASSES, and the first one is the point. A wonder embedded in the
+        // rock is something you SEE on the sweep and dig toward; a wonder
+        // dropped in an open cavern is nine buildable tiles the player no
+        // longer has. Pass 0 therefore refuses to consume any tile that is
+        // already walkable floor, and only pass 1 relaxes that when a stratum
+        // offers nowhere solid. The Warm Spot is the deliberate exception —
+        // it IS floor, by definition — and goes straight to the second pass.
+        for (let pass = 0; pass < 2 && !landmark; pass++) {
+          if (pass === 0 && def.needReach) continue;
         for (let ti = 0; ti < tries.length && ti < 240 && verified < 30; ti++) {
           const a = tries[ti];
-          let cells = lmCells(def, a.x, a.y, lrng);
-          if (def.scatter) cells = cells.filter(c => cellOk(def, c));
+          const all = lmCells(def, a.x, a.y, lrng);   // one draw, then filter
+          const solid = (c) => grid[c.y][c.x].t !== 'floor';
+          let cells;
+          if (def.scatter) {
+            // a scattered forest may simply drop the spires that do not fit
+            cells = all.filter(c => cellOk(def, c) && (pass > 0 || solid(c)));
+            if (cells.length < minCells) continue;
+          } else {
+            // a solid landmark is all-or-nothing: it has a shape to keep
+            cells = all;
+            if (!cells.every(c => cellOk(def, c))) continue;
+            if (pass === 0 && !cells.every(solid)) continue;
+          }
           if (!cells.length) continue;
-          if (def.scatter ? cells.length < minCells : !cells.every(c => cellOk(def, c))) continue;
           // needReach: the landmark is only worth anything if the player can
           // stand on/next to it, so require the anchor to be live ground.
           if (def.needReach && !cells.some(c => before.has(c.y * W + c.x))) continue;
@@ -410,6 +429,7 @@
             t.t = prev[i];
             t.lm = null;
           }
+        }
         }
       }
       // a scattered landmark's "centre" is the anchor it grew around
