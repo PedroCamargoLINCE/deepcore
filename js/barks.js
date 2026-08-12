@@ -579,8 +579,9 @@
   }
 
   // ---------------- M-CORELORE API ----------------
-  // One entry point for all three Core registers. `kind` is 'intrusion',
-  // 'gate' (with ctx = beat index 0..2) or 'mantle'. The Core always cuts in —
+  // One entry point for every Core register: 'intrusion' (stratum 6+ ambient),
+  // 'gate' (with ctx = the beat index 0..2), 'reveal' (the opened shell, drawn
+  // by render on the victory screen) and 'mantle'. The Core always cuts in —
   // it does not queue behind GRIT's cooldown, it interrupts him, and his
   // paired deflection is scheduled for the moment its line finishes typing.
   function coreSpeak(run, kind, ctx) {
@@ -706,8 +707,9 @@
         if (run.totalT - S.eggAt > EG.barkEvery * HZ && fire(run, 'egg420'))
           S.eggAt = run.totalT;
       } else if (S.eggEnded !== run.egg.until) {
-        S.eggEnded = run.egg.until;
-        fire(run, 'egg420End');
+        // retried until it lands: if the cooldown swallows the exit line the
+        // window closes with no comment, which is the one beat it needs
+        if (fire(run, 'egg420End')) S.eggEnded = run.egg.until;
       }
     }
 
