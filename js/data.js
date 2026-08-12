@@ -348,6 +348,89 @@
     barkEvery: 14,     // seconds between mellow foreman lines
   };
 
+  // ---------------- M-WONDERS: stratum landmarks ----------------
+  // One per stratum, rolled by mapgen from the depth-gated pool below. A
+  // landmark is terrain + lore + a real mechanical identity; it is never on the
+  // critical path, so a map that cannot fit one is still a legal map.
+  //
+  // GLYPHS ARE FROM THE VENDORED SUBSET ONLY. `vendor/deepcore-mono.woff2`
+  // carries exactly the inventory `node tools/glyphs.js` reports, and
+  // regenerating it needs Python + fontTools that the suites deliberately do
+  // not require. Every glyph below was already in that inventory before this
+  // module existed, so the font is untouched and nothing can tofu. Check with
+  // `node tools/glyphs.js` before editing any `art` string here.
+  //
+  // Fields:
+  //   min      first stratum the landmark may roll on (mantle: everything)
+  //   art      rows of glyphs, ' ' = not part of the landmark
+  //   scatter  { n, r } instead of `art`: n loose cells within radius r
+  //   base     terrain the landmark's tiles become — decides buildable/diggable
+  //   color    key into D.COLORS
+  //   needReach  placement must land on ground already walkable from the rig
+  //   aura     { r, smelt|extract|damper } additive fractions: 0.15 = x1.15
+  //   quakeSafe  quakes never target inside `aura.r`
+  //   cost     click to activate, paid from hub stock
+  //   jam      { every, dur } seconds — an activated landmark that naps
+  //   dig      { ticks, yield } this landmark's tiles are excavatable
+  //   ring     { veinMult, inst } one-shot click: richer veins, more pressure
+  //   grant    'schematic' — one-shot click reward
+  //   mirror   true — the reveal sweep bounces off it, once
+  //   lore     tooltip lines, each <= Sim.SCAN_W (29) columns
+  D.LANDMARKS = [
+    { id: 'anvil', name: 'THE ANVIL', min: 1,
+      art: ['▓█▓', '███', '▓█▓'], base: 'obsidian', color: 'steel',
+      aura: { r: 5, smelt: 0.15 },
+      lore: ['granite, and still warm', 'smelters within 5: +15%'] },
+
+    { id: 'drowned', name: 'THE DROWNED MACHINE', min: 2,
+      art: ['M▓', '▓▓'], base: 'obsidian', color: 'gray', onColor: 'green',
+      cost: { ironPlate: 10 }, aura: { r: 4, extract: 1 },
+      jam: { every: 45, dur: 10 }, doneMsg: 'she is already turning',
+      lore: ['a pre-collapse extractor', 'click: restart (10 plates)'],
+      onLore: ['she runs. she also naps.', 'extractors within 4: x2'] },
+
+    { id: 'warmspot', name: 'THE WARM SPOT', min: 2,
+      art: ['◎'], base: 'floor', color: 'amber', needReach: true,
+      aura: { r: 6 }, quakeSafe: true,
+      lore: ['the floor is warm here', 'quakes never land within 6'] },
+
+    { id: 'glassforest', name: 'THE GLASS FOREST', min: 3,
+      scatter: { n: 11, r: 4 }, glyph: '▲', base: 'obsidian', color: 'magenta',
+      dig: { ticks: 64, yield: 'crystal' },
+      lore: ['an obsidian spire', 'dig it out (X): 1 crystal'] },
+
+    { id: 'seal', name: 'THE COMPANY SEAL', min: 4,
+      art: ['╒╕', '╘╛'], base: 'obsidian', color: 'white', onColor: 'darkgray',
+      cost: { ironPlate: 20 }, grant: 'schematic',
+      doneMsg: 'the seal is already open',
+      lore: ['a Company hatch, welded', 'click: open (20 plates)'],
+      onLore: ['open. the file notes it.'] },
+
+    { id: 'bell', name: 'THE BELL', min: 5,
+      art: ['▟▙', '██'], base: 'obsidian', color: 'orange', onColor: 'darkgray',
+      ring: { veinMult: 1.25, inst: 12 }, doneMsg: 'the bell is already struck',
+      lore: ['bronze, and never struck', 'click: ring (+12 pressure)'],
+      onLore: ['struck. something heard.'] },
+
+    { id: 'mirror', name: 'THE MIRROR POOL', min: 5,
+      art: ['▂▂▂'], base: 'chasm', color: 'cyan', mirror: true,
+      lore: ['still water, still black', 'the scan bounces off it'] },
+
+    { id: 'root', name: 'THE ROOT', min: 6,
+      art: ['╥', '║', '║', '╨'], base: 'obsidian', color: 'magenta',
+      aura: { r: 6, damper: 1 },
+      lore: ['the planet braces here', 'dampers within 6 work double'] },
+  ];
+  D.LANDMARK_BY_ID = {};
+  for (const L of D.LANDMARKS) D.LANDMARK_BY_ID[L.id] = L;
+  // Tiles from the hub centre to the landmark anchor. Big enough that no aura
+  // reaches the rig clearing for free — an aura is a reason to move the base,
+  // never a bonus the opening layout collects by accident.
+  D.LANDMARK_MIN_DIST = 12;
+  // Seconds into a stratum before the discovery bark may fire. The arrival
+  // line holds the foreman bar until ~12s; this waits it out (see sim.js).
+  D.LANDMARK_BARK_T = 14;
+
   D.SAVE_KEY = 'deepcore_save_v1';
   // Display only (title-screen corner). v1.1 is the shipped feature set —
   // GRIT, the rig portrait, keyboard play — plus this polish round. The save

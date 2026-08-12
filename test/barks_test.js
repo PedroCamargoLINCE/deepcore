@@ -83,6 +83,20 @@ assertEq(D.SCHEMATICS.length, 14, 'all 14 schematics covered');
 for (const u of D.META_UPGRADES)
   assertEq(typeof B.META_LINES[u.id], 'string', 'bespoke line for meta upgrade ' + u.id);
 assertEq(D.META_UPGRADES.length, 9, 'all 9 meta upgrades covered');
+// M-WONDERS: every landmark gets a discovery line, and every landmark the
+// player can actually touch gets a line for having touched it. A wonder with
+// no line is scenery, which is the one thing this module exists not to ship.
+for (const L of D.LANDMARKS) {
+  const lines = B.LANDMARK_LINES[L.id];
+  assert(lines && typeof lines.find === 'string',
+    'bespoke discovery line for landmark ' + L.id);
+  const usable = !!(L.cost || L.ring || L.dig || L.mirror);
+  if (usable)
+    assertEq(typeof lines.use, 'string', 'bespoke use line for landmark ' + L.id);
+}
+assertEq(D.LANDMARKS.length, 8, 'all 8 landmarks covered');
+for (const id in B.LANDMARK_LINES)
+  assert(D.LANDMARK_BY_ID[id], 'landmark line ' + id + ' names a real landmark');
 
 // ------------------------------------------------- width + total line count
 SECTION = 'width';
@@ -91,6 +105,8 @@ for (const t in B.POOLS) for (const l of B.POOLS[t]) allLines.push([t, l]);
 for (const k in B.STRATUM_LINES) allLines.push(['stratum:' + k, B.STRATUM_LINES[k]]);
 for (const k in B.SCHEM_LINES) allLines.push([k, B.SCHEM_LINES[k]]);
 for (const k in B.META_LINES) allLines.push([k, B.META_LINES[k]]);
+for (const k in B.LANDMARK_LINES)   // M-WONDERS
+  for (const w in B.LANDMARK_LINES[k]) allLines.push(['landmark:' + k, B.LANDMARK_LINES[k][w]]);
 for (const c in B.EPITAPHS)
   for (const pair of B.EPITAPHS[c]) for (const l of pair) allLines.push(['epitaph:' + c, l]);
 for (const l of B.TOASTS) allLines.push(['toast', l]);
@@ -136,6 +152,11 @@ for (const t in B.POOLS) for (const l of B.POOLS[t]) TRIG_OF[l] = t;
 for (const k in B.STRATUM_LINES) TRIG_OF[B.STRATUM_LINES[k]] = 'stratumArrive';
 for (const k in B.SCHEM_LINES) TRIG_OF[B.SCHEM_LINES[k]] = 'schematicPick';
 for (const k in B.META_LINES) TRIG_OF[B.META_LINES[k]] = 'foundryBuy';
+for (const k in B.LANDMARK_LINES) {
+  const L = B.LANDMARK_LINES[k];
+  if (L.find) TRIG_OF[L.find] = 'landmarkFound';
+  if (L.use) TRIG_OF[L.use] = 'landmarkUse';
+}
 
 // ------------------------------------------------------------ scripted drive
 // Drives a real run: engine-style discrete fires + Barks.tick ambient

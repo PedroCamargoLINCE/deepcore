@@ -136,6 +136,149 @@ function checkMapGuarantees() {
   return reach;
 }
 
+// ------------------------------------------- M-WONDERS: mapgen invariant sweep
+// Landmarks are placed by mapgen, and mapgen is the module where a defect hides
+// for seeds before it surfaces: a monolith dropped on a guaranteed vein, or a
+// column laid across the one corridor to it, turns a run unwinnable in a way
+// that only shows up as a confusing loss much later. So the guarantees are
+// re-checked here across many seeds and every stratum, WITH landmarks present,
+// and the connectivity invariant is re-derived from scratch rather than taken
+// on trust: `landmark.cells[].was` records the terrain each cell replaced, so
+// this sweep can rebuild the pre-landmark map and compare the two flood fills
+// itself. If map.js's own guard and this one ever disagree, this one wins.
+function reachOf(grid, hub) {
+  const seen = new Set();
+  const q = [];
+  for (let dy = 0; dy < 3; dy++) for (let dx = 0; dx < 3; dx++) {
+    const x = hub.x + dx, y = hub.y + dy;
+    seen.add(y * D.MAP_W + x);
+    q.push([x, y]);
+  }
+  while (q.length) {
+    const c = q.pop();
+    for (const dd of D.DIRS) {
+      const nx = c[0] + dd.dx, ny = c[1] + dd.dy;
+      if (nx < 0 || ny < 0 || nx >= D.MAP_W || ny >= D.MAP_H) continue;
+      const k = ny * D.MAP_W + nx;
+      if (seen.has(k) || grid[ny][nx].t !== 'floor') continue;
+      seen.add(k);
+      q.push([nx, ny]);
+    }
+  }
+  return seen;
+}
+
+function oreCompsOf(grid, oreId) {
+  const seen = new Set(), comps = [];
+  for (let y = 0; y < D.MAP_H; y++) for (let x = 0; x < D.MAP_W; x++) {
+    if (grid[y][x].ore !== oreId || seen.has(y * D.MAP_W + x)) continue;
+    const comp = [], q = [{ x, y }];
+    seen.add(y * D.MAP_W + x);
+    while (q.length) {
+      const c = q.pop();
+      comp.push(c);
+      for (const dd of D.DIRS) {
+        const nx = c.x + dd.dx, ny = c.y + dd.dy;
+        if (nx < 0 || ny < 0 || nx >= D.MAP_W || ny >= D.MAP_H) continue;
+        const k = ny * D.MAP_W + nx;
+        if (grid[ny][nx].ore === oreId && !seen.has(k)) { seen.add(k); q.push({ x: nx, y: ny }); }
+      }
+    }
+    comps.push(comp);
+  }
+  return comps;
+}
+
+function checkLandmarkSweep() {
+  const SEEDS = 80, DEPTHS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 11];
+  const seenIds = {};
+  let maps = 0, withLm = 0, cells = 0;
+  for (let s = 1; s <= SEEDS; s++) {
+    const rng = DC.util.mulberry32(s * 7919 + 13);
+    for (const depth of DEPTHS) {
+      const gen = DC.MapGen.generate(depth, rng, {});
+      const grid = gen.grid, hub = gen.hub, lm = gen.landmark;
+      const tag = 'seed ' + s + ' depth ' + depth;
+      maps++;
+
+      // (1) the guaranteed veins are still there and still reachable
+      const reach = reachOf(grid, hub);
+      const reachable = (c) => c.some((p) => reach.has(p.y * D.MAP_W + p.x));
+      const iron = oreCompsOf(grid, 'ironOre').filter(reachable);
+      const ironTiles = iron.reduce((n, c) => n + c.length, 0);
+      assert(iron.length >= 2 || (iron.length === 1 && ironTiles >= 12),
+        tag + ': lost the guaranteed iron (' + iron.length + ' comps, ' + ironTiles + ' tiles)');
+      assert(oreCompsOf(grid, 'coal').filter(reachable).length >= 1,
+        tag + ': lost the guaranteed coal vein');
+
+      // (2) the hub clearing is untouched
+      for (let y = hub.y - 2; y <= hub.y + 4; y++)
+        for (let x = hub.x - 2; x <= hub.x + 4; x++) {
+          const t = grid[y][x];
+          assert(t && t.t === 'floor' && !t.lm,
+            tag + ': landmark or wall inside the hub clearing at ' + x + ',' + y);
+        }
+
+      if (!lm) continue;
+      withLm++;
+      seenIds[lm.id] = (seenIds[lm.id] || 0) + 1;
+      const def = D.LANDMARK_BY_ID[lm.id];
+      assert(def, tag + ': landmark id ' + lm.id + ' is not in D.LANDMARKS');
+      assert(depth >= def.min, tag + ': ' + lm.id + ' rolled above its min depth ' + def.min);
+      assert(lm.cells.length > 0, tag + ': landmark placed with no cells');
+
+      // (3) no cell overwrote ore, the rig, or another landmark's ground
+      const cellKeys = new Set();
+      for (const c of lm.cells) {
+        const t = grid[c.y][c.x];
+        cells++;
+        assert(c.x > 0 && c.y > 0 && c.x < D.MAP_W - 1 && c.y < D.MAP_H - 1,
+          tag + ': landmark cell on the border ring');
+        assert(!t.ore && t.oreAmt === 0, tag + ': landmark overwrote an ore vein at ' + c.x + ',' + c.y);
+        assert(t.machine === null, tag + ': landmark overwrote a machine footprint');
+        assert(t.lm && t.lm.id === lm.id, tag + ': landmark cell is not flagged on the grid');
+        assert(t.t === def.base, tag + ': landmark cell terrain is not ' + def.base);
+        assert(typeof c.was === 'string', tag + ': landmark cell did not record its old terrain');
+        assert(c.was !== 'magma', tag + ': landmark ate a magma tile');
+        cellKeys.add(c.y * D.MAP_W + c.x);
+      }
+      assert(cellKeys.size === lm.cells.length, tag + ': landmark cells are not distinct');
+      assert(Math.hypot(lm.x - (hub.x + 1), lm.y - (hub.y + 1)) >= D.LANDMARK_MIN_DIST,
+        tag + ': landmark anchor is inside the rig\'s reserved distance');
+
+      // (4) the carve still connects every region it connected before. Rebuild
+      // the map as it was one step earlier and flood BOTH.
+      for (const c of lm.cells) grid[c.y][c.x].t = c.was;
+      const before = reachOf(grid, hub);
+      for (const c of lm.cells) grid[c.y][c.x].t = def.base;
+      for (const k of before) {
+        if (cellKeys.has(k)) continue;   // the landmark's own ground, legally consumed
+        assert(reach.has(k), tag + ': the landmark walled off tile ' +
+          (k % D.MAP_W) + ',' + Math.floor(k / D.MAP_W) + ' from the rig');
+      }
+    }
+  }
+  // The feature has to actually happen, on every stratum, for most maps.
+  assert(withLm >= maps * 0.9,
+    'landmarks should place on the overwhelming majority of maps (' + withLm + '/' + maps + ')');
+  assert(Object.keys(seenIds).length === D.LANDMARKS.length,
+    'every landmark in the table should be reachable by some seed (saw ' +
+    Object.keys(seenIds).join(',') + ')');
+
+  // determinism: the same seed and depth must produce the same wonder, in the
+  // same place, forever. Landmarks derive from a hash of the finished grid and
+  // draw nothing from run.rng, so this also proves the map itself is unmoved.
+  for (const s of [1337, 42, 90210]) {
+    const a = DC.MapGen.generate(5, DC.util.mulberry32(s), {});
+    const b = DC.MapGen.generate(5, DC.util.mulberry32(s), {});
+    assertEqJSON(a.landmark, b.landmark, 'landmark is deterministic for seed ' + s);
+  }
+  return { maps, withLm, cells, ids: seenIds };
+}
+function assertEqJSON(a, b, msg) {
+  assert(JSON.stringify(a) === JSON.stringify(b), msg);
+}
+
 // --------------------------------------------------------------- path finding
 function passable(t, k, blocked) {
   if (!t || !t.revealed) return false;
@@ -585,6 +728,7 @@ function checkSave() {
 function main() {
   checkArt();
   checkSave();
+  const lmSweep = checkLandmarkSweep();
 
   const eff = DC.Meta.effects(DC.Meta.newProfile());
   assert(eff && typeof eff.instMult === 'number' && eff.offerCount === 3,
@@ -640,7 +784,10 @@ function main() {
     ' | gearsFed ' + run.gearsFed + '/' + run.breachReq.gear +
     ' | quakes ' + (shakes - shakes0) + ' (' + quakeMsgs.length + ' msgs)' +
     ' | integrity ' + integ0 + '->' + run.integrity +
-    ' | status ' + run.status);
+    ' | status ' + run.status +
+    ' | landmarks ' + lmSweep.withLm + '/' + lmSweep.maps + ' maps, ' +
+    lmSweep.cells + ' cells, ' + Object.keys(lmSweep.ids).length + ' kinds, ' +
+    'veins+connectivity held');
 }
 
 function sumOre() {
