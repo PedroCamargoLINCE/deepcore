@@ -203,6 +203,110 @@
       "The rocks are aging, kid. So am I. Build something.",
       "Idle hands, empty drill. This ain't a scenic tour. Well. It is.",
     ],
+    // M-GRITPLUS: the idle ladder. Rung 1 is `idle` above (a gentle rib);
+    // these two are what he does when ribbing doesn't work.
+    idle2: [
+      "Ninety seconds. Should I hang a bird feeder off the drill, kid?",
+      "Still nothing. I've seen faster geology. Literally. Just now.",
+      "Take your time. The instability sure is taking hers.",
+      "I'll just be over here. Aging. Audibly. Whenever you're ready.",
+    ],
+    idle3: [
+      "Observe: the miner at rest. Motionless. Magnificent. Useless.",
+      "Here we see the young foreman, waiting for the rock to blink first.",
+      "In the wild, an unmoving miner is culled by the ceiling. Nature!",
+      "Note the stillness of the species. Note also its short career.",
+    ],
+    // M-GRITPLUS: the smoke break. Fired by the engine off wall-clock pause
+    // time (the sim is frozen), which is why both pools are priority.
+    smokeBreak: [
+      "Break's over when you say, kid. Rock's not going anywhere. Mostly.",
+      "Take five. I'm taking six. Don't tell the Company either number.",
+      "Standing around, are we. Good. My knees wanted a committee meeting.",
+      "Nothing rusts faster for waiting down here. Except me. Carry on.",
+    ],
+    breakOver: [
+      "Right. Where were we. Ah — the hole.",
+      "Back on the clock. The hole missed you. Said so. Sort of mumbled it.",
+      "Smoke's out, kid. So's my patience. Warm her up.",
+      "There she is. Let's go bother the planet some more.",
+    ],
+    // M-GRITPLUS / EGG-420 — the Botanical Incident. For 42 seconds the bar
+    // draws from here instead: same foreman, considerably fewer edges.
+    egg420: [
+      "...you ever really LOOK at a belt, kid? It just... goes.",
+      "The quakes are just the planet's heartbeat, man.",
+      "What if the ore WANTS to be plates. Ever think about that. Whoa.",
+      "I'm not saying the drill has feelings. I'm not NOT saying it.",
+      "This rock's four billion years old. We're the rude ones, kid.",
+      "Time's a Company invention. Down here there's just... deep.",
+      "Everything's a belt if you look at it long enough. Everything.",
+      "Nobody can hear us this far down. Not even them. That's nice, huh.",
+      "Hey. Hey, kid. A smelter is just a really committed campfire.",
+      "If the stratum collapses and I'm mellow, does it even... yeah, no.",
+    ],
+    egg420End: [
+      "Break's over. Why does the copper smell like breakfast, kid?",
+      "Whatever that was, it's wearing off. I'd fight a man for toast.",
+      "Right. Back to work. Does this rig have a snack compartment? No?",
+      "Clarity returns. So does the appetite. Mostly the appetite. Dig.",
+    ],
+  };
+
+  // ---------------- M-CORELORE: the second voice ----------------
+  // The Core is not GRIT and must never sound like him. It is lowercase, it is
+  // unhurried, it has no tag and no jokes at its own expense — it finds YOU
+  // funny. Render draws it in gold at half GRIT's typing speed, and every
+  // Core line is authored with the deflection GRIT throws over the top of it,
+  // because his answer is the character note: the profanity spikes when he's
+  // scared. `core` is what the planet says; `grit` is what lands ~2s later.
+  const CORE = {
+    // stratum 6+, at most one per stratum: it has noticed you
+    intrusion: [
+      { core: "warmer.",
+        grit: "Rock settles, kid. Rock's always settled. Eyes on the drill." },
+      { core: "you knock so politely.",
+        grit: "Who the hell said that. Nobody said that. Feed the damn drill." },
+      { core: "the last one stopped at seven. you won't.",
+        grit: "Static. Bad cable. Twenty years of bad cable. Keep digging." },
+      { core: "i have been counting your gears.",
+        grit: "That's it, I'm docking the intercom. Ignore it. Hands moving." },
+      { core: "little machine. little hands. keep going.",
+        grit: "Don't answer that. You answer it, it learns your voice. DIG." },
+      { core: "you smell of sunlight. i remember sunlight.",
+        grit: "Nope. No thank you. That's a nope from me and from the union." },
+      { core: "there is a shape inside you i recognise.",
+        grit: "It's talking to YOU now? Wonderful. Faster, kid. Much faster." },
+      { core: "your rig is very loud for a thing so temporary.",
+        grit: "Twenty damn years and nothing ever insulted my rig like that." },
+      { core: "yes. bite harder. i like the noise.",
+        grit: "Whatever enjoys the noise gets silence. Ease off the redline." },
+      { core: "no one has ever come this deep carrying a lunchbox.",
+        grit: "It's a THERMOS, and I'll be damned if the floor gets opinions." },
+      { core: "i felt that one. do it again.",
+        grit: "It LIKED that. Kid, it liked that. I hate this shift. Onward." },
+      { core: "the dark here is not empty. it is only patient.",
+        grit: "Real cheerful. Somebody invoice the planet for my nerves." },
+    ],
+    // stratum 8, the Core Gate: three beats at 25% / 60% / 95% of the breach
+    // feed. Ask, offer, laugh. Beat 2 puts a fake ASCEND prompt on the screen.
+    gate: [
+      { core: "stop. i was sleeping so well under all this weather.",
+        grit: "The FLOOR is giving orders now. Keep feeding her, kid. Ignore." },
+      { core: "you are tired. the sky is still up there. go on. take it.",
+        grit: "Don't you touch that. It's lying. Probably. Drill.", offer: true },
+      { core: "oh. you meant it. hah. hah. the little thing meant it.",
+        grit: "That's a laugh. That thing LAUGHED. Hazard pay. Now. DRILL!" },
+    ],
+    // the Mantle: past the shell, and done being entertained
+    mantle: [
+      { core: "you are inside now. mind the walls. the walls are mine.",
+        grit: "Kid — whatever that is, it stopped being funny two floors up." },
+      { core: "you cracked my door. now the door knows your face.",
+        grit: "I got nothing for that one. First time my mouth ever quit." },
+      { core: "there is no down remaining. only in. you are welcome in.",
+        grit: "Just dig. Don't listen. I'll handle the conversation, kid." },
+    ],
   };
 
   // Bespoke arrival line per stratum (1-8) + mantle.
@@ -370,6 +474,12 @@
         noCoalActive: false,
         lowIntFired: false,  // once per stratum
         idleAnchor: 0,       // totalT of last idle bark
+        idleRung: 0,         // M-GRITPLUS: which rung of the idle ladder is spent
+        coreSaid: false,     // M-CORELORE: the Core has intruded this stratum
+        corePend: null,      // { line, at } — GRIT's deflection, already chosen
+        coreBeats: {},       // gate beat -> true (each fires once per run)
+        eggAt: 0,            // EGG-420: totalT of the last mellow line
+        eggEnded: 0,         // EGG-420: totalT of the window we already closed
       };
     }
     return run._barks;
@@ -390,17 +500,35 @@
     return arr[Math.floor(run.rng() * arr.length)];
   }
 
-  function say(run, S, line) {
+  // `voice` is 'grit' (default) or 'core'. The Core's line is not tagged, holds
+  // longer and is typed at half speed by render — it is in no hurry, and the
+  // reader needs a beat to notice the bar changed character.
+  function say(run, S, line, voice) {
     S.used[line] = true;
     S.lastAt = run.totalT;
-    // ~7s hold; long lines linger (typewriter reveals 2 chars/tick).
-    const dur = 7 * HZ + Math.ceil(Math.max(0, line.length - 40) / 2);
-    run.foreman = { text: line, t0: run.totalT, until: run.totalT + dur };
+    const core = voice === 'core';
+    // ~7s hold; long lines linger (typewriter reveals 2 chars/tick, 1 for the
+    // Core, so its hold covers a full-length reveal plus a beat to read it).
+    const dur = core
+      ? (D.CORE ? D.CORE.hold : 9) * HZ + line.length
+      : 7 * HZ + Math.ceil(Math.max(0, line.length - 40) / 2);
+    run.foreman = { text: line, t0: run.totalT, until: run.totalT + dur,
+                    voice: core ? 'core' : 'grit' };
     if (run.messages) { // mirror into the LOG, dim (SPEC2 §F)
-      run.messages.push({ text: 'GRIT ▸ ' + line, color: D.COLORS.darkgray, t: run.t });
+      run.messages.push({
+        text: (core ? '  ▸ ' : 'GRIT ▸ ') + line,
+        color: core ? D.COLORS.gold : D.COLORS.darkgray, t: run.t,
+      });
       if (run.messages.length > 40) run.messages.shift();
     }
     return line;
+  }
+
+  // ---------------- EGG-420 ----------------
+  // sim.js owns the window (run.egg = { until, src } in run.totalT); barks only
+  // asks whether it is open. Absent egg state = closed, always.
+  function eggOpen(run) {
+    return !!(run && run.egg && run.totalT < run.egg.until);
   }
 
   // ---------------- API ----------------
@@ -418,9 +546,50 @@
       const cutIn = trigger === 'schematicPick';
       if (!sameTick && !cutIn && run.totalT - S.lastAt < COOLDOWN) return null;
     }
+    // EGG-420: while the window is open the bar is mellow about EVERYTHING.
+    // Priority triggers (death, victory, collapse, breachReady) still say what
+    // they came to say — the joke never costs the player information they need.
+    if (eggOpen(run) && !PRIORITY[trigger] && POOLS.egg420 &&
+        trigger !== 'egg420' && trigger !== 'egg420End') {
+      return say(run, S, pickLine(run, S, POOLS.egg420));
+    }
     const b = bespokeFor(run, trigger, ctx);
     const line = (b && !S.used[b]) ? b : pickLine(run, S, POOLS[trigger]);
     return say(run, S, line);
+  }
+
+  // ---------------- M-CORELORE API ----------------
+  // One entry point for all three Core registers. `kind` is 'intrusion',
+  // 'gate' (with ctx = beat index 0..2) or 'mantle'. The Core always cuts in —
+  // it does not queue behind GRIT's cooldown, it interrupts him, and his
+  // paired deflection is scheduled for the moment its line finishes typing.
+  function coreSpeak(run, kind, ctx) {
+    if (!run || !run.rng) return null;
+    const pool = CORE[kind];
+    if (!Array.isArray(pool) || !pool.length) return null;
+    const S = stateOf(run);
+    let pair;
+    if (kind === 'gate') {
+      const i = Math.max(0, Math.min(pool.length - 1, ctx | 0));
+      if (S.coreBeats[i]) return null;         // one beat, once, per run
+      S.coreBeats[i] = true;
+      pair = pool[i];
+    } else {
+      const fresh = pool.filter(p => !S.used[p.core]);
+      const arr = fresh.length ? fresh : pool;
+      pair = arr[Math.floor(run.rng() * arr.length)];
+    }
+    if (!pair) return null;
+    const line = say(run, S, pair.core, 'core');
+    // The fake [ENTER] ASCEND prompt (gate beat 2). Render reads run.coreOffer
+    // and draws a prompt that does absolutely nothing — the Core is lying, and
+    // GRIT says so a beat later. No key is rebound; pressing ENTER under it
+    // does exactly what ENTER always does.
+    if (pair.offer) {
+      run.coreOffer = { t0: run.totalT, until: run.totalT + (D.CORE ? D.CORE.offer : 9) * HZ };
+    }
+    if (pair.grit) S.corePend = { line: pair.grit, at: run.totalT + line.length + 2 * HZ };
+    return line;
   }
 
   function tick(run) {
@@ -436,7 +605,28 @@
       S.lowIntFired = false;   // lowIntegrity is once per stratum
       S.jamActive = false;     // machines were rebuilt; re-arm ambients
       S.noCoalActive = false;
+      S.coreSaid = false;      // the Core may speak once on this floor
+      S.idleRung = 0;
       enqueue(S, run.depth > D.STRATA_COUNT ? 'mantleArrive' : 'stratumArrive');
+    }
+
+    // M-CORELORE: GRIT's paired deflection, landing as the gold line finishes
+    // typing. It is not queued behind the cooldown — being interrupted by the
+    // planet is exactly when he talks over things.
+    if (S.corePend && run.totalT >= S.corePend.at) {
+      const pend = S.corePend;
+      S.corePend = null;
+      say(run, S, pend.line);
+    }
+
+    // M-CORELORE: the ambient intrusion. Stratum 6 and below, once per floor,
+    // rare, and never before the floor has had time to feel normal. Deep in
+    // the Mantle it stops being amused and draws from the other pool.
+    const CFG = D.CORE;
+    if (CFG && !S.coreSaid && !S.corePend && run.depth >= CFG.depth &&
+        run.t > CFG.armT * HZ && run.rng() < CFG.chance) {
+      S.coreSaid = true;
+      coreSpeak(run, run.depth > D.STRATA_COUNT ? 'mantle' : 'intrusion');
     }
 
     // first placements / first gear (via run.stats + machine scan)
@@ -487,14 +677,51 @@
       if (fire(run, 'lowIntegrity')) S.lowIntFired = true;
     }
 
-    // idle: 45s with no placement and no drill feed
-    if (run.stats) {
-      const last = Math.max(run.stats.lastPlaceT || 0, run.stats.lastFeedT || 0,
-                            S.idleAnchor);
-      if (run.totalT - last > 45 * HZ) {
-        if (fire(run, 'idle')) S.idleAnchor = run.totalT;
+    // EGG-420: the window drips a mellow line every ~14s of its 42, and closes
+    // with the munchies. `eggEnded` keys on the window's own expiry stamp, so
+    // a second tin later in the run gets its own exit line.
+    const EG = D.EGG420;
+    if (EG && run.egg) {
+      if (eggOpen(run)) {
+        if (run.totalT - S.eggAt > EG.barkEvery * HZ && fire(run, 'egg420'))
+          S.eggAt = run.totalT;
+      } else if (S.eggEnded !== run.egg.until) {
+        S.eggEnded = run.egg.until;
+        fire(run, 'egg420End');
       }
     }
+
+    // idle: the M-GRITPLUS ladder — 45s gentle rib, 90s sarcasm, 150s nature
+    // documentary. Each rung fires once per idle episode; any placement or
+    // drill feed resets the whole ladder.
+    if (run.stats) {
+      const act = Math.max(run.stats.lastPlaceT || 0, run.stats.lastFeedT || 0);
+      if (act > S.idleAnchor) { S.idleAnchor = act; S.idleRung = 0; }
+      const LAD = D.IDLE_LADDER || [45];
+      const idleFor = run.totalT - S.idleAnchor;
+      if (S.idleRung < LAD.length && idleFor > LAD[S.idleRung] * HZ) {
+        const rung = ['idle', 'idle2', 'idle3'][S.idleRung] || 'idle';
+        if (fire(run, POOLS[rung] ? rung : 'idle')) S.idleRung++;
+      }
+    }
+  }
+
+  // M-GRITPLUS: the smoke break. The sim is frozen while the game is paused,
+  // so run.totalT does not move — which would leave the typewriter stuck on
+  // zero characters and the line pinned to the bar forever. Both are handled
+  // here: the reveal is back-dated so the line is already fully typed, and the
+  // hold is short enough that resuming clears it. Engine-driven off the
+  // wall clock; `kind` is 'smokeBreak' or 'breakOver'.
+  function pause(run, kind) {
+    if (!run || !run.rng || !POOLS[kind]) return null;
+    const S = stateOf(run);
+    const line = say(run, S, pickLine(run, S, POOLS[kind]));
+    const f = run.foreman;
+    if (f) {
+      f.t0 = run.totalT - Math.ceil(line.length / 2) - 1;   // already typed out
+      f.until = run.totalT + 6 * HZ;
+    }
+    return line;
   }
 
   function enqueue(S, trigger) {
@@ -614,6 +841,8 @@
 
   DC.Barks = {
     tick: tick, fire: fire, epitaph: epitaph, toast: toast,
+    // M-CORELORE / M-GRITPLUS
+    core: coreSpeak, pause: pause, eggOpen: eggOpen, CORE: CORE,
     // M-RECAP
     review: review, reviewTier: reviewTier, reviewCtx: reviewCtx,
     fillReview: fillReview, REVIEWS: REVIEWS,

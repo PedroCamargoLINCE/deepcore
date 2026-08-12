@@ -94,6 +94,18 @@ for (const k in B.META_LINES) allLines.push([k, B.META_LINES[k]]);
 for (const c in B.EPITAPHS)
   for (const pair of B.EPITAPHS[c]) for (const l of pair) allLines.push(['epitaph:' + c, l]);
 for (const l of B.TOASTS) allLines.push(['toast', l]);
+// M-CORELORE: the second voice is authored content like everything above it,
+// so both halves of every pair join the corpus the width / duplicate /
+// guardrail / wrap lints run over. The Core's line is untagged in the bar and
+// in the LOG (4 columns of prefix, not 7), so checking it against GRIT's tag
+// below is the conservative measurement.
+const CORE_KINDS = ['intrusion', 'gate', 'mantle'];
+for (const k of CORE_KINDS) {
+  for (const p of (B.CORE[k] || [])) {
+    allLines.push(['core:' + k, p.core]);
+    allLines.push(['core:' + k + ' reply', p.grit]);
+  }
+}
 // M-RECAP: GRIT's Performance Review is authored content like everything
 // above it, so it joins the corpus the width / duplicate / guardrail lints
 // run over. Lines carry {tokens}; they are measured filled, worst-case.
