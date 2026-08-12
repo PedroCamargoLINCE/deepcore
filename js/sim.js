@@ -27,6 +27,19 @@
     run.events.push({ type: type, t: run.totalT, data: data || null });
     if (run.events.length > 200) run.events.shift(); // never grow unbounded headless
   }
+  // Roman numeral for the named-collapse counter (M-GRITPLUS). ASCII letters
+  // only: the Unicode roman-numeral block is a hole in several platform fonts,
+  // and a tremor nobody can read is not dread, it's a tofu box.
+  const ROMAN = [[1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'], [100, 'C'],
+                 [90, 'XC'], [50, 'L'], [40, 'XL'], [10, 'X'], [9, 'IX'],
+                 [5, 'V'], [4, 'IV'], [1, 'I']];
+  function roman(n) {
+    n = Math.max(1, Math.min(3999, Math.floor(n || 1)));
+    let s = '';
+    for (const [v, sym] of ROMAN) while (n >= v) { s += sym; n -= v; }
+    return s;
+  }
+
   function setResult(run, won) {
     run.result = {
       depth: run.depth, breaches: run.breaches,
@@ -99,6 +112,10 @@
       events: [],
       stats: { placed: {}, lastPlaceT: 0, lastFeedT: 0 },
       foreman: null,
+      // M-CORELORE: how many Core Gate beats this run has passed (0..3), and
+      // the fake ascend prompt barks.js may put on screen. M-GRITPLUS: the
+      // per-stratum tremor counter and the EGG-420 window.
+      coreBeat: 0, coreOffer: null, tremor: 0, egg: null, eggSeen: false,
       _feed: [], _lastRevealR: -1,
     };
     for (const k in D.START_STOCK) add(run.inv, k, D.START_STOCK[k]);
@@ -131,6 +148,7 @@
     };
     run.nextId = 1;
     run.quakeAt = 0;
+    run.tremor = 0;          // M-GRITPLUS: named collapses count per stratum
     run.overdrive = false;
     run.status = 'active';
     let magma = 0;
@@ -185,6 +203,8 @@
     if (run.t % D.BELT_PERIOD === 0) stepBelts(run);
     if (run.t % drillPeriod(run) === 0) stepDrill(run);
     run.instability = U.clamp(run.instability + instRate(run) / HZ, 0, 100);
+    stepEgg(run);
+    stepCoreGate(run);
     stepQuake(run);
     stepMagma(run);
     if (run.status === 'active' &&
@@ -408,9 +428,51 @@
     return { gearPerSec: g / win, chargePerSec: c / win };
   }
 
+  // ---------------- M-CORELORE: the Core Gate (§B) ----------------
+  // Stratum 8 only, once per run. The breach feed is the drama: at a quarter,
+  // three fifths and a hair short of done, the planet says something. The sim
+  // does not know what — it emits the beat and barks.js owns the words.
+  function breachFrac(run) {
+    const req = run.breachReq || { gear: 0, charge: 0 };
+    const total = (req.gear || 0) + (req.charge || 0);
+    if (total <= 0) return 0;
+    return U.clamp(((run.gearsFed || 0) + (run.chargesFed || 0)) / total, 0, 1);
+  }
+  function stepCoreGate(run) {
+    const CFG = D.CORE;
+    if (!CFG || !CFG.beat || run.mantle || run.depth !== D.STRATA_COUNT) return;
+    if (run.coreBeat >= CFG.beat.length) return;
+    if (breachFrac(run) < CFG.beat[run.coreBeat]) return;
+    const beat = run.coreBeat++;
+    pushEvent(run, 'core', { beat: beat, depth: run.depth });
+  }
+
+  // ---------------- M-GRITPLUS: EGG-420 ----------------
+  // A 42-second window, opened by the typed code (engine) or — if js/events.js
+  // is loaded — by a dig find that module rolls. Nothing here draws from
+  // run.rng, so an unopened window costs the RNG stream exactly nothing and a
+  // run plays identically whether or not the egg exists.
+  function startEgg(run, src) {
+    if (!run || !D.EGG420) return false;
+    run.egg = { until: run.totalT + D.EGG420.sec * HZ, src: src || 'code' };
+    run.eggSeen = true;
+    msg(run, '≈ something botanical is smouldering ≈', D.COLORS.leaf);
+    return true;
+  }
+  function eggActive(run) {
+    return !!(run && run.egg && run.totalT < run.egg.until);
+  }
+  function stepEgg(run) {
+    if (run.egg && !eggActive(run) && !run.egg.closed) {
+      run.egg.closed = true;
+      msg(run, 'The air clears. The copper still smells great.', D.COLORS.gray);
+    }
+  }
+
   // ---------------- instability & quakes (§5.5) ----------------
   function instRate(run) {
     let rate = stratumOf(run).instabRate * run.mods.instMult;
+    if (eggActive(run)) rate *= D.EGG420.instMult;   // the stratum relaxes too
     if (run.overdrive)
       rate *= run.mods.overCheap ? 1 + (D.OVERDRIVE.instMult - 1) / 2 : D.OVERDRIVE.instMult;
     let dampers = 0;
@@ -481,8 +543,14 @@
     const dmg = Q.integrityDmg(run.instability, run.depth);
     run.integrity -= dmg;
     run.shake = true;
-    if (run.instability >= 99) msg(run, '!! COLLAPSE — the stratum is failing !!', D.COLORS.red);
-    else msg(run, '≋ QUAKE — the stratum shudders (−' + dmg + ' integrity)', D.COLORS.orange);
+    if (run.instability >= 99) {
+      msg(run, '!! COLLAPSE — the stratum is failing !!', D.COLORS.red);
+      // M-GRITPLUS: named collapses. Once the stratum is failing the quakes
+      // stop being weather and start being a list, counted per stratum — a
+      // dread meter you read in the log instead of on a gauge.
+      run.tremor = (run.tremor || 0) + 1;
+      msg(run, 'The stratum groans: TREMOR ' + roman(run.tremor), D.COLORS.red);
+    } else msg(run, '≋ QUAKE — the stratum shudders (−' + dmg + ' integrity)', D.COLORS.orange);
     pushEvent(run, 'quake', { dmg: dmg });
   }
 
@@ -794,7 +862,11 @@
         return L;
       }
       const B = D.BUILDINGS[m.type];
-      L.push({ text: B.name.toUpperCase() + ' [' + m.status + ']',
+      // EGG-420: for 42 seconds a seismic damper is a chill unit. Same panel,
+      // same widths, same information — GRIT has simply relabelled the thing.
+      const bname = (m.type === 'damper' && eggActive(run)) ? 'CHILL UNIT'
+                                                            : B.name.toUpperCase();
+      L.push({ text: bname + ' [' + m.status + ']',
                color: m.status === 'ok' ? D.COLORS.green
                     : m.status === 'idle' ? D.COLORS.gray : D.COLORS.red });
       if (m.hp === 1)
@@ -843,6 +915,11 @@
     beginDescent: beginDescent, continueIntoMantle: continueIntoMantle,
     applySchematic: applySchematic, abandon: abandon,
     describeTile: describeTile, feedRate: feedRate, msg: msg,
+    // M-CORELORE / M-GRITPLUS: the Core Gate's progress reading, the EGG-420
+    // window (engine opens it from the typed code; js/events.js may open it
+    // from a dig find), and the collapse counter's numeral.
+    breachFrac: breachFrac, startEgg: startEgg, eggActive: eggActive,
+    roman: roman,
     // shared with render.js (STOCK column, CX-11); SCAN_W is the tooltip budget
     itemShort: itemShort, SCAN_W: SCAN_W,
   };

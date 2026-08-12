@@ -737,6 +737,122 @@
   };
 
   // ---------------- helpers & color suggestions ----------------
+  // ---------------- M-GRITPLUS: elevator graffiti ----------------
+  // One line of shaft wall scrolls past the cage on every descent. Twenty
+  // years of miners with a paint stick and a grudge: the Company, the depth,
+  // each other, and a couple of names that turn up again in the logbook if
+  // M-EVENTS ever lands. Kept to 40 columns so the line clears the descent
+  // frames on both sides at any screen the game draws on.
+  A.GRAFFITI_W = 40;
+  A.graffiti = [
+    'DAY 400: STILL NO PONY  -MGMT',
+    'TURN BACK  (crossed out, twice)',
+    'GRIT WAS HERE - 20 YEARS. TWENTY.',
+    'IF FOUND, I WAS RIGHT  -FMN. OKAFOR',
+    'THE COMPANY OWES ME FOURTEEN SHIFTS',
+    'DO NOT FEED THE DRILL AFTER MIDNIGHT',
+    'MY OTHER RIG IS ALSO BROKEN',
+    'STRATUM 6 SMELLS WRONG. TRUST ME.',
+    'PENSION = MYTH  (SIGNED, EVERYONE)',
+    'HI MOM. SORRY ABOUT THE HOLE.',
+    'DID WE DIG TOO GREEDILY? NO. CORRECTLY.',
+    'SAFETY MEETING CANCELLED - CAVE-IN',
+    'FMN. VOSS OWES ME A BEER AND A LUNG',
+    'THE ROCK LISTENS. BE POLITE.',
+    'DAYS SINCE LAST INCIDENT: 0  (WAS 0)',
+    'ELEVATOR INSPECTED BY: NOBODY, 1994',
+    "IF YOU CAN READ THIS YOU'RE FALLING",
+    'COMPANY PROPERTY. INCLUDING YOU.',
+    'SEND SANDWICHES DOWN SHAFT FOUR',
+    'THE HUM IS NOT THE MACHINERY',
+    'I NAMED THE QUAKES. THEY ANSWER NOW.',
+    'SHIFT 9: THE COAL WAS SINGING AGAIN',
+    "DO NOT DIG WEST ON SEVEN. JUST DON'T.",
+    'MGMT SAYS MORALE IS UP  (HA)',
+    'REST IN PIECES, RIG TWELVE',
+    'SOMEBODY FIX THE LIGHTS -EVERY YEAR',
+    'THIS SHAFT IS PURE BAD DECISIONS',
+    'CLOCK IN. CLOCK OUT. CLOCK IN. HELP.',
+    'THE DEEP PAYS BETTER. ASK THE DEEP.',
+    'MY WIFE THINKS I SELL INSURANCE',
+    'WHOEVER TOOK MY THERMOS: I KNOW.',
+    'FOREMEN ARE JUST LOUDER MINERS',
+    'INSPECTORS WOULD LOVE IT DOWN HERE',
+    "IT'S WARM. IT SHOULD NOT BE WARM.",
+    'PRAY TO GRAVITY. SHE ALWAYS ANSWERS.',
+    'SIXTY FLOORS OF NOPE  -FMN. ABARA',
+    'TELL MY DRILL I LOVED HER',
+    'NEW GUY: MIND THE THIRD RUNG',
+    'WE ARE THE DEEPEST THING ALIVE',
+    'LAST ONE OUT, TURN OFF THE PLANET',
+  ];
+
+  // ---------------- M-CORELORE: the egg cracks ----------------
+  // The victory sphere is not redrawn here. This is an OVERLAY: give it the
+  // sphere's rows and it hands back rows of the same shape with one hairline
+  // fissure opened through the shell — so it composes with whatever the core
+  // art is at the time, at whatever resolution, without either side knowing
+  // about the other. The crack is drawn as VOID (spaces): the shell glows and
+  // the fissure does not, which reads at a glance and needs no colour
+  // agreement with render or fx (fx skips blank cells).
+  //
+  // Only shading ink is ever replaced, so lettering and the little rig
+  // silhouetted against the lower limb survive untouched. Pure, deterministic,
+  // no rng: same rows in, same rows out, every time.
+  A.CRACK_INK = '█▓▒░☼';
+  // A fixed walk: one column of drift per row at most, so the seam is always
+  // exactly one cell wide however tall the art gets. Hairline, not gash.
+  const CRACK_STEP = [0, 1, 0, 0, -1, 0, 1, 1, 0, -1, 0, 0, 1, -1, 0, 1];
+  A.crackSphere = function (lines) {
+    if (!Array.isArray(lines) || !lines.length) return lines;
+    const rows = lines.map(function (l) { return String(l == null ? '' : l); });
+    const ink = A.CRACK_INK;
+    let top = -1, bot = -1, minC = 1e9, maxC = -1;
+    for (let y = 0; y < rows.length; y++) {
+      for (let x = 0; x < rows[y].length; x++) {
+        if (ink.indexOf(rows[y][x]) < 0) continue;
+        if (top < 0) top = y;
+        bot = y;
+        if (x < minC) minC = x;
+        if (x > maxC) maxC = x;
+      }
+    }
+    if (top < 0 || maxC < minC) return rows;              // nothing to crack
+    const cells = rows.map(function (r) { return r.split(''); });
+    const cx = (minC + maxC) >> 1;
+    const half = Math.max(1, (maxC - minC) >> 1);
+    const h = Math.max(1, bot - top);
+    function open(y, x) {
+      if (y < 0 || y >= cells.length) return 0;
+      const row = cells[y];
+      if (x < 0 || x >= row.length) return 0;
+      if (ink.indexOf(row[x]) < 0) return 0;              // never touch lettering
+      row[x] = ' ';
+      return 1;
+    }
+    // The seam climbs from the sphere's underside to its crown, drifting at
+    // most one column per row and never wandering further from centre than a
+    // twelfth of the half-width — so it scales with the art instead of being
+    // tuned to one resolution.
+    const wander = Math.max(1, Math.round(half / 12));
+    const b1 = bot - Math.round(h * 0.35), b2 = bot - Math.round(h * 0.7);
+    let opened = 0, x = cx;
+    for (let y = bot, i = 0; y >= top; y--, i++) {
+      const s = CRACK_STEP[i % CRACK_STEP.length];
+      const nx = Math.max(cx - wander, Math.min(cx + wander, x + s));
+      opened += open(y, nx);
+      if (nx !== x) opened += open(y, x);                 // keep the seam joined
+      x = nx;
+      // two short hair-branches off the seam, deterministic in place and size
+      if (y === b1 || y === b2) {
+        const dir = (y & 1) ? 1 : -1;
+        const len = Math.max(1, Math.round(half / 8));
+        for (let k = 1; k <= len; k++) opened += open(y - k, x + dir * k);
+      }
+    }
+    return opened ? cells.map(function (r) { return r.join(''); }) : rows;
+  };
+
   // Pads every line with a uniform left margin so the block (as a whole)
   // is centered in `width` without breaking internal alignment.
   A.center = function (lines, width) {

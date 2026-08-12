@@ -78,6 +78,14 @@
     coal:     '#82827a',
     magma:    '#ff6a3d',
     magmaHot: '#ffd23d',
+    // M-CORELORE: the Core's voice. Not amber — GRIT owns amber, and the whole
+    // point of the second voice is that you know who is talking before you
+    // read a word. Pale, cold gold, brighter than amber (13.1:1 on bg against
+    // amber's 8.4:1) and never tagged.
+    gold:     '#ffe9a8',
+    // M-GRITPLUS/EGG-420: the botanical wash. Only ever MIXED into a colour
+    // that already reads, never painted over one.
+    leaf:     '#8ad36a',
   };
 
   // ---------------- directions ----------------
@@ -308,6 +316,37 @@
       desc: 'Choose from 4 schematics instead of 3.' },
   ];
   D.WIN_CORES = 10;  // bonus cores for reaching the Core (breaching stratum 8)
+
+  // ---------------- M-CORELORE: the second voice ----------------
+  // The Core intrudes on the foreman bar from CORE_DEPTH down, at most once a
+  // stratum, and holds the three Core Gate beats at the breach fractions
+  // below. Everything here is timing and reach — the writing is in barks.js.
+  D.CORE = {
+    depth: 6,          // first stratum the Core is awake on
+    chance: 0.0018,    // per-tick intrusion roll once armed (~1 in 9 minutes)
+    armT: 25,          // seconds into a stratum before it may speak at all
+    hold: 9,           // seconds the gold line holds the bar
+    beat: [0.25, 0.60, 0.95],  // Core Gate beats, as breach-feed fractions
+    offer: 9,          // seconds the fake [ENTER] ASCEND prompt is displayed
+  };
+
+  // ---------------- M-GRITPLUS ----------------
+  // Idle ladder: seconds of nothing before each rung of GRIT's attention.
+  D.IDLE_LADDER = [45, 90, 150];
+  // EGG-420 — the Botanical Incident. A 42-second easter egg, never on the
+  // critical path: typing the code during a run opens the window, and if
+  // js/events.js is present it may also roll a tin at `digWeight` (that module
+  // owns the roll; sim.js never draws for it, so the RNG stream is identical
+  // whether or not it is loaded).
+  D.EGG420 = {
+    code: '420',       // typed during a run (engine keeps a 3-key buffer)
+    codeGapMs: 1500,   // max gap between keys before the buffer forgets
+    sec: 42,           // window length
+    instMult: 0.9,     // the stratum relaxes too
+    digWeight: 0.0042, // M-EVENTS dig-find weight (unused without that module)
+    tint: 0.16,        // map wash strength — tint, don't paint (SPEC3 §0 law 6)
+    barkEvery: 14,     // seconds between mellow foreman lines
+  };
 
   D.SAVE_KEY = 'deepcore_save_v1';
   // Display only (title-screen corner). v1.1 is the shipped feature set —
