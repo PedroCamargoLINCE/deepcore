@@ -16,7 +16,22 @@
   // 10x19 = 800x627. Everything on screen is this multiplied by `scale`
   // (M-HIRES Phase 1); nothing below ever hardcodes 10 or 19 again.
   const CW = 10, CH = 19, FONT_PX = 16;
-  const FONT_STACK = '"DejaVu Sans Mono", "Cascadia Mono", Consolas, "Courier New", monospace';
+  // Readability is a design objective (SPEC3 §0 law 6), and on a character
+  // grid it starts with the font: a missing glyph is a tofu box and a
+  // wrong-width one shears the whole row, because flush() batches a run of
+  // cells into one fillText scaled by cw/adv.
+  // The stack is ordered by coverage, one entry per platform:
+  //   DejaVu Sans Mono  Linux, and the face every glyph here was chosen against
+  //   Menlo             macOS — derived from the same Bitstream Vera ancestor
+  //                     as DejaVu, so coverage and proportions nearly match.
+  //                     WITHOUT it a Mac fell through to Courier New, whose
+  //                     box-drawing and block coverage is poor: the game
+  //                     looked broken on a platform we cannot see from here.
+  //   Monaco            older macOS, before Menlo shipped
+  //   Cascadia Mono / Consolas   Windows
+  // `node tools/glyphs.js` prints the inventory any candidate must cover.
+  const FONT_STACK = '"DejaVu Sans Mono", Menlo, Monaco, "Cascadia Mono", ' +
+                     'Consolas, "Courier New", monospace';
   // Scale limits. Below 1 the glyphs stop being legible faster than the extra
   // fit is worth, so a phone-sized viewport keeps the full 800x627 and lets
   // style.css's max-width/max-height letterbox it. Above ~2.25 a 16px font has
