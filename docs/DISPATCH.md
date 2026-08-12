@@ -77,6 +77,39 @@ the same wave run at the same time; wait for a wave to merge before the next.
 
 Model/effort for all of them: **Opus 5, effort `xhigh`**.
 
+### Running a brief in a CLOUD session (laptop closed)
+
+`claude --cloud "M-WONDERS: stratum landmarks"` runs the session on Anthropic's
+infrastructure instead of this laptop, so the machine can sleep. Reattach with
+`claude --cloud <session_id>` or from claude.ai/code on a phone. (Not to be
+confused with `--remote-control`, which drives a session *on this laptop* from
+elsewhere — that one still needs the laptop awake.)
+
+The prompts below assume a local machine. Two substitutions make any of them
+cloud-ready:
+
+1. **Drop the path and the worktree paragraph.** Replace
+   *"Work in /home/pedro/Documents/games/deepcore. Create a git worktree named
+   X and do ALL your work there — another session is working in parallel, so
+   never edit the main working copy. Branch from current origin/master."*
+   with:
+   *"Work in this repository. Create and switch to a branch named X off
+   origin/master, and do all your work on it."*
+   A cloud session gets its own checkout, so the shared-working-tree hazard the
+   worktree rule exists to prevent does not apply there — the branch does.
+
+2. **Everything else stays exactly as written**, including push-and-stop: the
+   orchestrator still merges.
+
+**Why the checkpoint rule now says commit AND PUSH.** A worker's commits live
+only on its own disk until it pushes, and it used to push once at the end. A
+laptop that sleeps mid-brief, or a cloud session that hits a limit, then leaves
+hours of green work reachable only from that machine. Pushing each checkpoint
+costs a second and makes every milestone recoverable from anywhere — which is
+the whole point of moving off the laptop.
+
+---
+
 ### The preamble (already included in each prompt — here so you know what it does)
 
 Every worker prompt carries the same five paragraphs: where to work (a worktree
@@ -105,7 +138,7 @@ targets. You are the ONLY brief permitted to change existing data.js values.
 
 Gate: all four suites green (node test/headless.js, test/integration.js,
 test/barks_test.js, test/rig_test.js) plus your new test/balance.js, and
-node tools/build.js parses. Checkpoint-commit after every green milestone with
+node tools/build.js parses. Checkpoint-commit AND PUSH your branch after every green milestone, with
 a Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> trailer.
 Push to origin master when green. Report: what you fixed, the before/after
 balance numbers, what you skipped and why.
@@ -148,8 +181,8 @@ index.html AND tools/build.js's script list.
 Gate: all five suites green (node test/headless.js, test/integration.js,
 test/barks_test.js, test/rig_test.js, test/balance.js) and node tools/build.js
 parses. Extend the suites with a stub-canvas frame-advance test proving each
-table row fires under a constructed state. Checkpoint-commit after every green
-milestone with a Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> trailer.
+table row fires under a constructed state. Checkpoint-commit AND PUSH your
+branch after every green milestone with a Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> trailer.
 
 When done: push your branch to origin and STOP — do not merge to master, do not
 rebase, do not force-push. Report: what you built, which table rows you did or
@@ -227,7 +260,7 @@ tile and screen draw paths at the same time — stay inside the help screen.
 
 Gate: all five suites green (node test/headless.js, test/integration.js,
 test/barks_test.js, test/rig_test.js, test/balance.js) and node tools/build.js
-parses. Checkpoint-commit after every green milestone with a Co-Authored-By:
+parses. Checkpoint-commit AND PUSH your branch after every green milestone, with a Co-Authored-By:
 Claude Opus 5 <noreply@anthropic.com> trailer.
 
 When done: push your branch to origin and STOP — do not merge to master, do not
@@ -300,7 +333,7 @@ test/barks_test.js, test/rig_test.js, test/balance.js) and node tools/build.js
 parses. Add tests for: pxToCell round-trip at three viewport sizes, the glyph
 advance being re-measured after resize, the rasterizer against known bitmaps
 including its cell-aspect correction, and the block fallback engaging when
-braille is unavailable. Checkpoint-commit after every green milestone with a
+braille is unavailable. Checkpoint-commit AND PUSH your branch after every green milestone, with a
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> trailer.
 
 When done: push your branch to origin and STOP — do not merge, rebase or
@@ -487,7 +520,8 @@ so an absent feature is a silent no-op. Everything stays DOM-free and
 deterministic on run.rng.
 
 Gate: all five suites green and node tools/build.js parses, extended to cover
-the new schematics and mutators. Checkpoint-commit after every green milestone
+the new schematics and mutators. Checkpoint-commit AND PUSH your branch after
+every green milestone
 with a Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> trailer.
 
 When done: push your branch to origin and STOP. Report: what you built, your
@@ -521,7 +555,7 @@ js/data.js ADDITIVE ONLY. sim stays DOM-free and deterministic on run.rng.
 
 Gate: all five suites green and node tools/build.js parses, extended to cover
 the new logistics. Run test/balance.js before and after and report both.
-Checkpoint-commit after every green milestone with a Co-Authored-By: Claude
+Checkpoint-commit AND PUSH your branch after every green milestone, with a Co-Authored-By: Claude
 Opus 5 <noreply@anthropic.com> trailer.
 
 When done: push your branch to origin and STOP. Report: what you built, your
