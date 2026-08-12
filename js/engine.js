@@ -16,6 +16,13 @@
   let awarded = false;       // meta award done for this run
   let awardedCores = 0;      // cores already banked (mantle-death delta support)
   let breachFlashed = false; // breach-ready banner shown for this stratum
+  // M-WONDERS: a landmark trigger waiting for GRIT to have a mouth free.
+  // Discovery is a ONE-SHOT sim event, and the global 6s bark cooldown would
+  // routinely eat it: the opening build queues firstBelt and firstExtractor
+  // straight across the window the sweep finds the wonder in, so a plain fire
+  // would be dropped and the line lost for the whole stratum. Held and
+  // retried until a line actually lands instead. { trigger, id }
+  let lmPending = null;
   let helpFrom = 'title';    // screen to return to from help
   let recapFrom = 'gameover';// screen to return to from the recap card
   let gesture = {};          // "x,y" -> true: belts placed in the current drag/lay gesture
@@ -146,6 +153,11 @@
       bark(collapse ? 'collapse' : 'quake');
     }
     drainEvents(run);
+    // The wonder waits its turn, and yields to the one moment that outranks
+    // it: once the rig is breach-ready the bar belongs to that: a tourist
+    // observation about a rock must not step on "press D".
+    if (lmPending && run.status !== 'breachReady' &&
+        bark(lmPending.trigger, lmPending.id)) lmPending = null;
     const B = DC.Barks;
     if (B && B.tick) { try { B.tick(run); } catch (e) {} }
     if (ui.flash && ui.flash.until <= run.t) ui.flash = null;
@@ -183,11 +195,10 @@
       // player. The Bell is the one that reaches past GRIT: ringing it is
       // heard, and something far below answers early (SPEC3 M-CORELORE hook).
       else if (ev.type === 'landmark' && ev.data) {
-        if (ev.data.act === 'find') bark('landmarkFound', ev.data.id);
-        else {
-          bark('landmarkUse', ev.data.id);
-          if (ev.data.id === 'bell') coreBeat(run, { kind: 'intrusion' });
-        }
+        lmPending = { trigger: ev.data.act === 'find' ? 'landmarkFound' : 'landmarkUse',
+                      id: ev.data.id };
+        if (ev.data.act !== 'find' && ev.data.id === 'bell')
+          coreBeat(run, { kind: 'intrusion' });
       }
     }
   }
@@ -204,8 +215,10 @@
   function bark(trigger, ctx) {
     const B = DC.Barks;
     const st = DC.state;
-    if (!trigger || !B || !B.fire || !st || !st.run) return;
-    try { B.fire(st.run, trigger, ctx); } catch (e) {}
+    if (!trigger || !B || !B.fire || !st || !st.run) return null;
+    // Returns the line that landed, or null if the cooldown swallowed it —
+    // which is how the M-WONDERS retry above knows to try again.
+    try { return B.fire(st.run, trigger, ctx); } catch (e) { return null; }
   }
 
   // M-POLISH backlog: GRIT's 9 bespoke foundryBuy lines were unreachable —
@@ -260,7 +273,7 @@
     st.run.daily = daily;
     st.run.splits = [];
     st.run.startedAt = Date.now();
-    awarded = false; awardedCores = 0; breachFlashed = false;
+    awarded = false; awardedCores = 0; breachFlashed = false; lmPending = null;
     const ui = st.ui;
     ui.tool = null; ui.facing = 1; ui.hover = null;
     ui.dragging = false; ui.dragLast = null; ui.laying = false;
@@ -417,6 +430,7 @@
     DC.Sim.applySchematic(run, id);
     bark('schematicPick', id);
     breachFlashed = false;
+    lmPending = null;   // the last floor's wonder is behind us (M-WONDERS)
     arriveFlash(st);
     st.ui.shakeUntil = 0;
     st.ui.hover = null;

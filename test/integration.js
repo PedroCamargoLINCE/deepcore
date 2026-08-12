@@ -1547,6 +1547,31 @@ function engineBarksSection(seed) {
   assertEq(st.foundryBark.line, null, 're-entering the Foundry clears the stale line');
   key('Escape');
 
+  // --- M-WONDERS: the discovery line survives the bark cooldown ------------
+  // A fresh run through the real rAF loop, because this is precisely the path
+  // that used to lose the line: the sweep finds the wonder while the opening
+  // build has firstBelt/firstExtractor queued, GRIT's 6s cooldown swallows the
+  // one-shot fire, and the stratum's best line is gone. The engine now holds
+  // the trigger and retries it, so the assertion is that it ARRIVES, not that
+  // it was merely attempted.
+  key('Enter');
+  const lrun = st.run;
+  assert(lrun && lrun.landmark, 'the stratum rolled a landmark to talk about');
+  const want = B.LANDMARK_LINES[lrun.landmark.id];
+  assert(want && want.find, 'and that landmark has a line: ' + lrun.landmark.id);
+  // keep the bar busy exactly the way a real opening does
+  key('1');
+  let said = null;
+  for (let i = 0; i < 90 * HZ && !said; i++) {
+    frames(1);
+    const f = lrun.foreman;
+    if (f && (f.text === want.find || B.POOLS.landmarkFound.indexOf(f.text) >= 0))
+      said = f.text;
+  }
+  assert(said, 'GRIT reacts to the wonder the sweep found');
+  assertEq(said, want.find, 'with the bespoke line for ' + lrun.landmark.id);
+  assert(lrun.landmark.found, 'and the sim marked it discovered exactly once');
+
   // --- render smoke over the whole drive ---
   assert(!drawn.some(s => s.indexOf('RENDER ERROR') >= 0),
     'no render faults during the drive');
