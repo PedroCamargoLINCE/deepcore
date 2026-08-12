@@ -85,6 +85,22 @@ infrastructure instead of this laptop, so the machine can sleep. Reattach with
 confused with `--remote-control`, which drives a session *on this laptop* from
 elsewhere — that one still needs the laptop awake.)
 
+**Monitoring needs no flag.** A cloud session *is* a claude.ai/code session —
+that is why `--cloud` reattaches by "session ID or claude.ai/code URL" — so it
+appears in the web and phone apps on its own, watchable and interruptible from
+anywhere. Do **not** reach for `--remote-control` here: that exposes a session
+running *on this laptop*, which is the dependency a cloud session exists to
+remove. It is the opposite tool, not an addition.
+
+Two more cloud flags worth knowing:
+
+- `--ref <branch|tag|SHA>` pins the base the session starts from. Optional,
+  since the repo's default branch is already `master`.
+- `--on-branch <name>` starts a NEW cloud session continuing an existing
+  branch. This is the recovery path: a brief whose session dies is not
+  restarted, it is resumed from its last pushed checkpoint — which is the whole
+  reason the checkpoint rule now pushes.
+
 The prompts below assume a local machine. Two substitutions make any of them
 cloud-ready:
 
