@@ -116,6 +116,9 @@
       // the fake ascend prompt barks.js may put on screen. M-GRITPLUS: the
       // per-stratum tremor counter and the EGG-420 window.
       coreBeat: 0, coreOffer: null, tremor: 0, egg: null, eggSeen: false,
+      // M-WONDERS: this stratum's landmark (mapgen decides which and where;
+      // everything below `cells` is the state a player's clicks write).
+      landmark: null,
       _feed: [], _lastRevealR: -1,
     };
     for (const k in D.START_STOCK) add(run.inv, k, D.START_STOCK[k]);
@@ -132,6 +135,14 @@
     const gen = DC.MapGen.generate(run.depth, run.rng, run.mods);
     run.grid = gen.grid;
     run.hub = gen.hub;
+    // M-WONDERS: mapgen may legally return no landmark (a map that could not
+    // fit one without breaking a mapgen invariant ships without a wonder), so
+    // every consumer treats `run.landmark === null` as the ordinary case.
+    run.landmark = gen.landmark
+      ? { id: gen.landmark.id, x: gen.landmark.x, y: gen.landmark.y,
+          cx: gen.landmark.cx, cy: gen.landmark.cy, cells: gen.landmark.cells,
+          on: false, onAt: 0, jam: false, fired: false }
+      : null;
     run.t = 0;
     run.instability = Math.max(0, run.instability - D.DESCEND_VENT);
     run.gearsFed = 0;
@@ -164,6 +175,141 @@
       run._lastRevealR = 9999;
     }
     updateReveal(run);
+    if (run.landmark) pushEvent(run, 'landmark', { id: run.landmark.id, act: 'arrive' });
+  }
+
+  // ---------------- M-WONDERS: stratum landmarks (SPEC3) ----------------
+  // One helper pair, as the brief demands: `landmarkAt` answers "what is this
+  // tile", `auraMult` answers "does this machine stand in a wonder's light".
+  // Everything else in sim consults those two and nothing else, so a landmark
+  // can never grow a second, divergent idea of its own radius.
+  //
+  // Auras are measured from the machine's ANCHOR tile (m.x, m.y), which is the
+  // same tile the player pointed at when placing it — a 2x2 smelter is in or
+  // out by its top-left corner, and the tooltip radius reads true.
+  function lmDef(run) {
+    const lm = run && run.landmark;
+    return lm ? (D.LANDMARK_BY_ID || {})[lm.id] || null : null;
+  }
+  function landmarkAt(run, x, y) {
+    const t = tileAt(run, x, y);
+    return t && t.lm ? (D.LANDMARK_BY_ID || {})[t.lm.id] || null : null;
+  }
+  // The Drowned Machine's nap, derived from the tick clock rather than rolled:
+  // she runs for (every - dur) seconds and sleeps for dur, forever, and two
+  // runs on the same seed nap on the same ticks.
+  function lmJammed(run) {
+    const def = lmDef(run), lm = run.landmark;
+    if (!def || !def.jam || !lm || !lm.on) return false;
+    const cyc = def.jam.every * HZ, dur = def.jam.dur * HZ;
+    return ((run.t - lm.onAt) % cyc) >= cyc - dur;
+  }
+  // The landmark's effects, or null while it is dormant — unpaid, or napping.
+  function lmLive(run) {
+    const def = lmDef(run);
+    if (!def) return null;
+    if (def.cost && !run.landmark.on) return null;
+    if (lmJammed(run)) return null;
+    return def;
+  }
+  function inAura(run, r, x, y) {
+    const lm = run.landmark;
+    const dx = x - lm.cx, dy = y - lm.cy;
+    return dx * dx + dy * dy <= r * r;
+  }
+  // Multiplier for `kind` ('smelt' | 'extract' | 'damper') at (x, y). Aura
+  // values in data.js are additive fractions: 0.15 -> x1.15, 1 -> x2.
+  function auraMult(run, kind, x, y) {
+    const def = lmLive(run);
+    if (!def || !def.aura || !def.aura[kind]) return 1;
+    return inAura(run, def.aura.r, x, y) ? 1 + def.aura[kind] : 1;
+  }
+  // The Warm Spot: quakes may not choose a tile inside it.
+  function quakeSafe(run, x, y) {
+    const def = lmLive(run);
+    if (!def || !def.quakeSafe || !def.aura) return false;
+    return inAura(run, def.aura.r, x, y);
+  }
+
+  // Per-tick landmark upkeep: the Mirror Pool's one-shot bounce and the
+  // Drowned Machine's nap edges. Draws nothing from run.rng.
+  function stepLandmark(run) {
+    const lm = run.landmark, def = lmDef(run);
+    if (!lm || !def) return;
+    if (def.mirror && !lm.fired) {
+      let seen = true;
+      for (const c of lm.cells) {
+        const t = tileAt(run, c.x, c.y);
+        if (t && !t.revealed) { seen = false; break; }
+      }
+      if (seen) {
+        lm.fired = true;
+        const W = D.MAP_W, mirrored = [];
+        for (let y = 0; y < D.MAP_H; y++)
+          for (let x = 0; x < W; x++)
+            if (run.grid[y][x].revealed) mirrored.push([W - 1 - x, y]);
+        for (const p of mirrored) run.grid[p[1]][p[0]].revealed = true;
+        msg(run, 'The pool throws the scan back. The far side is drawn.', D.COLORS.cyan);
+        pushEvent(run, 'landmark', { id: def.id, act: 'use' });
+      }
+    }
+    if (def.jam && lm.on) {
+      const j = lmJammed(run);
+      if (j !== !!lm.jam) {
+        lm.jam = j;
+        msg(run, j ? 'The drowned machine slows, and sleeps.'
+                   : 'The drowned machine wakes, and bites.',
+            j ? D.COLORS.gray : D.COLORS.green);
+      }
+    }
+  }
+
+  // The Company Seal's reward: a schematic, installed rather than offered —
+  // there is no descent screen open to choose on. It goes through the same
+  // `applySchematicMod` every descent pick does, so a sealed hatch can never
+  // grant an effect the schematic screen cannot.
+  function grantSchematic(run) {
+    const pool = D.SCHEMATICS.map(s => s.id).filter(id => run.schematics.indexOf(id) < 0);
+    if (!pool.length) return null;
+    const id = pool[Math.floor(run.rng() * pool.length)];
+    run.schematics.push(id);
+    applySchematicMod(run, id);
+    return id;
+  }
+
+  // A click on landmark ground. Returns the same shape as clickTile.
+  function clickLandmark(run, t) {
+    const def = (D.LANDMARK_BY_ID || {})[t.lm.id], lm = run.landmark;
+    if (!def || !lm || lm.id !== def.id) return { handled: false };
+    if (!def.cost && !def.ring) return { handled: false };
+    if (lm.on) return { handled: true, msg: def.doneMsg || 'nothing left to do here' };
+    for (const k in (def.cost || {}))
+      if ((run.inv[k] || 0) < def.cost[k])
+        return { handled: true, msg: 'need ' + def.cost[k] + ' ' + D.ITEMS[k].name };
+    for (const k in (def.cost || {})) run.inv[k] -= def.cost[k];
+    lm.on = true;
+    lm.onAt = run.t;
+    let out = def.name.toLowerCase() + ' answers';
+    if (def.ring) {
+      // The Bell: the whole stratum gets richer and angrier at once.
+      for (let y = 0; y < D.MAP_H; y++)
+        for (let x = 0; x < D.MAP_W; x++) {
+          const tt = run.grid[y][x];
+          if (tt.ore && tt.oreAmt > 0) tt.oreAmt = Math.round(tt.oreAmt * def.ring.veinMult);
+        }
+      run.instability = U.clamp(run.instability + def.ring.inst, 0, D.INSTAB_MAX);
+      msg(run, 'The bell rings. Every vein here answers it.', D.COLORS.orange);
+      out = 'the stratum is richer, and listening';
+    }
+    if (def.grant === 'schematic') {
+      const id = grantSchematic(run);
+      const s = id && D.SCHEMATICS.filter(x => x.id === id)[0];
+      msg(run, 'The seal breaks. Company property: ' + (s ? s.name : 'nothing'),
+          D.COLORS.cyan);
+      out = s ? 'schematic recovered: ' + s.name : 'the vault was already emptied';
+    }
+    pushEvent(run, 'landmark', { id: def.id, act: 'use' });
+    return { handled: true, kind: 'landmark', msg: out };
   }
 
   // ---------------- reveal (§5.6) ----------------
@@ -190,7 +336,16 @@
       for (let x = 0; x < D.MAP_W; x++) {
         const t = run.grid[y][x];
         if (t.digT > 0 && --t.digT === 0) {
-          if (t.t === 'rock') t.t = 'floor';
+          // M-WONDERS: a Glass Forest spire is the one landmark tile that can
+          // be excavated, and it pays out on the way down.
+          const ld = t.lm ? (D.LANDMARK_BY_ID || {})[t.lm.id] : null;
+          if (ld && ld.dig) {
+            t.t = 'floor';
+            t.lm = null;
+            add(run.inv, ld.dig.yield, 1);
+            msg(run, 'A spire comes down — 1 ' + D.ITEMS[ld.dig.yield].name + '.',
+                D.ITEMS[ld.dig.yield].color);
+          } else if (t.t === 'rock') t.t = 'floor';
           t.rubble = false;
         }
       }
@@ -203,6 +358,7 @@
     if (run.t % D.BELT_PERIOD === 0) stepBelts(run);
     if (run.t % drillPeriod(run) === 0) stepDrill(run);
     run.instability = U.clamp(run.instability + instRate(run) / HZ, 0, 100);
+    stepLandmark(run);
     stepEgg(run);
     stepCoreGate(run);
     stepQuake(run);
@@ -280,7 +436,8 @@
       else if (m.out.length === 0 && !halfSkip(run, m)) {
         m.progress++;
         working = true;
-        if (m.progress >= B.period / run.mods.extractMult) {
+        if (m.progress >= B.period /
+            (run.mods.extractMult * auraMult(run, 'extract', m.x, m.y))) {
           m.progress = 0;
           t.oreAmt--;
           m.out.push(t.ore);
@@ -310,7 +467,8 @@
         m.progress++;
         working = true;
         const rec = D.RECIPES[m.job];
-        if (m.progress >= rec.ticks / run.mods.smeltMult) {
+        if (m.progress >= rec.ticks /
+            (run.mods.smeltMult * auraMult(run, 'smelt', m.x, m.y))) {
           for (const k in rec.out) for (let i = 0; i < rec.out[k]; i++) m.out.push(k);
           m.job = null;
           m.progress = 0;
@@ -475,12 +633,20 @@
     if (eggActive(run)) rate *= D.EGG420.instMult;   // the stratum relaxes too
     if (run.overdrive)
       rate *= run.mods.overCheap ? 1 + (D.OVERDRIVE.instMult - 1) / 2 : D.OVERDRIVE.instMult;
+    // Dampers are applied one at a time rather than counted then multiplied,
+    // because The Root (M-WONDERS) doubles the calm of the dampers standing in
+    // its radius and not the others. With no landmark in reach every auraMult
+    // is 1 and this is arithmetically identical to the old two-loop form.
     let dampers = 0;
     for (const id in run.machines) {
       const m = run.machines[id];
-      if (m.type === 'damper' && m.fuel > 0 && dampers < D.DAMPER_MAX) dampers++;
+      if (m.type === 'damper' && m.fuel > 0 && dampers < D.DAMPER_MAX) {
+        dampers++;
+        const calm = Math.min(0.9,
+          D.BUILDINGS.damper.calm * auraMult(run, 'damper', m.x, m.y));
+        rate *= 1 - calm;
+      }
     }
-    for (let i = 0; i < dampers; i++) rate *= 1 - D.BUILDINGS.damper.calm;
     return rate;
   }
 
@@ -522,6 +688,10 @@
     const built = [], floors = [];
     for (let y = 0; y < D.MAP_H; y++)
       for (let x = 0; x < D.MAP_W; x++) {
+        // M-WONDERS/The Warm Spot: a tile inside the zone is never a candidate,
+        // so nothing built there is ever chosen. The integrity hit below still
+        // lands in full — the Warm Spot shelters a base, not a rig.
+        if (quakeSafe(run, x, y)) continue;
         const t = run.grid[y][x];
         if (t.belt || (t.machine !== null && t.machine !== 0)) built.push({ x: x, y: y });
         if (t.t === 'floor' && t.revealed && t.machine !== 0) floors.push({ x: x, y: y });
@@ -630,6 +800,9 @@
         if (t.rubble) return { ok: false, reason: 'blocked by rubble' };
         if (t.machine !== null) return { ok: false, reason: 'blocked by structure' };
         if (t.belt) return { ok: false, reason: 'blocked by belt' };
+        // M-WONDERS: only the Warm Spot's marker is standable floor, and
+        // paving over it would hide the one tile that names the zone.
+        if (t.lm) return { ok: false, reason: 'landmark ground' };
       }
     if (type === 'extractor' && !tileAt(run, x, y).ore)
       return { ok: false, reason: 'needs an ore vein' };
@@ -683,6 +856,18 @@
       t.belt = null; // any item is lost
       return { ok: true };
     }
+    // M-WONDERS: landmark ground answers before the terrain does. Only a Glass
+    // Forest spire yields to a pick; everything else is older than the drill.
+    if (t.lm) {
+      const ld = (D.LANDMARK_BY_ID || {})[t.lm.id];
+      if (ld && ld.dig) {
+        if (!t.revealed) return { ok: false, reason: 'unscanned ground' };
+        if (t.digT > 0) return { ok: false, reason: 'already excavating' };
+        t.digT = ld.dig.ticks;
+        return { ok: true };
+      }
+      return { ok: false, reason: 'older than the Company' };
+    }
     if (t.rubble) {
       if (t.digT > 0) return { ok: false, reason: 'already clearing' };
       t.digT = D.DIG_RUBBLE;
@@ -701,7 +886,9 @@
 
   function clickTile(run, x, y) {
     const t = tileAt(run, x, y);
-    if (!t || t.machine === null) return { handled: false };
+    if (!t) return { handled: false };
+    if (t.lm) return clickLandmark(run, t);   // M-WONDERS
+    if (t.machine === null) return { handled: false };
     const m = run.machines[t.machine];
     if (!m) return { handled: false };
     if (m.id !== 0 && m.hp === 1) {
@@ -889,6 +1076,20 @@
       if (buf) L.push({ text: buf, color: D.COLORS.gray });
       return L.slice(0, 5);
     }
+    // M-WONDERS: the landmark reads before the terrain under it — the tooltip
+    // is where a wonder stops being scenery and states its mechanic.
+    if (t.lm) {
+      const ld = (D.LANDMARK_BY_ID || {})[t.lm.id];
+      if (ld) {
+        const on = !!(run.landmark && run.landmark.id === ld.id && run.landmark.on);
+        L.push({ text: ld.name, color: D.COLORS[ld.color] || D.COLORS.white });
+        for (const s of ((on && ld.onLore) || ld.lore || []))
+          L.push({ text: s, color: D.COLORS.gray });
+        if (t.digT > 0)
+          L.push({ text: 'excavating — ' + Math.ceil(t.digT / HZ) + 's', color: D.COLORS.amber });
+        return L.slice(0, 5);
+      }
+    }
     if (t.belt) {
       L.push({ text: 'belt ' + D.ARROWS[t.belt.dir] +
                (t.belt.item ? ' carries ' + itemShort(t.belt.item) : ''), color: D.COLORS.cyan });
@@ -920,6 +1121,10 @@
     // from a dig find), and the collapse counter's numeral.
     breachFrac: breachFrac, startEgg: startEgg, eggActive: eggActive,
     roman: roman,
+    // M-WONDERS: the two helpers everything else consults, plus the nap state
+    // render draws the Drowned Machine's colour from.
+    landmarkAt: landmarkAt, auraMult: auraMult, quakeSafe: quakeSafe,
+    landmarkJammed: lmJammed,
     // shared with render.js (STOCK column, CX-11); SCAN_W is the tooltip budget
     itemShort: itemShort, SCAN_W: SCAN_W,
   };
