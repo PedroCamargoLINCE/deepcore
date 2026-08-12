@@ -469,11 +469,21 @@ anything the orchestrator must know to merge cleanly.
 
 ### Wave 4 — M-EVENTS — CLOUD-READY PROMPT AT `docs/prompts/M-EVENTS.cloud.txt`
 
-Dispatch it without tying up the laptop:
+Dispatch it without tying up the laptop. **Run this from the repo root** — use
+the absolute path so it cannot matter where you are:
 
 ```
-claude --cloud "M-EVENTS: vignettes and the cave-cat" "$(cat docs/prompts/M-EVENTS.cloud.txt)"
+cd ~/Documents/games/deepcore && claude --cloud "M-EVENTS: vignettes and the cave-cat" \
+  "$(cat ~/Documents/games/deepcore/docs/prompts/M-EVENTS.cloud.txt)"
 ```
+
+> **Check the shell output before walking away.** `~/Documents/games` is the
+> PARENT of the repo and is not a git repository. Run the command there and two
+> things fail quietly: `cat` prints "No such file or directory" so the prompt
+> arrives EMPTY, and the session has no repository to attach to — yet a cloud
+> session is still created and prints a perfectly healthy-looking URL. It is
+> named from the description, so it looks right and does nothing. If you see
+> that `cat:` error, abandon the session and re-run from the repo root.
 
 `--cloud` is **interactive only** — it refuses `--print`, so it cannot be
 launched from a script or by an agent. A human has to start it; the command
