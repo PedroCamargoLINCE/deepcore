@@ -56,11 +56,26 @@
       },
     };
     window.addEventListener('keydown', onKey);
+    // M-HIRES Phase 1: the canvas fits the viewport, so it has to be told when
+    // the viewport changes. Debounced — a drag-resize fires this continuously,
+    // and each call re-measures the font and reallocates the backing store.
+    window.addEventListener('resize', onResize);
     canvas.addEventListener('mousemove', onMouseMove);
     canvas.addEventListener('mousedown', onMouseDown);
     canvas.addEventListener('mouseup', onMouseUp);
     canvas.addEventListener('mouseleave', onMouseLeave);
     requestAnimationFrame(loop);
+  }
+
+  // ---------------- resize ----------------
+
+  let resizeTimer = 0;
+  function onResize() {
+    if (resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function () {
+      resizeTimer = 0;
+      DC.Render.resize();
+    }, 100);
   }
 
   // ---------------- main loop ----------------

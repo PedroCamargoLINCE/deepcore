@@ -1249,6 +1249,13 @@ function engineBarksSection(seed) {
   DC.Engine.start();
   const st = DC.state;
   assert(st && st.screen === 'title', 'engine boots to the title screen');
+  // M-HIRES Phase 1: there was no resize handler anywhere in the codebase,
+  // which is exactly why the canvas was a fixed island. Wiring it is the
+  // engine's only job in that brief, so assert the wire exists and that
+  // firing it is harmless (it debounces before it touches the renderer).
+  assert(typeof handlers.resize === 'function', 'engine wires a window resize listener');
+  handlers.resize();
+  handlers.resize();
 
   let now = 0;
   function frames(n) {          // drive the real rAF loop, 1 tick per frame
@@ -2711,6 +2718,159 @@ function clockSection(seed) {
   return at60.flips;
 }
 
+// =========================================================================
+// SECTION 11 — the grid fills the viewport and clicks still land
+// (M-HIRES Phase 1). render.js used to set a CSS pixel size once on load, so
+// the game was a fixed 800x627 island on any real monitor. Now one scalar
+// scales both axes. The three things that can break are all asserted here at
+// every viewport size:
+//   1. pxToCell round-trips — EVERY cell, not a spot check. The map is
+//      clickable and a half-cell error is a mis-placed belt.
+//   2. `adv` is re-measured. It is cached from measureText at the old font
+//      size; flush() divides a whole batched run by it, so a stale value
+//      slides every character in the run out of its cell.
+//   3. The aspect never distorts.
+// The stub below is deliberately harsher than a browser: measureText returns
+// a width proportional to the font size (DejaVu Sans Mono's real 0.602 em
+// advance), so a stale `adv` is arithmetically visible rather than a matter
+// of taste, and getBoundingClientRect reports what resize() actually wrote to
+// the style — the same coupling the real page has.
+// =========================================================================
+const ADV_EM = 0.602;                      // DejaVu Sans Mono advance / em
+
+function scalingSection() {
+  SECTION = 'scaling';
+  const R = DC.Render;
+  const BASE_W = R.CW * D.COLS, BASE_H = R.CH * D.ROWS;
+
+  const ctxStub = {
+    fillStyle: '', font: '', textBaseline: '', textAlign: '',
+    setTransform: function () {}, fillRect: function () {},
+    save: function () {}, restore: function () {}, scale: function () {},
+    fillText: function () {},
+    measureText: function () { return { width: parseFloat(this.font) * ADV_EM }; },
+  };
+  let origin = { left: 0, top: 0 };
+  const canvasStub = {
+    width: 0, height: 0, style: {},
+    getContext: function () { return ctxStub; },
+    addEventListener: function () {},
+    getBoundingClientRect: function () {
+      return {
+        left: origin.left, top: origin.top,
+        width: parseFloat(this.style.width) || 0,
+        height: parseFloat(this.style.height) || 0,
+      };
+    },
+  };
+  global.devicePixelRatio = 1;
+  R.init(canvasStub);
+
+  const VIEWPORTS = [
+    { w: 1280, h: 720,  name: 'laptop 1280x720' },
+    { w: 1920, h: 1080, name: 'desktop 1920x1080' },
+    { w: 3840, h: 2160, name: '4K 3840x2160' },
+    { w: 600,  h: 800,  name: 'phone 600x800' },
+  ];
+  const scales = {};
+  for (const v of VIEWPORTS) {
+    const s = R.resize(v.w, v.h);
+    const m = R.metrics();
+    scales[v.name] = s;
+
+    // --- aspect and fit -------------------------------------------------
+    assert(Math.abs(m.width / m.height - BASE_W / BASE_H) < 1e-9,
+      v.name + ': the 80x33 aspect survives scaling (' + m.width + 'x' + m.height + ')');
+    assertEq(m.cw / m.ch, R.CW / R.CH, v.name + ': the cell keeps its shape');
+    assert(s >= R.MIN_SCALE - 1e-9 && s <= R.MAX_SCALE + 1e-9,
+      v.name + ': scale ' + s + ' is inside [' + R.MIN_SCALE + ', ' + R.MAX_SCALE + ']');
+    if (s > R.MIN_SCALE && s < R.MAX_SCALE) {
+      assert(m.width <= v.w + 1e-9 && m.height <= v.h + 1e-9,
+        v.name + ': an unclamped fit never overflows the viewport');
+      assert(m.width > v.w - m.cw || m.height > v.h - m.ch,
+        v.name + ': ...and it is actually a FIT, not a token enlargement');
+    }
+
+    // --- `adv` was re-measured at THIS font size ------------------------
+    assert(Math.abs(m.adv - m.fontPx * ADV_EM) < 1e-9,
+      v.name + ': the glyph advance was re-measured after the resize (adv ' +
+      m.adv.toFixed(3) + ' vs ' + (m.fontPx * ADV_EM).toFixed(3) + ' expected at ' +
+      m.fontPx.toFixed(2) + 'px)');
+    assert(Math.abs(m.adv - m.cw) > 1e-9,
+      v.name + ': scaffold — adv differs from the cell pitch, so flush() really ' +
+      'does depend on the measurement');
+
+    // --- the backing store follows the CSS size and the dpr -------------
+    assertEq(canvasStub.width, Math.round(m.width * m.dpr), v.name + ': backing store width');
+    assertEq(canvasStub.height, Math.round(m.height * m.dpr), v.name + ': backing store height');
+
+    // --- pxToCell round-trip, every cell, centred in the viewport -------
+    origin = { left: (v.w - m.width) / 2, top: (v.h - m.height) / 2 };
+    let bad = null;
+    for (let r = 0; r < D.ROWS && !bad; r++) {
+      for (let c = 0; c < D.COLS; c++) {
+        const px = origin.left + (c + 0.5) * m.cw;
+        const py = origin.top + (r + 0.5) * m.ch;
+        const hit = R.pxToCell(px, py);
+        if (hit.col !== c || hit.row !== r) {
+          bad = 'cell ' + c + ',' + r + ' -> ' + hit.col + ',' + hit.row;
+          break;
+        }
+      }
+    }
+    assert(!bad, v.name + ': every cell centre round-trips through pxToCell (' + bad + ')');
+
+    // top-left and bottom-right pixel of the grid, and the cell boundary a
+    // one-pixel error would land on the wrong side of
+    assertEq(R.pxToCell(origin.left, origin.top).col, 0, v.name + ': first pixel is col 0');
+    assertEq(R.pxToCell(origin.left, origin.top).row, 0, v.name + ': first pixel is row 0');
+    const last = R.pxToCell(origin.left + m.width - 0.001, origin.top + m.height - 0.001);
+    assertEq(last.col, D.COLS - 1, v.name + ': last pixel is the last column');
+    assertEq(last.row, D.ROWS - 1, v.name + ': last pixel is the last row');
+    // the cell boundary, from both sides — a half-cell offset error shows up
+    // here even though every cell CENTRE would still round-trip
+    const inside = R.pxToCell(origin.left + m.cw - 0.01, origin.top + m.ch - 0.01);
+    const past = R.pxToCell(origin.left + m.cw + 0.01, origin.top + m.ch + 0.01);
+    assert(inside.col === 0 && inside.row === 0,
+      v.name + ': the pixel before the first cell boundary is still cell 0,0');
+    assert(past.col === 1 && past.row === 1,
+      v.name + ': the pixel after it is cell 1,1');
+    origin = { left: 0, top: 0 };
+  }
+
+  // The whole point of the brief: a 1080p monitor is no longer an 800px
+  // island, and a 4K one is not 55px text either.
+  assert(scales['desktop 1920x1080'] > 1.5,
+    'a 1080p viewport genuinely fills out (scale ' + scales['desktop 1920x1080'] + ')');
+  assertEq(scales['4K 3840x2160'], R.MAX_SCALE, '4K clamps to the maximum scale');
+  assertEq(scales['phone 600x800'], R.MIN_SCALE,
+    'a phone-width viewport letterboxes at the minimum instead of shrinking text');
+
+  // --- called with no arguments it reads the window itself (this is the
+  // --- path engine.js's resize listener actually uses)
+  global.innerWidth = 1920;
+  global.innerHeight = 1080;
+  assertEq(R.resize(), scales['desktop 1920x1080'],
+    'resize() with no arguments reads the window and lands on the same scale');
+
+  // --- devicePixelRatio changes mid-session (window dragged to another
+  // --- display): no resize event fires, so frame() has to notice.
+  const before = R.metrics();
+  global.devicePixelRatio = 2;
+  R.frame({ screen: 'title', meta: DC.Meta.newProfile(), run: null,
+            ui: { cursor: { x: 0, y: 0 } } });
+  const after = R.metrics();
+  assertEq(after.dpr, 2, 'a devicePixelRatio change is picked up without a resize event');
+  assertEq(after.deviceWidth, before.deviceWidth * 2, 'and the backing store doubles');
+  assertEq(after.width, before.width, 'while the CSS size is unchanged');
+  assert(Math.abs(after.adv - after.fontPx * ADV_EM) < 1e-9,
+    'the advance is still valid after a dpr-driven re-measure');
+  global.devicePixelRatio = 1;
+  delete global.innerWidth;
+  delete global.innerHeight;
+  return Object.keys(scales).map((k) => scales[k].toFixed(2)).join('/');
+}
+
 // -------------------------------------------------------------------- main
 const SEED = process.env.DC_SEED ? (parseInt(process.env.DC_SEED, 10) | 0) : 1337;
 try {
@@ -2729,9 +2889,11 @@ try {
   const cardRows = recapSection(SEED + 37);
   const fxRows = fxSection(SEED + 31);
   const blinks = clockSection(SEED + 41);
+  const scaleSummary = scalingSection();
   console.log('PASS integration seed=' + SEED + ' | ' + drivenSummary +
     ' | fx rows ' + fxRows + ' | recap card ' + cardRows + ' rows' +
     ' | clock 60=144Hz (' + blinks + ' blinks/4s)' +
+    ' | scale ' + scaleSummary +
     ' | cadence 16/12/10 | overdrive x2 | damper ok | charge+bronze ok | mantle ok' +
     ' | engine+barks ok | ' + (Date.now() - t0) + 'ms');
   process.exit(0);

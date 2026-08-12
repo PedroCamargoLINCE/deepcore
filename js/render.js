@@ -12,8 +12,17 @@
   const U = DC.util;
 
   const COLS = D.COLS, ROWS = D.ROWS;
-  const CW = 10, CH = 19;
-  const FONT = '16px "DejaVu Sans Mono", "Cascadia Mono", Consolas, "Courier New", monospace';
+  // The BASE cell and its font size — the grid as it was authored, 80x33 of
+  // 10x19 = 800x627. Everything on screen is this multiplied by `scale`
+  // (M-HIRES Phase 1); nothing below ever hardcodes 10 or 19 again.
+  const CW = 10, CH = 19, FONT_PX = 16;
+  const FONT_STACK = '"DejaVu Sans Mono", "Cascadia Mono", Consolas, "Courier New", monospace';
+  // Scale limits. Below 1 the glyphs stop being legible faster than the extra
+  // fit is worth, so a phone-sized viewport keeps the full 800x627 and lets
+  // style.css's max-width/max-height letterbox it. Above ~2.25 a 16px font has
+  // become 36px and the terminal reads as a toy — a 4K panel gets margins
+  // rather than 55px text.
+  const MIN_SCALE = 1, MAX_SCALE = 2.25;
   const UNREV_BG = '#050504';        // near-black for unrevealed tiles (SPEC §7)
   const SB = 49, SBW = 31;           // sidebar box: cols 49..79
   const SBC = 50, SCW = 29;          // sidebar content col + width
@@ -39,6 +48,12 @@
   };
 
   let canvas = null, ctx = null, dpr = 1, adv = CW; // adv = measured glyph advance
+  // Live metrics: the base cell times the current scale. `adv` is measured
+  // from the font at `fontPx` and is therefore STALE the instant scale
+  // changes — resize() re-measures it, and flush() maps it onto the `cw`
+  // pitch, so a whole batched run stays grid-aligned at any size.
+  let scale = 1, cw = CW, ch = CH, fontPx = FONT_PX;
+  let font = FONT_PX + 'px ' + FONT_STACK;
 
   // Render's own animation clock (M-HIRES Phase 0). Same contract as fx.js's:
   // driven by elapsed milliseconds, expressed in virtual 60 fps frames, so the
@@ -1301,11 +1316,61 @@
     ctext(ROWS - 1, '[TAB] STATS   [C] COPY CARD   [ENTER] RETURN TO THE SURFACE', C.amber);
   }
 
+  // ================= viewport scaling (M-HIRES Phase 1) =================
+  // The canvas used to be a fixed 800x627 island: init() set a CSS pixel size
+  // once on load and nothing ever resized it. Canvas text is RE-RENDERED at
+  // the new cell size rather than upscaled, so drawing the same 80x33 grid
+  // larger produces genuinely more pixels of glyph — this sharpens, it does
+  // not stretch. The aspect is preserved by construction: one scalar `s`
+  // multiplies both axes, so the grid can never distort.
+  function fitScale(vw, vh) {
+    const s = Math.min(vw / (COLS * CW), vh / (ROWS * CH));
+    if (!(s > 0) || !isFinite(s)) return 1;
+    return U.clamp(s, MIN_SCALE, MAX_SCALE);
+  }
+  // Re-measure the glyph advance. MUST run after every scale change: `adv`
+  // comes from measureText at the old font size and flush() divides by it.
+  function measureAdv() {
+    ctx.font = font;
+    const m = ctx.measureText('█');
+    adv = (m && m.width > 0) ? m.width : cw;
+  }
+  // The CRT scanline period is a fixed 3px in style.css; at 2x scale that
+  // reads twice as dense and muddies the art. Hand the sheet the current cell
+  // height so the overlay scales with the picture.
+  function setScanlinePeriod() {
+    try {
+      const el = root.document && root.document.documentElement;
+      if (el && el.style && el.style.setProperty) {
+        el.style.setProperty('--scanline', Math.max(3, Math.round(3 * scale)) + 'px');
+      }
+    } catch (e) { /* headless, or a canvas with no page around it */ }
+  }
+  function applyScale(s) {
+    scale = s;
+    cw = CW * s;
+    ch = CH * s;
+    // Rounded, and then USED rounded: the font string is what the browser
+    // measures, so metrics().fontPx must be the same number or `adv` and the
+    // reported size disagree by a hair that compounds across an 80-cell run.
+    fontPx = Math.round(FONT_PX * s * 100) / 100;
+    font = fontPx + 'px ' + FONT_STACK;
+    const pw = COLS * cw, ph = ROWS * ch;
+    canvas.width = Math.round(pw * dpr);
+    canvas.height = Math.round(ph * dpr);
+    if (canvas.style) {
+      canvas.style.width = pw + 'px';
+      canvas.style.height = ph + 'px';
+    }
+    measureAdv();
+    setScanlinePeriod();
+  }
+
   // ================= flush (batched fillText) =================
   function flush() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = C.bg;
-    ctx.fillRect(0, 0, COLS * CW, ROWS * CH);
+    ctx.fillRect(0, 0, COLS * cw, ROWS * ch);
     // background runs
     for (let r = 0; r < ROWS; r++) {
       let c = 0;
@@ -1315,19 +1380,19 @@
         let e = c + 1;
         while (e < COLS && bgB[r][e] === b) e++;
         ctx.fillStyle = b;
-        ctx.fillRect(c * CW, r * CH, (e - c) * CW, CH);
+        ctx.fillRect(c * cw, r * ch, (e - c) * cw, ch);
         c = e;
       }
     }
     // text runs: same-color spans in one fillText; x-scale maps the measured
-    // glyph advance onto the CW cell pitch so long runs stay grid-aligned
-    ctx.font = FONT;
+    // glyph advance onto the `cw` cell pitch so long runs stay grid-aligned
+    ctx.font = font;
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'left';
     ctx.save();
-    ctx.scale(CW / adv, 1);
+    ctx.scale(cw / adv, 1);
     for (let r = 0; r < ROWS; r++) {
-      const yy = r * CH + CH * 0.55;
+      const yy = r * ch + ch * 0.55;
       let c = 0;
       while (c < COLS) {
         if (chB[r][c] === ' ') { c++; continue; }
@@ -1380,7 +1445,8 @@
   surface.layout = layout;
 
   DC.Render = {
-    CW: CW, CH: CH,
+    // The BASE cell. The drawn cell is this times metrics().scale.
+    CW: CW, CH: CH, FONT_PX: FONT_PX,
     layout: layout,
     // M-POLISH/CX-11: the STOCK row contract, exported so test/barks_test.js
     // can prove every D.ITEMS.short survives the name field unclipped and
@@ -1418,15 +1484,36 @@
     init: function (cv) {
       canvas = cv;
       ctx = cv.getContext('2d');
-      dpr = (root.devicePixelRatio || 1);
-      cv.width = COLS * CW * dpr;
-      cv.height = ROWS * CH * dpr;
-      cv.style.width = (COLS * CW) + 'px';
-      cv.style.height = (ROWS * CH) + 'px';
-      ctx.font = FONT;
-      const m = ctx.measureText('█');
-      adv = (m && m.width) ? m.width : CW;
+      DC.Render.resize();
     },
+
+    // Fit the grid to the viewport, preserving aspect. Called on load, on
+    // every (debounced) window resize, and whenever devicePixelRatio changes
+    // — dragging the window between a laptop panel and an external monitor
+    // changes dpr without changing innerWidth, and the backing store has to
+    // follow or the text goes soft. `vw`/`vh` default to the window but are
+    // arguments so the scaling can be tested without a DOM.
+    resize: function (vw, vh) {
+      if (!ctx) return scale;
+      vw = (typeof vw === 'number' && vw > 0) ? vw : (root.innerWidth || COLS * CW);
+      vh = (typeof vh === 'number' && vh > 0) ? vh : (root.innerHeight || ROWS * CH);
+      dpr = (root.devicePixelRatio || 1);
+      applyScale(fitScale(vw, vh));
+      return scale;
+    },
+
+    // Metrics, live. `scale` is fractional by design: glyphs are vector, so
+    // there is no nearest-neighbour argument for integer steps here.
+    metrics: function () {
+      return {
+        scale: scale, cw: cw, ch: ch, fontPx: fontPx, adv: adv, dpr: dpr,
+        width: COLS * cw, height: ROWS * ch,
+        deviceWidth: canvas ? canvas.width : 0,
+        deviceHeight: canvas ? canvas.height : 0,
+      };
+    },
+    MIN_SCALE: MIN_SCALE,
+    MAX_SCALE: MAX_SCALE,
 
     // SPEC3 §A test surface: the cell buffer after a frame, so a stub-canvas
     // frame-advance test can prove an FX row actually landed on a cell.
@@ -1437,6 +1524,10 @@
 
     frame: function (state, nowMs) {
       if (!ctx || !state) return;
+      // A window dragged between displays changes devicePixelRatio without
+      // firing `resize`. One property read a frame is cheaper than a
+      // matchMedia dance and catches every case.
+      if ((root.devicePixelRatio || 1) !== dpr) DC.Render.resize();
       advanceClock(nowMs);
       const phase = Math.floor(frameN / 30) % 2;   // 1 Hz blink, wall time
       clearBuf();
