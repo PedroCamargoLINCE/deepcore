@@ -151,6 +151,41 @@
     return m + ':' + (s < 10 ? '0' : '') + s;
   }
 
+  // ---------------- contrast (M-MANUAL) ----------------
+  // The map's palette is tuned for tiles on black: obsidian sits at 1.34:1 and
+  // chasm at 1.22:1, which is right for a wall you are meant to squint past and
+  // wrong for a glossary entry you are meant to read. `legible` walks a colour
+  // toward white until it clears the 4.5:1 text floor, so the manual can print
+  // every glyph in its TRUE game colour and still be readable — same hue, same
+  // identity, enough light. Nothing else in the renderer uses it: tiles keep
+  // their real colours.
+  const MIN_CR = 4.5;
+  function relLum(hex) {
+    if (!hex || hex[0] !== '#' || hex.length !== 7) return 0;
+    let v = 0;
+    const w = [0.2126, 0.7152, 0.0722];
+    for (let i = 0; i < 3; i++) {
+      let c = parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16) / 255;
+      c = c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+      v += w[i] * c;
+    }
+    return v;
+  }
+  function contrast(a, b) {
+    const x = relLum(a), y = relLum(b);
+    return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+  }
+  function legible(hex, over) {
+    const bgc = over || C.bg;
+    if (!hex || hex[0] !== '#' || hex.length !== 7) return hex;
+    const k = 'L' + hex + bgc;
+    if (colCache[k]) return colCache[k];
+    let out = hex;
+    for (let t = 0; t <= 20 && contrast(out, bgc) < MIN_CR; t++) out = mix(hex, C.white, t / 20);
+    colCache[k] = out;
+    return out;
+  }
+
   // ---------------- art access (defensive) ----------------
   function placeholder(name) {
     const inner = ' ' + name + ' ';
@@ -923,12 +958,57 @@
     ctext(31, '[A-I] FORGE UPGRADE      [ESC] RETURN TO SURFACE', C.amber);
   }
 
-  // ================= HELP / GAMEOVER / VICTORY =================
-  function drawHelp() {
-    const lines = art('help');
-    const start = Math.max(1, (ROWS - lines.length) >> 1);
-    drawArt(lines, start, artColor('help', C.amber));
-    if (start + lines.length < ROWS - 1) ctext(ROWS - 1, '[ESC] BACK', C.amberDim);
+  // ================= HELP: THE FIELD MANUAL (M-MANUAL) =================
+  // art.js composes the pages and hands render two projections of one grid:
+  // plain text (what the suites lint) and coloured spans (what lands here).
+  // Render owns presentation only — resolve the tier names, lift true game
+  // colours to a readable level, paint 'key' cells inverse. No text, no
+  // number and no key label is authored on this side.
+  const HELP_TIER = {
+    head:   C.amber,                     // section headers, the masthead
+    body:   C.gray,                      // prose (5.5:1 — warm, dim, readable)
+    bright: C.white,                     // the figures themselves
+    grit:   C.cyan,                      // the foreman's one contribution
+    key:    C.amber,                     // keycaps: this is their BACKGROUND
+    rule:   mix(C.amber, C.bg, 0.42),    // hairlines under the headers
+  };
+  function helpColor(c) {
+    if (!c) return HELP_TIER.body;
+    if (HELP_TIER[c]) return HELP_TIER[c];
+    return legible(resolveColor(c) || HELP_TIER.body, C.bg);
+  }
+  function helpPages() {
+    const A = DC.Art;
+    return (A && Array.isArray(A.helpPages) && A.helpPages.length &&
+            Array.isArray(A.helpPages[0].rows)) ? A.helpPages : null;
+  }
+  function helpIndex(state, n) {
+    const i = (state && state.ui && state.ui.helpPage) | 0;
+    return U.clamp(i, 0, n - 1);
+  }
+  function drawHelp(state) {
+    const pages = helpPages();
+    if (!pages) {                        // art.js half-loaded: never crash
+      const lines = art('help');
+      const start = Math.max(1, (ROWS - lines.length) >> 1);
+      drawArt(lines, start, artColor('help', C.amber));
+      if (start + lines.length < ROWS - 1) ctext(ROWS - 1, '[ESC] BACK', C.amberDim);
+      return;
+    }
+    const page = pages[helpIndex(state, pages.length)];
+    const x0 = Math.max(0, (COLS - page.w) >> 1);
+    const y0 = Math.max(0, (ROWS - page.h) >> 1);
+    for (let r = 0; r < page.rows.length; r++) {
+      const row = page.rows[r];
+      for (let s = 0; s < row.length; s++) {
+        const span = row[s];
+        const col = helpColor(span.c);
+        // a keycap is the inverse cell: the tier colour becomes the key's
+        // face and the page's own background becomes the letter on it
+        if (span.inv) text(x0 + span.x, y0 + r, span.t, C.bg, col);
+        else text(x0 + span.x, y0 + r, span.t, col);
+      }
+    }
   }
 
   function statsBlock(row, res) {
@@ -1066,6 +1146,14 @@
     LOG_MSG_ROWS: LOG_MSG_ROWS,
     FOREMAN_ROW_W: SB - 1 - 7,
     wrapClamp: wrapClamp,
+    // M-MANUAL's contrast contract, exported so test/barks_test.js can assert
+    // the floor on every colour the field manual actually paints (tiers and
+    // lifted game colours alike) instead of trusting the palette by eye.
+    MIN_CONTRAST: MIN_CR,
+    contrast: contrast,
+    legible: legible,
+    helpColor: helpColor,
+    HELP_TIER: HELP_TIER,
 
     init: function (cv) {
       canvas = cv;
@@ -1102,7 +1190,7 @@
           case 'run':      drawRun(state); break;
           case 'descend':  drawDescend(state); break;
           case 'foundry':  drawFoundry(state); break;
-          case 'help':     drawHelp(); break;
+          case 'help':     drawHelp(state); break;
           case 'gameover': drawGameover(state, phase); break;
           case 'victory':  drawVictory(state, phase); break;
           case 'title':

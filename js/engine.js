@@ -270,6 +270,22 @@
 
   // ---------------- keyboard ----------------
 
+  // The field manual (M-MANUAL). It always opens on page 1: a player hitting H
+  // mid-run wants the controls, not wherever they left the pager last time.
+  function helpPageCount() {
+    const p = DC.Art && DC.Art.helpPages;
+    return (p && p.length) || 1;
+  }
+  function openHelp(st, from) {
+    helpFrom = from;
+    st.ui.helpPage = 0;
+    st.screen = 'help';
+  }
+  function turnPage(st, d) {
+    const n = helpPageCount();
+    st.ui.helpPage = (((st.ui.helpPage | 0) + d) % n + n) % n;
+  }
+
   function onKey(e) {
     const st = DC.state;
     if (!st) return;
@@ -283,7 +299,7 @@
           st.screen = 'foundry';
           if (st.foundryBark) st.foundryBark.line = null;   // fresh floor, no stale line
         }
-        else if (lk === 'h') { helpFrom = 'title'; st.screen = 'help'; }
+        else if (lk === 'h') openHelp(st, 'title');
         else handled = false;
         break;
       case 'run':
@@ -314,8 +330,16 @@
         }
         break;
       case 'help':
+        // M-MANUAL: the manual is a two-page pager. ←/→ (and the page numbers)
+        // turn it, wrapping; ESC/ENTER put it down. The footer on every page
+        // states exactly these keys, composed from the page list itself.
         if (k === 'Escape' || k === 'Enter') st.screen = helpFrom || 'title';
-        else handled = false;
+        else if (k === 'ArrowRight' || k === 'ArrowDown') turnPage(st, 1);
+        else if (k === 'ArrowLeft' || k === 'ArrowUp') turnPage(st, -1);
+        else if (k >= '1' && k <= '9') {
+          const n = k.charCodeAt(0) - 49;
+          if (n < helpPageCount()) st.ui.helpPage = n; else handled = false;
+        } else handled = false;
         break;
       case 'gameover':
         if (k === 'Escape' || k === 'Enter') { st.run = null; st.screen = 'title'; }
@@ -348,7 +372,7 @@
         bark('death');
         ui.paused = false;
         st.screen = 'gameover';
-      } else if (lk === 'h') { helpFrom = 'run'; st.screen = 'help'; }
+      } else if (lk === 'h') openHelp(st, 'run');
       else return false;
       return true;
     }
@@ -362,7 +386,7 @@
         bark(run.overdrive ? 'overdriveOn' : 'overdriveOff');
         return true;
       case 'd': tryDescend(st); return true;
-      case 'h': helpFrom = 'run'; st.screen = 'help'; return true;
+      case 'h': openHelp(st, 'run'); return true;
     }
     if (k === 'Escape') {
       if (ui.laying) { ui.laying = false; endGesture(st); }
@@ -373,7 +397,7 @@
     if (k === ' ') { ui.paused = true; return true; }
     if (k === 'Enter') { contextAction(st); return true; }
     const mv = { ArrowUp: 0, ArrowRight: 1, ArrowDown: 2, ArrowLeft: 3 }[k];
-    if (mv !== undefined) { moveCursor(st, mv, e.shiftKey ? 5 : 1); return true; }
+    if (mv !== undefined) { moveCursor(st, mv, e.shiftKey ? D.CURSOR_JUMP : 1); return true; }
     return false;
   }
 
