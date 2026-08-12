@@ -4082,8 +4082,23 @@ function eventsSection(seed) {
       rows.push(line);
     }
     for (const i of M.logbook(st.meta))
-      assert(rows.some(l => l.indexOf(E.LOGS[i].slice(0, 30)) >= 0),
-        'a recovered entry is readable on the page: ' + E.LOGS[i]);
+      assert(rows.some(l => l.indexOf(E.LOGS[i]) >= 0),
+        'a recovered entry is readable on the page IN FULL: ' + E.LOGS[i]);
+    // ...and the page has room for the longest entry the corpus permits, so
+    // no future log can be clipped mid-word by being written to the limit
+    {
+      const longest = E.LOGS.slice().sort((a, b) => b.length - a.length)[0];
+      M.recordLog(st.meta, E.LOGS.indexOf(longest));
+      paint();
+      let widest = '';
+      for (let r = 0; r < D.ROWS; r++) {
+        let line = '';
+        for (let c = 0; c < D.COLS; c++) line += (DC.Render.cellAt(c, r) || { ch: ' ' }).ch;
+        if (line.indexOf(longest) >= 0) widest = line;
+      }
+      assert(widest, 'the widest entry in the book (' + longest.length +
+        ' cols) still fits the page unclipped');
+    }
     assert(rows.some(l => /·{20,}/.test(l)),
       'an unrecovered entry is a hole shaped like the line that belongs in it');
     // the entries clear the text floor; the holes are furniture at 3:1

@@ -813,6 +813,21 @@ function checkDigFinds() {
     'about 8% of excavations yield (got ' + (rate * 100).toFixed(1) + '%)');
   for (const f of D.FINDS)
     assert(seen[f.id] > 0, 'find "' + f.id + '" turned up in ' + N + ' digs');
+  // EGG-420's dig route (M-GRITPLUS asked for it; without this it is the typed
+  // code or nothing). Rolled per excavation rather than per find — see the
+  // note in events.js — and only ever once in a run.
+  assert(seen.tin > 0, 'the pre-collapse tin is findable at all');
+  {
+    const run = S.newRun(eff, 4242);
+    let tins = 0;
+    for (let i = 0; i < 20000; i++) {
+      if (E.rollDig(run, 5, 5) === 'tin') tins++;
+      run.instability = 0;
+      run.ev.rigTaken = false;
+    }
+    assert(tins === 1, 'the tin turns up exactly once in a run (got ' + tins + ')');
+    assert(run.eggSeen === true, 'and it really opened the window');
+  }
 
   // ---- the payloads, one at a time, on a clean run ----------------------
   function forced(id, at) {

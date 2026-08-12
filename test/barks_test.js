@@ -73,6 +73,24 @@ for (const t of CATALOG) {
     'pool "' + t + '" has 4-8 lines (got ' + pool.length + ')');
 }
 
+// M-EVENTS adds nine pools of its own. They are not in the SPEC2 catalog
+// above (that list is the shipped v1.1 surface and its count is quoted in the
+// PASS line), so their sizing is pinned here — same 4-8 rule, because a
+// three-line pool starts repeating inside one run and a nine-line one has
+// lines the player will never see.
+const EVENT_POOLS = ['digFind', 'lunchbox', 'bones', 'gasPocket', 'oldShaft',
+                     'deadRig', 'cat', 'catFlee', 'vignette'];
+for (const t of EVENT_POOLS) {
+  const pool = B.POOLS[t];
+  assert(Array.isArray(pool), 'M-EVENTS trigger "' + t + '" has a pool');
+  assert(pool.length >= 4 && pool.length <= 8,
+    'pool "' + t + '" has 4-8 lines (got ' + pool.length + ')');
+}
+// The one line that is deliberately NOT a pool: the cat's ending is a
+// punchline, and a punchline that rotates is one nobody can quote back.
+assert(typeof B.CAT_EPITAPH === 'string' && B.CAT_EPITAPH.length <= 70,
+  'the cat has exactly one epitaph, and it fits');
+
 // ------------------------------------------------------------ bespoke lines
 SECTION = 'bespoke';
 for (let d = 1; d <= D.STRATA_COUNT; d++)
