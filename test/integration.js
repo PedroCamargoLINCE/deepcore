@@ -50,6 +50,16 @@ function assertEq(a, b, msg) {
 }
 function key(x, y) { return x + ',' + y; }
 function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+// `navigator` is a real getter-only global from Node 21 on, so the plain
+// assignment the clipboard checks used to make now throws under 'use strict'
+// and took the whole suite down on a modern runtime. Define it instead — the
+// property is configurable either way, so `delete` still restores "no
+// navigator at all", which is the file:// case those checks are about.
+function setNav(v) {
+  if (v === undefined) { delete globalThis.navigator; return; }
+  Object.defineProperty(globalThis, 'navigator',
+    { value: v, configurable: true, writable: true });
+}
 function defEffects() { return DC.Meta.effects(DC.Meta.newProfile()); }
 
 // Debug aid: DC_DEBUG=1 prints the map on bot failures.
@@ -1771,22 +1781,22 @@ function recapSection(seed) {
     }
 
     // --- C: clipboard, and both ways it can fail --------------------------
-    global.navigator = {
+    setNav({
       clipboard: { writeText: function (t) { captured = t; return { catch: function () {} }; } },
-    };
+    });
     key('c');
     assertEq(captured, txt, 'C copied exactly the card that is on screen');
     assert(/COPIED/.test(st.ui.copied), 'the copy is confirmed on the card');
     assertEq(st.screen, 'recap', 'copying does not leave the card');
-    global.navigator = {                                   // permission denied
+    setNav({                                               // permission denied
       clipboard: { writeText: function () { return { catch: function (fn) { fn(new Error('no')); } }; } },
-    };
+    });
     key('c');
     assert(/REFUSED/.test(st.ui.copied), 'a rejected write leaves a readable notice');
-    global.navigator = {};                                 // file:// has none
+    setNav({});                                            // file:// has none
     key('c');
     assert(/CLIPBOARD/.test(st.ui.copied), 'no clipboard is a notice, not a crash');
-    delete global.navigator;
+    setNav(undefined);
     key('c');
     assert(st.ui.copied && st.ui.copied.length > 0, 'no navigator at all is survivable');
 
@@ -1852,9 +1862,9 @@ function recapSection(seed) {
     paint();
     assert(shown('CONTINUE INTO THE MANTLE'), 'the victory stats view offers the Mantle');
     key('Tab');
-    global.navigator = {
+    setNav({
       clipboard: { writeText: function (t) { captured = t; return { catch: function () {} }; } },
-    };
+    });
     captured = null;
     key('c');
     assert(captured && captured.indexOf('CORE BREACHED') >= 0,
@@ -1928,7 +1938,7 @@ function recapSection(seed) {
     delete global.location;
     delete global.requestAnimationFrame;
     delete global.localStorage;
-    delete global.navigator;
+    setNav(undefined);
   }
 }
 
