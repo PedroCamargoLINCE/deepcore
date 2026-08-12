@@ -33,6 +33,39 @@ DejaVu Sans Mono, which is why `sim.js` draws `»` instead and says so. Being
 over-inclusive is the safe direction: a spare glyph costs bytes, a missing one
 is a tofu box on screen. `tools/subset_font.py` prints anything it had to skip.
 
+## Braille was NOT vendored (M-HIRES Phase 3, 2026-08-12)
+
+The mechanism ships and works — `DC.Art.raster.braille()`, the runtime probe
+in `render.js`, the block fallback, and `A.coreSphere(mode)` which builds the
+victory sphere either way. A **second** vendored face for braille was
+declined, on measurements:
+
+| Face | braille glyphs | advance |
+|---|---|---|
+| DejaVu Sans Mono (the grid's face) | **0** | `█` is 1233/2048 = 0.602 em |
+| DejaVu Sans (what braille falls through to) | 256 | 1500/2048 = **0.7324 em** |
+| Noto Sans Symbols2 | 256 | 700/1000 = **0.70 em** |
+
+No monospace face on hand has braille at all. Every available source is
+proportional and ~21% too wide, so vendoring braille means taking glyphs from
+a proportional font, scaling the outlines ~82%, forcing a mono advance, and
+merging tables — surgery on a binary we cannot visually verify from here. The
+return is a rim that steps in quarter-cells instead of half-cells, on one
+screen, at the end of a winning run. Under §0 law 6 (readability is the
+objective) and law 2 (chunky beats smooth), that does not earn a second font.
+
+It is not dead code. The probe measures the *actual* stack, so on a machine
+whose fallback supplies cell-width braille — Windows with Cascadia Mono, which
+has the block and is monospaced — the sphere upgrades itself with no code
+change. Everywhere else it draws blocks, which is the default, not a degraded
+mode.
+
+**Do not skip the probe if someone does vendor braille later.** Browsers block
+webfonts and users override fonts; `flush()` batches a run of cells into one
+`fillText` scaled by `cw / adv`, so one proportional braille glyph slides every
+character after it out of its cell. The failure mode is a corrupted row, not a
+missing dot. `test/integration.js` SECTION 13 holds that line.
+
 ---
 
 # vendor/ — deliberately empty (M-MANUAL, 2026-08-11)

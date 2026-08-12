@@ -78,6 +78,7 @@
   let scale = 1, cw = CW, ch = CH, fontPx = FONT_PX;
   let font = FONT_PX + 'px ' + FONT_STACK;
   let fontReady = false;             // the vendored face has loaded and been measured
+  let brailleOK = false;             // braille is present AND cell-width (probed)
 
   // Render's own animation clock (M-HIRES Phase 0). Same contract as fx.js's:
   // driven by elapsed milliseconds, expressed in virtual 60 fps frames, so the
@@ -1170,7 +1171,18 @@
   }
 
   function drawVictory(state, phase) {
-    const lines = art('victory');
+    // M-HIRES Phase 3: the sphere's rim is drawn at whatever sub-cell
+    // resolution this machine can actually render. `art('victory')` is the
+    // block build and is always safe; the braille build is taken ONLY when
+    // the probe measured braille at the cell advance. Guarded so an art.js
+    // without coreSphere (or a throw inside it) still draws the sphere.
+    let lines = art('victory');
+    if (DC.Art && typeof DC.Art.coreSphere === 'function' && brailleOK) {
+      try {
+        const hi = DC.Art.coreSphere('braille');
+        if (Array.isArray(hi) && hi.length) lines = hi;
+      } catch (e) { /* keep the block build */ }
+    }
     drawArt(lines, 1, artColor('victory', C.magmaHot));
     // fx: the core sphere pulses. `w` is published so the pulse bands against
     // the sphere's real half-width instead of a hardcoded one (M-HIRES).
@@ -1384,6 +1396,32 @@
     ctx.font = font;
     const m = ctx.measureText('█');
     adv = (m && m.width > 0) ? m.width : cw;
+    probeBraille();
+  }
+
+  // ---- braille coverage probe (M-HIRES Phase 3) -------------------------
+  // Braille (U+2800-28FF) is NOT in DejaVu Sans Mono — verified per codepoint
+  // with fc-match, not assumed — and the fallback face is the PROPORTIONAL
+  // DejaVu Sans, whose braille advances 1500/2048 em against the grid's
+  // 1233/2048. That is 21.7% wide, and flush() batches a whole run of cells
+  // into one fillText scaled by cw/adv where adv came from '█': five braille
+  // glyphs in a row drift a full cell and the row is corrupted. So the
+  // failure mode is not a missing dot, it is a wrecked line of text.
+  //
+  // Hence: never emit braille without measuring first, every time the font
+  // changes. A vendored face does not excuse the probe — browsers block
+  // webfonts, users override fonts, and the check is two measureText calls.
+  const BRAILLE_EPS = 0.02;          // 2% of a cell; the real gap is 21.7%
+  function probeBraille() {
+    brailleOK = false;
+    try {
+      ctx.font = font;
+      const blk = ctx.measureText('█').width;
+      const brl = ctx.measureText('⣿').width;
+      if (!(blk > 0) || !(brl > 0)) return false;
+      brailleOK = Math.abs(brl - blk) <= blk * BRAILLE_EPS;
+    } catch (e) { brailleOK = false; }
+    return brailleOK;
   }
   // The CRT scanline period is a fixed 3px in style.css; at 2x scale that
   // reads twice as dense and muddies the art. Hand the sheet the current cell
@@ -1568,6 +1606,14 @@
     },
     fontReady: function () { return fontReady; },
     FONT_FAMILY: FONT_FAMILY,
+
+    // Which sub-cell technique the art may use on THIS machine, right now.
+    // 'braille' only when the probe measured braille at exactly the cell
+    // advance; otherwise 'blocks', which needs nothing but the system font.
+    // Art asks this rather than assuming, so the block path is not a
+    // degraded mode — it is the default, and braille is the upgrade.
+    subcellMode: function () { return brailleOK ? 'braille' : 'blocks'; },
+    probeBraille: function () { return ctx ? probeBraille() : false; },
 
     // Fit the grid to the viewport, preserving aspect. Called on load, on
     // every (debounced) window resize, and whenever devicePixelRatio changes

@@ -2962,6 +2962,117 @@ function fontSection() {
     });
 }
 
+// =========================================================================
+// SECTION 13 — the braille coverage probe and its block fallback
+// (M-HIRES Phase 3). Braille is NOT in DejaVu Sans Mono; the fallback face is
+// the PROPORTIONAL DejaVu Sans, whose braille advances 1500/2048 em against
+// the grid's 1233/2048 — 21.7% wide. flush() batches a run of cells into one
+// fillText scaled by cw/adv where adv came from '█', so five braille glyphs
+// drift a full cell: the failure mode is a CORRUPTED ROW, not a missing dot.
+// The probe therefore has to measure before anything emits braille, and the
+// block build has to be what renders when it cannot.
+// =========================================================================
+function brailleSection() {
+  SECTION = 'braille';
+  const R = DC.Render;
+  // Real numbers, from the actual font files: the grid advances 0.602 em and
+  // DejaVu Sans's braille advances 0.7324 em.
+  const CELL_EM = ADV_EM, PROPORTIONAL_EM = 1500 / 2048;
+  let brailleEm = PROPORTIONAL_EM;
+  const ctxStub = {
+    fillStyle: '', font: '', textBaseline: '', textAlign: '',
+    setTransform: function () {}, fillRect: function () {},
+    save: function () {}, restore: function () {}, scale: function () {},
+    fillText: function () {},
+    measureText: function (s) {
+      const cp = String(s).codePointAt(0);
+      const em = (cp >= 0x2800 && cp <= 0x28FF) ? brailleEm : CELL_EM;
+      return { width: parseFloat(this.font) * em };
+    },
+  };
+  const canvasStub = {
+    width: 0, height: 0, style: {},
+    getContext: function () { return ctxStub; },
+    addEventListener: function () {},
+    getBoundingClientRect: function () {
+      return { left: 0, top: 0, width: parseFloat(this.style.width) || 0,
+               height: parseFloat(this.style.height) || 0 };
+    },
+  };
+  R.init(canvasStub);
+
+  const run = S.newRun(defEffects(), 4242);
+  run.result = { depth: 8, breaches: 8, timeSec: 900, cores: 18, won: true };
+  const st = {
+    screen: 'victory', meta: DC.Meta.newProfile(), run: run,
+    ui: { tool: null, facing: 1, hover: null, cursor: { x: 0, y: 0 },
+          dragging: false, dragLast: null, laying: false, paused: false,
+          descendAnim: 0, shakeUntil: 0, flash: null },
+  };
+  function drawnCore() {
+    R.frame(st);
+    const rows = [];
+    for (let r = 0; r < D.ROWS; r++) {
+      let line = '';
+      for (let c = 0; c < D.COLS; c++) line += (R.cellAt(c, r) || { ch: ' ' }).ch;
+      rows.push(line);
+    }
+    return rows;
+  }
+  function hasBraille(rows) {
+    return rows.some((line) => Array.from(line).some((c) => {
+      const cp = c.codePointAt(0);
+      return cp >= 0x2800 && cp <= 0x28FF;
+    }));
+  }
+
+  // ---- braille absent (this is the shipped Linux/DejaVu situation) ------
+  assertEq(R.probeBraille(), false,
+    'a braille glyph 21.7% wider than the cell is correctly read as ABSENT');
+  assertEq(R.subcellMode(), 'blocks', 'so the renderer reports the block mode');
+  const fallbackRows = drawnCore();
+  assert(!hasBraille(fallbackRows),
+    'and NOT ONE braille glyph reaches the cell buffer — this is the assertion ' +
+    'that stands between a player and a corrupted row');
+  assert(fallbackRows.some((l) => l.indexOf('THE CORE') >= 0 || l.indexOf('C O R E') >= 0),
+    'scaffold: the victory screen really was drawn');
+  const blockGlyphs = fallbackRows.join('').match(/[▀-▟]/g) || [];
+  assert(blockGlyphs.length > 20,
+    'the sphere still has its block-element rim (' + blockGlyphs.length + ' glyphs)');
+
+  // ---- braille present and cell-width (a Windows Cascadia-style stack) --
+  brailleEm = CELL_EM;
+  assertEq(R.probeBraille(), true,
+    'a braille glyph that measures exactly one cell is read as present');
+  assertEq(R.subcellMode(), 'braille', 'and the renderer offers the braille mode');
+  const hiRows = drawnCore();
+  assert(hasBraille(hiRows), 'the sphere rim upgrades to braille when it is safe');
+
+  // ---- the layout must not move between the two -------------------------
+  let moved = null;
+  for (let r = 0; r < D.ROWS && !moved; r++) {
+    const a = fallbackRows[r].replace(/\S/g, '#');
+    const b = hiRows[r].replace(/\S/g, '#');
+    if (a.length !== b.length) moved = 'row ' + r;
+  }
+  assert(!moved, 'swapping modes never moves the layout (' + moved + ')');
+  for (const key of ['STRATA BREACHED', 'CORES EARNED', 'RUN RECAP CARD', 'ASCEND']) {
+    assert(fallbackRows.some((l) => l.indexOf(key) >= 0) &&
+           hiRows.some((l) => l.indexOf(key) >= 0),
+      '"' + key + '" is on the screen in both modes');
+  }
+
+  // ---- and the probe re-runs whenever the font changes ------------------
+  // A resize re-measures, and so does the webfont landing; a probe that ran
+  // once at boot would be stale the moment either happened.
+  brailleEm = PROPORTIONAL_EM;
+  R.resize(1920, 1080);
+  assertEq(R.subcellMode(), 'blocks',
+    'the probe re-runs on resize, so a font swap cannot leave it stale');
+  assert(!hasBraille(drawnCore()), 'and the sphere drops back to blocks immediately');
+  return blockGlyphs.length;
+}
+
 // -------------------------------------------------------------------- main
 const SEED = process.env.DC_SEED ? (parseInt(process.env.DC_SEED, 10) | 0) : 1337;
 try {
@@ -2981,6 +3092,7 @@ try {
   const fxRows = fxSection(SEED + 31);
   const blinks = clockSection(SEED + 41);
   const scaleSummary = scalingSection();
+  const rimGlyphs = brailleSection();
   // The webfont section is the one asynchronous check in the suite — a
   // document.fonts.ready handler cannot be driven synchronously — so the
   // PASS line waits on it rather than racing it.
@@ -2989,6 +3101,7 @@ try {
       ' | fx rows ' + fxRows + ' | recap card ' + cardRows + ' rows' +
       ' | clock 60=144Hz (' + blinks + ' blinks/4s)' +
       ' | scale ' + scaleSummary + ' | webfont re-measured ' + advEm + 'em' +
+      ' | braille probe->blocks (' + rimGlyphs + ' rim glyphs)' +
       ' | cadence 16/12/10 | overdrive x2 | damper ok | charge+bronze ok | mantle ok' +
       ' | engine+barks ok | ' + (Date.now() - t0) + 'ms');
     process.exit(0);

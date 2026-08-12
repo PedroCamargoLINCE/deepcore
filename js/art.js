@@ -120,6 +120,33 @@
       }
       return out;
     },
+    // The bitmap as rows of BRAILLE glyphs (M-HIRES Phase 3). 2 x 4 only.
+    // Dot numbering is Unicode's, which is not raster order: the left column
+    // is dots 1,2,3,7 and the right is 4,5,6,8, so the last row is the two
+    // high bits. Getting this wrong transposes the bottom of every shape.
+    braille: function (bm) {
+      const BIT = [
+        [0x01, 0x08],    // row 0: dots 1, 4
+        [0x02, 0x10],    // row 1: dots 2, 5
+        [0x04, 0x20],    // row 2: dots 3, 6
+        [0x40, 0x80],    // row 3: dots 7, 8
+      ];
+      const out = [];
+      for (let row = 0; row < bm.rows; row++) {
+        let s = '';
+        for (let col = 0; col < bm.cols; col++) {
+          let bits = 0;
+          for (let j = 0; j < 4; j++) {
+            for (let i = 0; i < 2; i++) {
+              if (R.get(bm, col * 2 + i, row * 4 + j)) bits |= BIT[j][i];
+            }
+          }
+          s += String.fromCharCode(0x2800 + bits);
+        }
+        out.push(s);
+      }
+      return out;
+    },
     // Level 0..4 as a shade glyph. Shades are for SOFT EDGES and gradients,
     // never for structure: at 10x19 a ▒ next to a ▓ is a texture, not a line.
     shade: function (level) {
@@ -294,26 +321,40 @@
   // whole ones, and the radial shading ramp is kept exactly as it was — it is
   // what makes the thing read as a lit sphere instead of a disc, and §0 law 6
   // says legibility outranks any cleverness I could put in its place.
+  // M-HIRES Phase 3 adds a `mode`. The INTERIOR is the shading ramp in both
+  // modes — that ramp is what makes the thing read as a lit sphere rather
+  // than a flat disc, and a uniform braille fill (⣿ is eight dots with gaps,
+  // a halftone screen) throws that depth cue away. What braille genuinely
+  // buys is the RIM: its sub-pixel is 5 x 4.75, near enough square, where a
+  // quadrant's is 5 x 9.5, so the silhouette steps in quarter-cells instead
+  // of half-cells. Shades inside, sub-cell at the edge — exactly the split
+  // the brief describes, and it is the reading that wins under §0 law 6.
   const VICTORY_W = 33, VICTORY_H = 17;
-  (function () {
-    const bm = R.bitmap(VICTORY_W, VICTORY_H, 2, 2);
+  A.coreSphere = function (mode) {
+    const braille = mode === 'braille';
+    const sy = braille ? 4 : 2;
+    const bm = R.bitmap(VICTORY_W, VICTORY_H, 2, sy);
     const cx = bm.w / 2, cy = bm.h / 2;
     // Radius in sub-columns: the largest disc that fits BOTH axes once the
-    // sub-pixel's 1.9:1 aspect is accounted for, less half a cell of margin.
+    // sub-pixel's aspect is accounted for, less half a cell of margin.
     const rad = Math.min(bm.w / 2, (bm.h / 2) * bm.aspect) - 0.6;
     R.disc(bm, cx, cy, rad, 1);
+    const rim = braille ? R.braille(bm) : R.quadrants(bm);
+    const full = 2 * sy;                                 // a fully covered cell
 
     const lines = [];
     for (let row = 0; row < VICTORY_H; row++) {
       let s = '';
       for (let col = 0; col < VICTORY_W; col++) {
-        const cover = R.cellMask(bm, col, row).n;         // 0..4 sub-pixels lit
+        const cover = R.cellMask(bm, col, row).n;        // sub-pixels lit
         // distance from the core, 0 at the centre and 1 at the rim, measured
         // in the same aspect-corrected space the disc was drawn in
-        const d = R.radial(bm, col * 2 + 1, row * 2 + 1, cx, cy, rad);
+        const d = R.radial(bm, col * 2 + 1, row * sy + sy / 2, cx, cy, rad);
         let ch = ' ';
         if (cover === 0) {
           if (d <= 1.3 && (col * 7 + row * 13) % 9 === 0) ch = '·';   // sparks
+        } else if (cover < full) {
+          ch = rim[row][col];                            // sub-cell silhouette
         } else if (d <= 0.10) ch = '☼';
         else if (d <= 0.38) ch = '█';
         else if (d <= 0.62) ch = '▓';
@@ -334,12 +375,16 @@
     const lead = Math.max(0, (VICTORY_W - cap.length) >> 1);
     lines.unshift((sp(lead) + cap + sp(VICTORY_W)).slice(0, VICTORY_W));
     lines.push(rep('▀', VICTORY_W));
-    A.victory = lines;
-    // Published so fx.js's core pulse can band the shading against the real
-    // geometry instead of a hardcoded half-width (it had rx = 28, which was
-    // the OLD sphere).
-    A.victoryGeom = { w: VICTORY_W, h: VICTORY_H, top: 1 };
-  })();
+    return lines;
+  };
+  // The default is the BLOCK build: it needs nothing but the system font.
+  // render.js swaps in the braille one only after probing that braille is
+  // really there — see DC.Render.subcellMode().
+  A.victory = A.coreSphere('blocks');
+  // Published so fx.js's core pulse can band the shading against the real
+  // geometry instead of a hardcoded half-width (it had rx = 28, which was
+  // the OLD sphere).
+  A.victoryGeom = { w: VICTORY_W, h: VICTORY_H, top: 1 };
 
   // ---------------- help: THE FIELD MANUAL (two pages) ----------------
   // M-MANUAL (SPEC3 §B). Two laws govern this block.
