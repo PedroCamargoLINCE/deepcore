@@ -250,7 +250,7 @@ Read SPEC.md, SPEC2.md, and SPEC3.md section M-HIRES in full, plus js/render.js
 (especially init(), flush() and pxToCell()) and js/data.js. Honor SPEC3's rules
 of engagement at the top of that file.
 
-The brief has four phases, ordered by value-per-risk. SHIP EACH AND COMMIT IT
+The brief has five phases, ordered by value-per-risk. SHIP EACH AND COMMIT IT
 before starting the next — Phase 1 alone is most of the value the director
 asked for, and a session limit mid-Phase-3 must not cost us the working
 scaling.
@@ -266,7 +266,13 @@ scaling.
            upscaled, so this genuinely sharpens rather than stretches.
   Phase 2: sub-cell resolution using block elements, which are already in the
            font — no dependency needed.
-  Phase 3: braille, ONLY behind a vendored subset font plus a runtime coverage
+  Phase 2.5: vendor a SUBSET of a full-Unicode monospace (not a code page — read
+           vendor/README.md for why CP437 was rejected) so the grid renders the
+           same on machines we cannot test. Traps: Render.init() measures the
+           glyph advance once at startup and a webfont loads asynchronously, so
+           it needs a re-measure on document.fonts.ready — the same fix Phase 1
+           already needs for resize. Keep the system stack as fallback.
+  Phase 3: braille, ONLY behind that vendored font plus a runtime coverage
            probe and a block-element fallback.
 
 VERIFY THIS BEFORE WRITING PHASE 3, and do not take it on faith from the brief:
