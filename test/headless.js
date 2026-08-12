@@ -38,6 +38,31 @@ function checkArt() {
   for (const k of Object.keys(DC.Art)) walk(k, DC.Art[k]);
 }
 
+// -------------------------------------------------- the vendored font subset
+// `vendor/deepcore-mono.woff2` carries EXACTLY the inventory tools/glyphs.js
+// reports, and regenerating it needs Python + fontTools that these suites
+// deliberately do not require. So adding a glyph to a bark, an art asset or a
+// data table without regenerating the font puts a tofu box on the screen of
+// every player whose system font is missing it — the exact class of bug
+// M-HIRES vendored the font to end, and one nothing else in the tree would
+// catch. This pins the inventory. If it fails you have added a glyph: either
+// use one of the 110 below, or run `node tools/font.js` and update this list
+// deliberately, in the same commit.
+const FONT_GLYPHS =
+  '¢¤§«°±·»×˙—’†‡•…←↑→↓↵−∩≈≋≡≤≫⌐─│┌┐└┘├┤┬┼═║╒╔╕╗╘╚╛╝╞╟╠╡╢╣╥╦╧╨╩╪╫╬' +
+  '▀▁▂▃▄▅▆▇█▉▊▋▌▍▎▏▐░▒▓▖▗▘▙▚▛▜▝▞▟▣▪▬▲▶▸▼◀◆◇◈○◎☼♠♦⣿';
+function checkGlyphInventory() {
+  const drawn = require('../tools/glyphs.js').glyphs.join('');
+  const have = new Set(FONT_GLYPHS.split(''));
+  const added = drawn.split('').filter((c) => !have.has(c));
+  assert(added.length === 0,
+    'these glyphs are not in vendor/deepcore-mono.woff2 and will tofu: ' +
+    added.join(' ') + ' (' + added.map((c) =>
+      'U+' + c.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')).join(' ') +
+    ') — see tools/font.js');
+  return drawn.length;
+}
+
 // ------------------------------------------------------------------ the run
 let run = null;
 let platesGained = 0;   // inv.ironPlate increases observed across ticks (= smelted)
@@ -942,10 +967,236 @@ function checkDigFinds() {
   return st0.finds;
 }
 
+// ======================================================================
+// M-EVENTS — the expedition vignettes, at the sim layer.
+// The catalog is audited as DATA first (what an event is allowed to do is
+// the whole safety story of the feature), then the roll, then every effect
+// kind, then the two house rules the module claims: a vignette can never
+// kill you, and a one-stratum modifier is really one stratum.
+// ======================================================================
+function checkVignettes() {
+  const E = DC.Events;
+  const A = DC.Art;
+  const eff = DC.Meta.effects(DC.Meta.newProfile());
+  assert(typeof E.rollVignette === 'function' && typeof E.apply === 'function',
+    'DC.Events exposes rollVignette/apply');
+  const V = E.VIGNETTES;
+  assert(Array.isArray(V) && V.length >= 20,
+    'twenty expedition vignettes are authored (got ' + (V && V.length) + ')');
+
+  // ---- the catalog as data ---------------------------------------------
+  // FX_KEYS is the contract. SPEC3 limits a vignette to inventory deltas,
+  // integrity/pressure, a one-stratum modifier, or the cat; anything else
+  // appearing here is a vignette that has quietly become a game mechanic.
+  const FX_KEYS = ['inv', 'ore', 'integrity', 'inst', 'reveal', 'schematic',
+                   'log', 'cat', 'modsSet', 'modsMul'];
+  const ids = new Set();
+  let catGivers = 0, choices = 0;
+  for (const v of V) {
+    assert(typeof v.id === 'string' && !ids.has(v.id), 'unique vignette id: ' + v.id);
+    ids.add(v.id);
+    assert(typeof v.title === 'string' && v.title.length <= 34,
+      v.id + ': the title fits the panel (' + v.title.length + ')');
+    assert(Array.isArray(v.text) && v.text.length >= 1 && v.text.length <= 2,
+      v.id + ': one or two lines of prose');
+    for (const p of v.text)
+      assert(p.length <= 64, v.id + ': prose line fits 64 columns (' + p.length + ')');
+    assert(v.min >= 1 && v.min <= D.STRATA_COUNT,
+      v.id + ': the depth gate names a real stratum');
+    assertEqJSON(v.choices.length, 2, v.id + ': a vignette is a fork, not a menu');
+    for (const c of v.choices) {
+      choices++;
+      assert(typeof c.label === 'string' && c.label.length <= 30,
+        v.id + ': choice label fits (' + c.label.length + '): ' + c.label);
+      assert(typeof c.hint === 'string' && c.hint.length <= 46,
+        v.id + ': choice hint fits (' + (c.hint || '').length + ')');
+      assert(typeof c.result === 'string' && c.result.length <= 66,
+        v.id + ': the result line fits (' + (c.result || '').length + ')');
+      for (const k in (c.fx || {}))
+        assert(FX_KEYS.indexOf(k) >= 0,
+          v.id + ': "' + k + '" is not an effect a vignette may have');
+      if (c.fx && c.fx.cat) catGivers++;
+    }
+    // house rule 2: every choice does something (see events.js). The Coin's
+    // keepsake is the single authored exception and is named here so that
+    // adding a SECOND do-nothing option has to be a deliberate edit.
+    const inert = v.choices.filter(c => !c.fx || Object.keys(c.fx).length === 0);
+    assert(inert.length === 0 || v.id === 'coin',
+      v.id + ': "walk away" has to buy something');
+    // and a panel to look at
+    const art = A.eventFrame(v.id);
+    assert(Array.isArray(art) && art.length && art.length <= A.EVENT_H,
+      v.id + ': has a panel that fits ' + A.EVENT_H + ' rows');
+    assert(A.eventFrames[v.id], v.id + ': has its OWN panel, not the placeholder');
+    for (const ln of art)
+      assert([...ln].length <= A.EVENT_W,
+        v.id + ': panel row fits ' + A.EVENT_W + ' columns: ' + ln);
+  }
+  assert(catGivers === 1, 'exactly one choice in the whole catalog gives the cat');
+
+  // ---- the roll ---------------------------------------------------------
+  {
+    // Rate, measured on a run parked at the deepest stratum so the whole
+    // catalog is eligible; `seen` is cleared each time because the once-per-
+    // run rule is what the next block is about.
+    const run = S.newRun(eff, 5150);
+    run.depth = D.STRATA_COUNT;
+    let hits = 0;
+    const N = 4000;
+    for (let i = 0; i < N; i++) {
+      run.ev = null;                       // a fresh run's worth of state
+      const S2 = E.state(run);
+      S2.rng = DC.util.mulberry32(i + 1);  // scaffold: an independent draw each time
+      if (E.rollVignette(run)) hits++;
+    }
+    const rate = hits / N;
+    assert(rate > 0.20 && rate < 0.30,
+      'about 25% of descents ask you something (got ' +
+      (rate * 100).toFixed(1) + '%)');
+  }
+  {
+    // Never twice in a run, and never above its depth gate.
+    const run = S.newRun(eff, 77);
+    const got = [];
+    for (let d = 1; d <= 40; d++) {
+      run.depth = 1 + (d % D.STRATA_COUNT);
+      E.state(run);                        // sync the floor
+      const v = E.rollVignette(run);
+      if (v) {
+        assert(got.indexOf(v.id) < 0, 'no vignette is offered twice a run: ' + v.id);
+        assert(v.min <= run.depth, v.id + ' respects its depth gate');
+        got.push(v.id);
+      }
+    }
+    assert(got.length > 2, 'the drive saw a few vignettes (' + got.length + ')');
+  }
+  {
+    // the cat's vignette is withdrawn once you have a cat
+    const run = S.newRun(eff, 4);
+    const st = E.state(run);
+    st.cat = { x: 1, y: 1 };
+    for (let i = 0; i < 400; i++) {
+      st.seen = {};
+      const v = E.rollVignette(run);
+      assert(!v || v.id !== 'crate', 'the crate is not offered to a cat owner');
+    }
+  }
+
+  // ---- every effect kind, applied ---------------------------------------
+  function byId(id) { return V.filter(v => v.id === id)[0]; }
+  function fresh(depth) {
+    const run = S.newRun(eff, 313);
+    run.depth = depth || 1;
+    E.state(run);
+    return run;
+  }
+  {  // inventory, both directions
+    const run = fresh();
+    run.inv.ironPlate = 5;
+    E.apply(run, byId('vault'), 0);
+    assert(run.inv.ironPlate === 35, 'a vignette adds to the hub (got ' +
+      run.inv.ironPlate + ')');
+    const run2 = fresh();
+    run2.inv.gear = 1;
+    E.apply(run2, byId('shrine'), 0);     // costs 2 gears; only 1 in stock
+    assert(run2.inv.gear === 0, 'a cost never takes an inventory negative');
+  }
+  {  // pressure, clamped both ends
+    const run = fresh();
+    run.instability = 3;
+    E.apply(run, byId('vault'), 1);       // -10
+    assert(run.instability === 0, 'pressure clamps at 0');
+    const run2 = fresh();
+    run2.instability = 96;
+    E.apply(run2, byId('vault'), 0);      // +15
+    assert(run2.instability === D.INSTAB_MAX, 'pressure clamps at the ceiling');
+  }
+  {  // HOUSE RULE 1: a vignette can never end a run
+    const run = fresh(6);
+    run.integrity = 3;
+    E.apply(run, byId('offer'), 0);       // -15 hull
+    assert(run.integrity === 1,
+      'a costly vignette leaves you alive at 1 (got ' + run.integrity + ')');
+    assert(run.status !== 'dead', 'and the run is still going');
+    // ...and it never overheals
+    const run2 = fresh();
+    run2.integrity = run2.maxIntegrity - 2;
+    E.apply(run2, byId('rations'), 0);    // +12 hull
+    assert(run2.integrity === run2.maxIntegrity, 'healing stops at max integrity');
+  }
+  {  // the map
+    const run = fresh(3);
+    let hidden = 0;
+    for (let y = 0; y < D.MAP_H; y++)
+      for (let x = 0; x < D.MAP_W; x++) if (!run.grid[y][x].revealed) hidden++;
+    assert(hidden > 0, 'the scaffold has map left to reveal');
+    E.apply(run, byId('crack'), 0);
+    for (let y = 0; y < D.MAP_H; y++)
+      for (let x = 0; x < D.MAP_W; x++)
+        assert(run.grid[y][x].revealed, 'listening maps the whole stratum');
+  }
+  {  // a schematic, installed without a descent
+    const run = fresh(2);
+    const d0 = run.depth, n0 = run.schematics.length;
+    E.apply(run, byId('ghost'), 0);
+    assert(run.schematics.length === n0 + 1, 'the ghost trades you a schematic');
+    assert(run.depth === d0, '...without descending a floor');
+  }
+  {  // a foreman log
+    const run = fresh(4);
+    E.apply(run, byId('watchman'), 1);
+    assert(E.peek(run).logs.length === 1, 'the watchman leaves you her log');
+  }
+  {  // HOUSE RULE: one-stratum modifiers really are one stratum
+    const run = fresh(2);
+    const base = run.mods.offerCount;
+    E.apply(run, byId('drone'), 0);
+    assert(run.mods.offerCount === 4, 'the bribe buys a fourth schematic offer');
+    // it survives the whole floor...
+    for (let i = 0; i < 200; i++) S.tick(run);
+    assert(run.mods.offerCount === 4, '...for the whole of that floor');
+    // ...and is handed back on arrival at the next one
+    run.depth++;
+    E.state(run);
+    assert(run.mods.offerCount === base,
+      'and the next floor gets its own offers back (got ' + run.mods.offerCount + ')');
+    // multiplicative modifiers restore exactly, not approximately
+    const run2 = fresh(3);
+    const inst0 = run2.mods.instMult;
+    E.apply(run2, byId('seam'), 1);
+    assert(Math.abs(run2.mods.instMult - inst0 * 0.8) < 1e-9,
+      'the quiet seam calms the floor by a fifth');
+    run2.depth++;
+    E.state(run2);
+    assert(run2.mods.instMult === inst0, 'and hands the multiplier back exactly');
+  }
+
+  // ---- and none of it touches the sim's stream --------------------------
+  {
+    function stream(withVignettes) {
+      const run = S.newRun(eff, 6161);
+      run.depth = 5;
+      if (withVignettes) {
+        for (let i = 0; i < 40; i++) {
+          const v = E.rollVignette(run);
+          if (v) E.apply(run, v, i % 2);
+          run.ev.seen = {};
+        }
+      }
+      return [run.rng(), run.rng(), run.rng()].join(',');
+    }
+    assert(stream(true) === stream(false),
+      'vignettes never move the sim rng stream');
+  }
+  return V.length + ' vignettes, ' + choices + ' choices';
+}
+
 function main() {
   checkArt();
+  const glyphN = checkGlyphInventory();
   checkSave();
   const digFinds = checkDigFinds();
+  const vignettes = checkVignettes();
   const lmSweep = checkLandmarkSweep();
 
   const eff = DC.Meta.effects(DC.Meta.newProfile());
@@ -1003,7 +1254,9 @@ function main() {
     ' | quakes ' + (shakes - shakes0) + ' (' + quakeMsgs.length + ' msgs)' +
     ' | integrity ' + integ0 + '->' + run.integrity +
     ' | status ' + run.status +
+    ' | glyphs ' + glyphN + ' in the subset' +
     ' | dig finds ' + digFinds + '/4000, all 7 kinds' +
+    ' | ' + vignettes +
     ' | landmarks ' + lmSweep.withLm + '/' + lmSweep.maps + ' maps, ' +
     lmSweep.cells + ' cells, ' + Object.keys(lmSweep.ids).length + ' kinds, ' +
     'veins+connectivity held');

@@ -1471,10 +1471,18 @@ function engineBarksSection(seed) {
   const pickId = run.pendingOffers[1];
   key('2');
   assertEq(run.depth, preDepth + 1, "'2' picked the second schematic");
-  assertEq(st.screen, 'run', 'back on the run screen');
   assert(run.schematics.indexOf(pickId) >= 0, 'schematic applied');
   assertEq(run.foreman && run.foreman.text, B.SCHEM_LINES[pickId],
     'bespoke schematic bark fired on applySchematic');
+  // M-EVENTS: a quarter of descents open with a vignette rather than with the
+  // floor. The descent's own effects are asserted above it, because answering
+  // the fork puts GRIT's line about the fork on top of his schematic line.
+  if (st.screen === 'vignette') {
+    assert(DC.Events && DC.Events.pending(run),
+      'the vignette screen actually has a vignette on it');
+    key('1');
+  }
+  assertEq(st.screen, 'run', 'back on the run screen');
   assert(st.ui.flash && st.ui.flash.text.indexOf('STRATUM ' + run.depth) >= 0,
     'stratum-2 arrival flash set');
   assertEq(st.ui.flash.color, D.STRATA[1].accent, 'arrival flash uses stratum-2 accent');
@@ -1710,6 +1718,7 @@ function recapSection(seed) {
     assertEq(run.splits[0].gears, run.breachReq.gear, 'the split carries its feed totals');
     frames(140);
     key('1');
+    if (st.screen === 'vignette') key('1');   // M-EVENTS: walk through the fork
     assertEq(run.depth, 2, 'into stratum 2');
     assert(run.t < t1, 'the stratum clock reset behind the split');
 
@@ -3944,6 +3953,9 @@ function eventsSection(seed) {
     handlers.keydown({ key: k, shiftKey: false, preventDefault: function () {} });
   }
   function paint() { drawn.length = 0; frames(1); }
+  // Some screens type themselves in (fx.js). `settle` gives them long enough
+  // to finish before anything asserts on what is written there.
+  function settle() { drawn.length = 0; frames(24); }
   function shown(s) { return drawn.some(x => x.indexOf(s) >= 0); }
 
   try {
@@ -4073,7 +4085,72 @@ function eventsSection(seed) {
     key('Escape');
     assertEq(st.screen, 'foundry', 'ESC returns to the Foundry');
 
-    return ev.finds + ' finds / ' + holes + ' holes, book ' + bookN;
+    // --- the vignette screen ----------------------------------------------
+    // A vignette is forced onto a live run rather than waited for at 25% per
+    // descent: the roll is headless.js's business, and what is under test
+    // here is that the screen is a real screen with real keys and that the
+    // choice reaches the sim, the profile and GRIT's mouth.
+    st.screen = 'title';
+    key('Enter');
+    const vrun = st.run;
+    const V = E.VIGNETTES;
+    function force(id) {
+      const v = V.filter(x => x.id === id)[0];
+      assert(v, 'vignette ' + id + ' exists');
+      E.state(vrun).vignette = v;
+      st.screen = 'vignette';
+      return v;
+    }
+    {
+      const v = force('vault');
+      settle();                                       // the title types itself
+      assert(!shown('RENDER ERROR'), 'the vignette screen renders clean');
+      assert(shown(v.title), 'the panel is titled');
+      assert(shown(v.choices[0].label) && shown(v.choices[1].label),
+        'both choices are on screen');
+      assert(shown('CHOOSE — [1] OR [2]'), 'and the screen says how to answer');
+      // ESC is not a way out of a fork
+      key('Escape');
+      assertEq(st.screen, 'vignette', 'ESC does not dismiss a vignette');
+      const plates = vrun.inv.ironPlate || 0;
+      const inst = vrun.instability;
+      vrun.totalT += 60 * HZ;
+      vrun.stats.lastPlaceT = vrun.totalT;
+      vrun.stats.lastFeedT = vrun.totalT;
+      key('1');                                       // BREACH IT
+      assertEq(st.screen, 'run', 'answering returns you to the floor');
+      assertEq(vrun.inv.ironPlate, plates + 30, 'the choice reached the hub');
+      assert(vrun.instability > inst, 'and the pressure it cost is real');
+      assertEq(vrun.foreman && vrun.foreman.text, B.VIGNETTE_LINES['vault:0'],
+        "GRIT's bespoke line for that choice landed");
+      assertEq(E.pending(vrun), null, 'the vignette is spent');
+    }
+    {  // the mouse route, over Render.layout.choices
+      force('coin');
+      paint();
+      const rows = DC.Render.layout.choices;
+      assert(Array.isArray(rows) && rows.length === 2,
+        'render publishes both choices as hit boxes');
+      const r = rows[1];
+      handlers.mousemove({ clientX: (r.col + 2) * 10 + 5, clientY: r.row * 19 + 9 });
+      assertEq(st.ui.hoverChoice, 1, 'hovering the second choice highlights it');
+      const inst = vrun.instability;
+      handlers.mousedown({ clientX: (r.col + 2) * 10 + 5, clientY: r.row * 19 + 9 });
+      assertEq(st.screen, 'run', 'clicking a choice answers it');
+      assert(vrun.instability < inst, 'paying the rock vented pressure');
+    }
+    {  // the cat: found once, and yours from then on
+      assertEq(DC.Meta.catFound(st.meta), false, 'no cat yet');
+      force('crate');
+      vrun.totalT += 60 * HZ;
+      key('1');                                       // OPEN IT
+      assert(DC.Meta.catFound(st.meta), 'opening the crate finds the cat');
+      assert(JSON.parse(cell[D.SAVE_KEY] || '{}').catFound === true,
+        '...and the cat is on disk');
+    }
+
+    return ev.finds + ' finds / ' + holes + ' holes, book ' + bookN +
+           ', ' + V.length + ' vignettes';
   } finally {
     delete global.window;
     delete global.document;
