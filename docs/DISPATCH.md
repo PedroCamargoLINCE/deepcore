@@ -451,7 +451,25 @@ anything the orchestrator must know to merge cleanly.
 
 ---
 
-### Wave 4 — M-EVENTS (big; run it alone)
+### Wave 4 — M-EVENTS — CLOUD-READY PROMPT AT `docs/prompts/M-EVENTS.cloud.txt`
+
+Dispatch it without tying up the laptop:
+
+```
+claude --cloud "M-EVENTS: vignettes and the cave-cat" "$(cat docs/prompts/M-EVENTS.cloud.txt)"
+```
+
+`--cloud` is **interactive only** — it refuses `--print`, so it cannot be
+launched from a script or by an agent. A human has to start it; the command
+above seeds it in one go so that is the only manual step.
+
+That file is the local prompt below with the two cloud substitutions applied
+(branch instead of worktree, no absolute path), plus a paragraph the local
+version predates: Waves 1–3 have merged, so `js/fx.js`, `DC.Barks.CORE`,
+landmarks and EGG-420's dig-find route all EXIST now and should be wired rather
+than guarded away. Keep the two copies in step if you edit either.
+
+### Wave 4 — M-EVENTS, local variant (big; run it alone)
 
 ```
 Work in /home/pedro/Documents/games/deepcore. Create a git worktree named
