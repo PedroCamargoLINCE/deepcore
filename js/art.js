@@ -502,8 +502,8 @@
       ]);
       p.put(CB + 2, 17, 'and slows the climb −' + calmPct + '%', 'body');
       p.put(CB + 2, 18, 'each · up to ' + damperMax + ' of them.', 'body');
-      p.put(CB, 20, 'descending vents −' + vent + ' pressure:', 'body');
-      p.put(CB, 21, 'the only real relief there is.', 'body');
+      p.put(CB, 20, 'descending vents −' + vent + ' pressure —', 'body');
+      p.put(CB, 21, 'the rest only slows the climb.', 'body');
 
       // --- TIPS + the one line GRIT contributes to the documentation
       p.head(CA, 23, W - CA - 1, 'TIPS');
