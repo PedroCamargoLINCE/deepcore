@@ -1,0 +1,79 @@
+Work in this repository. Create and switch to a branch named M-ONBOARD-1 off
+origin/master, and do all your work on it. You are the only session running.
+
+Read SPEC.md, SPEC2.md, and SPEC3.md section M-ONBOARD in full, plus js/sim.js,
+js/engine.js and js/render.js. Honor SPEC3's rules of engagement and §0's SEVEN
+laws — laws 6 (readability is the objective) and 7 (run.rng is the sim's
+stream) both bear directly on this work.
+
+SCOPE: PART 1 ONLY — the diagnostics. Do NOT build the first-run tutorial
+(Part 2); it is a separate later dispatch. If you finish Part 1 early, spend
+the time on test coverage and on the wording of the messages, not on Part 2.
+
+WHY THIS BRIEF EXISTS. The director could not play his own game while every
+test suite was green. Reproduce it before you fix it, because the reproduction
+is the acceptance test:
+
+  place an extractor on a revealed ore vein, with NO belt on its output side,
+  and tick the sim 600 times.
+
+It mines an ore on the first cycle, puts it in machine.out, finds nowhere to
+put it, sets status 'blocked', and sits there forever. It emits ZERO log
+messages. render.js draws a red '!' over it (see the `bad` branch around
+js/render.js:638) and nothing anywhere says what that '!' means. A player sees
+a machine do nothing plus one unexplained mark and concludes the game is
+broken. The mechanics are sound; the teaching is absent.
+
+WHAT TO BUILD
+
+1. Every failure state names its own cause, ONCE, in the LOG:
+   - blocked output (the case above) — say what is wrong AND the fix, e.g.
+     "The extractor is full. Nothing is carrying it away — lay a belt on its
+     output side (R rotates before you place)."
+   - out of fuel, depleted vein, jammed belt, an assembler with no recipe or
+     no inputs, and the rig when a breach stalls for want of a specific item.
+   - Once per run per CAUSE, not per machine and not per tick. A message that
+     repeats is a message players learn to ignore.
+
+2. Disambiguate '!'. It currently means blocked OR nofuel OR depleted with no
+   way to tell which. Either differentiate the glyph or — better — make the
+   SCAN panel state the reason when the cursor or pointer is on the machine.
+   That panel already exists and already has room. Whatever you choose must
+   pass the contrast and width rules the existing panels are held to.
+
+VOICE. This is the SYSTEM's voice, not GRIT's. Law 3 says GRIT never explains
+mechanics, and law 6 says legibility beats everything — so the log line must be
+plainly, boringly clear FIRST. GRIT may editorialize on top afterwards (a
+separate bark, and only for the first occurrence in a run) but he must never be
+the one carrying the information. If a player has to parse a joke to learn why
+their base is stopped, the brief has failed.
+
+DETERMINISM. These messages originate in the sim, so they are sim events: no
+Date.now, no Math.random, and no draws from run.rng (law 7 — derive a stream
+from the seed if you need one at all, though this brief probably needs none).
+Two runs with the same seed and the same inputs must produce the same messages
+in the same order.
+
+ACCEPTANCE
+- A headless test that runs the exact reproduction above and asserts the LOG
+  names the cause within N ticks. That test is the point of the brief.
+- A test that the same cause does not repeat within a run.
+- Existing suites extended, not weakened, for each new message.
+- Gate: all five suites green (node test/headless.js, test/integration.js,
+  test/barks_test.js, test/rig_test.js, test/balance.js) and node tools/build.js
+  parses. test/balance.js must not regress: read its footer first — it explains
+  which SPEC §12 target is measured under which Foundry loadout, and which
+  failures are the scripted bot's ceiling rather than the game's.
+
+Note for your own calibration: the balance bot has never once failed to connect
+an extractor, because it knows the rules by construction. A green sweep proves
+the game is WINNABLE, never that it is PLAYABLE. This brief is the first one
+aimed at the second property.
+
+Checkpoint-commit AND PUSH your branch after every green milestone, with a
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> trailer.
+
+When done: push your branch to origin and STOP — do not merge, rebase or
+force-push; the orchestrator merges. Report: every failure state you gave a
+voice, the exact wording you chose, how you disambiguated '!', what you left
+for Part 2, and your final test output.
