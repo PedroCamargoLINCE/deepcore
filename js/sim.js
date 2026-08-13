@@ -321,6 +321,9 @@
       msg(run, 'The seal breaks. Company property: ' + (s ? s.name : 'nothing'),
           D.COLORS.cyan);
       out = s ? 'schematic recovered: ' + s.name : 'the vault was already emptied';
+      // M-EVENTS: a Company hatch is also a Company FILE. Whoever welded this
+      // one shut wrote something down first, and it goes in the logbook.
+      if (DC.Events && DC.Events.grantLog) DC.Events.grantLog(run);
     }
     pushEvent(run, 'landmark', { id: def.id, act: 'use' });
     return { handled: true, kind: 'landmark', msg: out };
@@ -360,7 +363,14 @@
             msg(run, 'A spire comes down — 1 ' + D.ITEMS[ld.dig.yield].name + '.',
                 D.ITEMS[ld.dig.yield].color);
             pushEvent(run, 'landmark', { id: ld.id, act: 'use' });
-          } else if (t.t === 'rock') t.t = 'floor';
+          } else if (t.t === 'rock') {
+            t.t = 'floor';
+            // M-EVENTS: the rock has things in it. Guarded, so a tree without
+            // js/events.js digs exactly as it always did — and that module
+            // rolls on its own derived stream, so a find can never move the
+            // quake schedule out from under a dig.
+            if (DC.Events && DC.Events.rollDig) DC.Events.rollDig(run, x, y);
+          }
           t.rubble = false;
         }
       }
@@ -378,6 +388,10 @@
     stepCoreGate(run);
     stepQuake(run);
     stepMagma(run);
+    // M-EVENTS: the gas pocket's one-second fuse and the cat's next step.
+    // After the hazards on purpose — the cat bolts for the rig off a quake
+    // that was scheduled on this very tick, which is the whole trick.
+    if (DC.Events && DC.Events.tick) DC.Events.tick(run);
     if (run.status === 'active' &&
         run.gearsFed >= run.breachReq.gear && run.chargesFed >= run.breachReq.charge) {
       run.status = 'breachReady';
@@ -1004,6 +1018,21 @@
     const s = D.SCHEMATICS.filter(x => x.id === id)[0];
     msg(run, 'Schematic installed: ' + (s ? s.name : id), D.COLORS.cyan);
     msg(run, '▼ Descending — stratum ' + run.depth + '.', D.COLORS.amber);
+    // M-EVENTS: and between the pick and the floor, the dark may ask you
+    // something. Guarded; engine.js checks Events.pending to decide whether
+    // there is a screen to show, so an absent module descends as it always did.
+    if (DC.Events && DC.Events.rollVignette) DC.Events.rollVignette(run);
+  }
+
+  // M-EVENTS: install a schematic mid-stratum, without a descent (the Miner's
+  // Ghost trades one for hull). The CALLER chooses which — events.js rolls it
+  // on its own stream — so this consumes no randomness at all, and a run with
+  // a ghost in it schedules exactly the quakes a run without one does.
+  function installSchematic(run, id) {
+    if (!id || !run || run.schematics.indexOf(id) >= 0) return null;
+    run.schematics.push(id);
+    applySchematicMod(run, id);
+    return id;
   }
 
   function abandon(run) {
@@ -1140,6 +1169,8 @@
     clickTile: clickTile, toggleOverdrive: toggleOverdrive,
     beginDescent: beginDescent, continueIntoMantle: continueIntoMantle,
     applySchematic: applySchematic, abandon: abandon,
+    // M-EVENTS: a schematic granted outside a descent (the caller picks it)
+    installSchematic: installSchematic,
     describeTile: describeTile, feedRate: feedRate, msg: msg,
     // M-CORELORE / M-GRITPLUS: the Core Gate's progress reading, the EGG-420
     // window (engine opens it from the typed code; js/events.js may open it

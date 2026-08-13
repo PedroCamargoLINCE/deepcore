@@ -272,6 +272,80 @@
       "Whatever you just woke up is your responsibility now, kid.",
       "Noted in the log as 'operator initiative'. That's a warning label.",
     ],
+    // M-EVENTS — what the rock had in it. The finds that PAY share one pool
+    // (an ore pocket and a plate cache are the same shrug in his mouth); the
+    // four that pay nothing but story get their own, because that story is
+    // the entire reason they exist.
+    digFind: [
+      "Rock owes us about nine years. Rock just paid a Tuesday.",
+      "Free material out of a hole. Rare. Take it and say nothing.",
+      "Well, look at that. The seam had a conscience after all.",
+      "Log it under 'found'. The Company reads 'found' as 'theirs'.",
+      "Somebody left that behind. Their loss, our shift bonus, kid.",
+      "Twenty years and the rock still hands me presents. Suspicious.",
+    ],
+    lunchbox: [
+      "A lunchbox. Sealed. Somebody meant to come back for that one.",
+      "Don't open it. I opened one on four. I still think about it.",
+      "That's a Halloran box. Man packed a thermos every single shift.",
+      "Empty belly, full box. The deep's idea of a punchline, that.",
+      "Leave it where he set it down. He's owed that much, at least.",
+      "Old foreman told me: never eat what the rock kept. He was thin.",
+    ],
+    bones: [
+      "Somebody stopped here. Boots off. He knew he was stopping.",
+      "Say nothing, dig on. That's the whole funeral we can afford.",
+      "Hard hat still on him. Regulations to the last, the poor sod.",
+      "That's no fossil, kid. Fossils are older than the Company.",
+      "Every seam down here is somebody's last address. Mind yours.",
+    ],
+    gasPocket: [
+      "HISS. Down— right. Pressure's up. Breathe through your teeth.",
+      "Pocket gas. Sour, ancient, furious, and ours now. Wonderful.",
+      "The whole seam just exhaled on us. Charming. Keep drilling.",
+      "For the file: the planet burps. The gauge agrees with me.",
+      "Everybody smell that? Good. Means you're still breathing.",
+    ],
+    oldShaft: [
+      "Somebody dug that before us. Scan's running down it. Free map.",
+      "An old shaft means an old crew. Look, learn, do NOT linger.",
+      "That hole goes further than our paperwork does. Eyes forward.",
+      "Company says these shafts don't exist. Company says a lot.",
+      "Free survey, courtesy of a dead man. Thank him by moving fast.",
+    ],
+    deadRig: [
+      "Another rig. Strip her. She'd rather work than rust, that one.",
+      "Twelve plates and a last log entry. That's a career, kid.",
+      "Read what he wrote. Then dig faster. That's how you thank him.",
+      "Poor bastard got this far. We go further. Feed the drill.",
+      "It isn't grave-robbing if you leave the name plate bolted on.",
+    ],
+    // M-EVENTS — the expedition vignettes. GRIT does not narrate the event
+    // (the rock does that, in events.js); he editorialises the CHOICE, a beat
+    // after you have made it. The bespoke line per choice is in
+    // VIGNETTE_LINES below; this is the fallback for anything unwritten.
+    // M-EVENTS — the cave-cat. He is not a cat person. He is, demonstrably,
+    // a cat person.
+    cat: [
+      "There's a cat on my rig. Fine. She's crew. Don't tell payroll.",
+      "Cat's asleep on a live smelter. Best safety officer we've had.",
+      "She washed her face at me. I think that's a performance review.",
+      "Name her whatever you like, kid. She already named herself.",
+      "Twenty years down here and the CAT gets the warm seat. Typical.",
+    ],
+    catFlee: [
+      "Cat's running. CAT'S RUNNING. Brace for it, kid, she's never wrong.",
+      "She just bolted for the rig. Whatever she heard, it's coming.",
+      "Watch the cat, not the gauge. The cat is the gauge. Hold on.",
+      "That's her tell. Two seconds. Grab something bolted down.",
+    ],
+    vignette: [
+      "Whatever you just decided, it's in the log as YOUR decision.",
+      "Nobody has ever come back to tell me which one was correct.",
+      "Fine. Done is done. The drill doesn't care either way. Move.",
+      "Every crew that stood there picked one. Most of them were wrong.",
+      "That's the thing about a fork, kid. You only get the one leg.",
+    ],
     egg420End: [
       "Break's over. Why does the copper smell like breakfast, kid?",
       "Whatever that was, it's wearing off. I'd fight a man for toast.",
@@ -375,6 +449,57 @@
       use: "Sweep bounced clean off. Free survey. I'll take free.",
     },
     root: { find: "That column runs to the mantle. The planet braces on it." },
+  };
+
+  // ---------------- M-EVENTS: the foreman answers the fork ----------------
+  // Keyed '<vignette id>:<choice index>'. GRIT is not the narrator of these
+  // — the rock narrates, flatly, and he talks over the top of it about a
+  // second later, which is the whole joke of having him. Every one of the
+  // forty choices gets a line: the ones where he approves are as much of the
+  // character as the ones where he is appalled, and a generic shrug on the
+  // half of them he happened to have no opinion about would read as the
+  // system not noticing what you did.
+  const VIGNETTE_LINES = {
+    'vault:0': "Thirty plates and a ceiling with opinions. I'll allow it.",
+    'vault:1': "Good. Anything the Company welds shut, I want staying shut.",
+    'crack:0': "...Kid. Kid. Tell me you heard a NOTE as well. Right. Onward.",
+    'crack:1': "Plated over. I sleep better, and I don't even sleep. Dig.",
+    'drone:0': "Ten plates to a flying clipboard. That IS the industry, kid.",
+    'drone:1': "HA! Get IN. Eight plates, and the little snitch is a shelf.",
+    'pool:0': "No comment.",
+    'pool:1': "Straight down the intake. She's earned herself a warm drink.",
+    'ghost:0': "He kept his half of that bargain. Don't turn round. Walk.",
+    'ghost:1': "Correct. You do not haggle with a lamp. First rule of lamps.",
+    'crate:0': "...That is a CAT. Right. She's crew now. Somebody feed her.",
+    'crate:1': "Fine. Good timber. Something's still moving in that seam.",
+    'rations:0': "Company beef, vintage unknown. Crew's chewing. Crew's happy.",
+    'rations:1': "Twenty plates of banding and one very quiet lunch break.",
+    'ladder:0': "Never trusted a ladder that goes the wrong way. Nice map.",
+    'ladder:1': "Down it comes. One fewer road in is one fewer road in.",
+    'door:0': "A DESK. Down here. Voss, you magnificent bureaucratic idiot.",
+    'door:1': "You knocked. On a door. In the rock. And I love you for it.",
+    'tally:0': "Ninety-seven of whatever. He stopped mid-group. Think about it.",
+    'tally:1': "You finished his five. That's the kindest thing I've seen down here.",
+    'seam:0': "Cut it off mid-note. The rock heard that, and so did I.",
+    'seam:1': "Leave it be. Whole floor's calmer with it humming. So am I.",
+    'terminal:0': "Filed a claim with a dead department. Very you. Very us.",
+    'terminal:1': "Wiped and stripped. Twenty-two plates and one more paragraph.",
+    'sump:0': "Twenty-five plates and a cough you'll be keeping. Fair trade.",
+    'sump:1': "Sent it downstairs. Somebody down there's got wet boots now.",
+    'watchman:0': "Rig Nine's lamp. She lit our way twice, that one. Twice.",
+    'watchman:1': "Let her burn. Take the words. That's the whole eulogy, kid.",
+    'coin:0': "Keep it. Everybody down here carries something useless. Me too.",
+    'coin:1': "You paid the rock. Mock it all you like: the rock stayed paid.",
+    'crossing:0': "Traded steel with strangers in a hole. Classic Tuesday.",
+    'crossing:1': "Bricked it. Whoever they are, they're their own problem.",
+    'suit:0': "Sample plate in a briefcase. He died doing paperwork, kid.",
+    'suit:1': "Straightened his tie. You're a better man than the Company is.",
+    'shrine:0': "Two gears to a pile of rocks. And the floor went quiet. Huh.",
+    'shrine:1': "You took the OFFERING. Whatever's owed that, it's your tab.",
+    'wind:0': "Warm draught from below is a road. Follow the road. Fast.",
+    'wind:1': "Sealed it. Rig stopped flinching. So did the rest of us.",
+    'offer:0': "Something came out of the rig just then. Don't ask me what.",
+    'offer:1': "You said no. To THAT. Kid, I'm putting you up for foreman.",
   };
 
   // Bespoke arrival line per stratum (1-8) + mantle.
@@ -519,6 +644,12 @@
   };
 
   // Victory screen toast lines.
+  // M-EVENTS: what the gameover screen says once the rig is gone and the cat
+  // is sitting on the rubble edge watching. It is one fixed line rather than a
+  // pool on purpose — it is the ending of a running joke, and a punchline that
+  // rotates is a punchline nobody can quote back at you.
+  const CAT_EPITAPH = 'The cat made it out. Cats always do. Take notes, kid.';
+
   const TOASTS = [
     "Core breached. First round's on the Company — I stole their card.",
     "They said the bottom was a myth, kid. You made it a doorstep.",
@@ -565,6 +696,9 @@
       const L = LANDMARK_LINES[ctx];
       return (L && L[trigger === 'landmarkFound' ? 'find' : 'use']) || null;
     }
+    // M-EVENTS: ctx is '<vignette id>:<choice index>'.
+    if (trigger === 'vignette' && typeof ctx === 'string')
+      return VIGNETTE_LINES[ctx] || null;
     return null;
   }
 
@@ -931,6 +1065,8 @@
     POOLS: POOLS, STRATUM_LINES: STRATUM_LINES, SCHEM_LINES: SCHEM_LINES,
     META_LINES: META_LINES, EPITAPHS: EPITAPHS, TOASTS: TOASTS,
     LANDMARK_LINES: LANDMARK_LINES,   // M-WONDERS
+    VIGNETTE_LINES: VIGNETTE_LINES,   // M-EVENTS
+    CAT_EPITAPH: CAT_EPITAPH,         // M-EVENTS
     TRIGGERS: TRIGGERS, COOLDOWN: COOLDOWN, PRIORITY: PRIORITY,
   };
 })();

@@ -660,6 +660,21 @@
       }
     }
 
+    // M-EVENTS: the cat, drawn over the tiles and under the cursor. Her
+    // COLOUR is state, the same way every other glyph on this map is: dim
+    // while she is wandering, ember while she is sitting on a lit furnace,
+    // and bright white the moment she breaks for the rig — which is the two
+    // seconds before a quake, and the only reason a player has to keep half
+    // an eye on her (SPEC3 §0 law 1).
+    const cat = (DC.Events && DC.Events.cat) ? DC.Events.cat(run) : null;
+    if (cat && run.grid[cat.y] && run.grid[cat.y][cat.x] &&
+        run.grid[cat.y][cat.x].revealed) {
+      const cc = cat.mode === 'flee' ? C.white
+        : cat.mode === 'perch' ? C.magmaHot
+        : shade(C.white, 0.7);
+      mapPut(cat.x, cat.y, 'c', egg ? eggTint(cc) : cc, xo);
+    }
+
     // ghost preview / demolish marker / cursor
     const hov = ui.hover || ui.cursor;
     if (hov && hov.x >= 0 && hov.x < D.MAP_W && hov.y >= 0 && hov.y < D.MAP_H) {
@@ -989,6 +1004,13 @@
       }
       below = Math.min(1 + lines.length + 1, 24);
     }
+    // M-EVENTS: once she has been found she is on the title rig ever after —
+    // the progression the player will actually mention to somebody. Sat on
+    // the rig's shoulder, one cell, no explanation offered.
+    if (meta.catFound && layout.title.rig) {
+      const rg = layout.title.rig;
+      put(rg.x + rg.w + 1, rg.y + Math.min(2, rg.h - 1), 'c', shade(C.white, 0.85));
+    }
     ctext(below, 'an automated descent toward the core', C.gray);
     ctext(below + 1, 'build the line · feed the drill · keep moving', C.amberDim);
     // menu
@@ -1207,7 +1229,111 @@
     if (fb) ctext(28, 'GRIT ▸ ' + String(fb).slice(0, 70), C.cyan);
 
     ctext(29, 'lifetime cores ' + (meta.totalCores || 0) + '   runs ' + (meta.runs || 0), C.darkgray);
-    ctext(31, '[A-I] FORGE UPGRADE      [ESC] RETURN TO SURFACE', C.amber);
+    ctext(31, '[A-I] FORGE UPGRADE   [L] LOGBOOK   [ESC] RETURN TO SURFACE', C.amber);
+  }
+
+  // ================= THE VIGNETTE SCREEN (M-EVENTS) =================
+  // The dark asks a question between two strata. The layout is built around
+  // one demand from SPEC3 §0 law 6: a player who has been staring at a dense
+  // factory for four minutes has to take this in at a glance. So it is one
+  // picture, two lines of prose in a comfortable measure, and two choices in
+  // a column with their consequences under them — the same [1]/[2] idiom the
+  // schematic cards already taught, turned on its side because these are
+  // sentences rather than cards.
+  const VG_X = (COLS - 40) >> 1;      // the 40-wide panel, centred
+  const VG_ROW = 3;
+  const VG_PROSE_W = 64;
+  const VG_CHOICE_X = 12;
+  function drawVignette(state) {
+    const run = state.run, ui = state.ui || {};
+    const ev = (DC.Events && DC.Events.pending) ? DC.Events.pending(run) : null;
+    const accent = stratumOf(run ? run.depth : 1).accent || C.amber;
+    if (!ev) {                       // never a blank screen, even mid-edit
+      ctext(15, 'THE DARK HAS NOTHING TO SAY', C.gray);
+      ctext(17, '[ENTER] CARRY ON', C.amber);
+      return;
+    }
+
+    // The title types itself in the stratum's accent — the same interstitial
+    // grammar the descent screen uses, so this reads as part of the descent
+    // rather than as a modal that interrupted it.
+    ctext(1, fxTyped('vignette:' + ev.id, ev.title, 26), accent);
+
+    const frame = (DC.Art && DC.Art.eventFrame) ? DC.Art.eventFrame(ev.id) : [''];
+    box(VG_X, VG_ROW, 40, 14, mix(accent, C.bg, 0.55));
+    const inner = frame.slice(0, 12);
+    // The BLOCK is centred, never the individual rows: a panel whose rows are
+    // different lengths (they all are) would shear into nonsense if each row
+    // found its own centre.
+    const ax = VG_X + 1 + blockX(inner, 38);
+    let ay = VG_ROW + 1 + Math.max(0, (12 - inner.length) >> 1);
+    for (const ln of inner) text(ax, ay++, ln.slice(0, 38), C.rock);
+
+    let py = VG_ROW + 15;
+    for (const p of (ev.text || []).slice(0, 2)) {
+      for (const ln of wrap(p, VG_PROSE_W).slice(0, 1)) ctext(py++, ln, C.gray);
+    }
+
+    const rows = [];
+    let cy = py + 2;
+    for (let i = 0; i < ev.choices.length && i < 2; i++) {
+      const c = ev.choices[i];
+      const hot = ui.hoverChoice === i;
+      const key = '[' + (i + 1) + ']';
+      text(VG_CHOICE_X, cy, key, C.green);
+      text(VG_CHOICE_X + 4, cy, c.label, hot ? C.white : C.amber);
+      if (c.hint) text(VG_CHOICE_X + 4, cy + 1, c.hint, C.darkgray);
+      rows.push({ col: VG_CHOICE_X, row: cy, w: COLS - 2 * VG_CHOICE_X, h: 2, index: i });
+      cy += 3;
+    }
+    layout.choices = rows;
+    ctext(ROWS - 2, 'CHOOSE — [1] OR [2]', C.amberDim);
+  }
+
+  // ================= THE LOGBOOK (M-EVENTS) =================
+  // Twenty rigs that didn't come back up, one line each, collected across
+  // runs. The unfound ones are drawn as the SHAPE of a missing line rather
+  // than hidden: the page has to read as a jigsaw with holes in it, or
+  // filling one in is a number going up instead of a picture changing
+  // (SPEC3 §0 law 5). The dots are furniture and answer to the 3:1 floor;
+  // the entries themselves are gold, the colour the LOG already gives a
+  // found log, so the two readings of the same line agree.
+  const LOG_ROW0 = 5;                       // first entry row
+  const LOG_COL = 3;                        // left margin of the number column
+  const LOG_TEXT = LOG_COL + 5;             // where the entry itself starts
+  // Wide enough for the longest entry the corpus allows (70 columns, the same
+  // ceiling every authored line in this game answers to), with a margin left
+  // over. A logbook that clips its own entries mid-word is worse than no
+  // logbook: the whole page exists to be read (SPEC3 §0 law 6).
+  const LOG_W = COLS - LOG_TEXT - 2;
+  function drawLogbook(state) {
+    const meta = state.meta || {};
+    const E = DC.Events;
+    const logs = (E && E.LOGS) || [];
+    const found = (DC.Meta && DC.Meta.logbook) ? DC.Meta.logbook(meta) : [];
+    const dim = mix(C.gray, C.bg, 0.5);
+
+    ctext(1, 'DEAD FOREMEN OF THE DEEP', C.amber);
+    ctext(2, 'what they wrote down before the rock had them', C.gray);
+    text(LOG_COL, 3, '─'.repeat(COLS - 2 * LOG_COL + 1), mix(C.amber, C.bg, 0.42));
+
+    for (let i = 0; i < logs.length && LOG_ROW0 + i < ROWS - 4; i++) {
+      const row = LOG_ROW0 + i;
+      const has = found.indexOf(i) >= 0;
+      text(LOG_COL, row, U.padL(String(i + 1), 2), has ? C.amberDim : C.darkgray);
+      put(LOG_COL + 3, row, '▸', has ? C.amber : C.darkgray);
+      if (has) {
+        text(LOG_TEXT, row, logs[i].slice(0, LOG_W), C.gold);
+      } else {
+        // the hole, drawn to the true width of the line that belongs in it
+        text(LOG_TEXT, row, '·'.repeat(Math.min(LOG_W, logs[i].length)), dim);
+      }
+    }
+    const n = found.length, tot = logs.length;
+    ctext(ROWS - 3, 'RECOVERED ' + n + ' / ' + tot +
+      (n >= tot && tot > 0 ? '  —  the whole book' : ''),
+      n >= tot && tot > 0 ? C.green : C.gray);
+    ctext(ROWS - 1, '[ESC] BACK TO THE FOUNDRY', C.amber);
   }
 
   // ================= HELP: THE FIELD MANUAL (M-MANUAL) =================
@@ -1287,6 +1413,17 @@
     for (let i = 0; i < epi.length && y + 5 + i < 30; i++) {
       ctext(y + 5 + i, (i === 0 ? 'GRIT ▸ ' : '') +
         fxTyped('epitaph' + i, String(epi[i]).slice(0, 70), 8), C.cyan);
+    }
+    // M-EVENTS: the rig is gone and the cat is not. She sits on the rubble
+    // edge of the wreck watching, and GRIT says the one line he says about
+    // it. The run is over, so this is the last thing the screen tells you —
+    // which is exactly the right weight for the joke.
+    const hadCat = (DC.Events && DC.Events.cat) ? DC.Events.cat(state.run) : null;
+    if (hadCat) {
+      const rubble = 1 + lines.length - 3;
+      put(4, Math.max(1, rubble), 'c', shade(C.white, 0.8));
+      const cl = (DC.Barks && DC.Barks.CAT_EPITAPH) || null;
+      if (cl && y + 5 + epi.length < 30) ctext(y + 5 + epi.length + 1, cl, C.gray);
     }
     ctext(30, '[TAB] RUN RECAP CARD', C.amberDim);
     ctext(31, '[ENTER] RETURN TO THE SURFACE', phase ? C.white : C.amber);
@@ -1711,7 +1848,7 @@
     try { return DC.FX.odometer(key, value, prog); } catch (e) { return plain; }
   }
   // ================= public API =================
-  const layout = { cards: [], buildRows: [], map: null };
+  const layout = { cards: [], buildRows: [], map: null, choices: [] };
   surface.layout = layout;
 
   DC.Render = {
@@ -1855,6 +1992,8 @@
           case 'run':      drawRun(state); break;
           case 'descend':  drawDescend(state); break;
           case 'foundry':  drawFoundry(state); break;
+          case 'logbook':  drawLogbook(state); break;   // M-EVENTS
+          case 'vignette': drawVignette(state); break;  // M-EVENTS
           case 'help':     drawHelp(state); break;
           case 'gameover': drawGameover(state, phase); break;
           case 'recap':    drawRecap(state); break;      // M-RECAP

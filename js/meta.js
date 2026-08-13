@@ -16,9 +16,18 @@
   // newProfile(), so an old save loads with empty history and no ghosts
   // rather than failing. SAVE_KEY is deliberately NOT bumped: a version bump
   // would orphan every existing profile to add two optional fields.
-  const SAVE_V = 2;
+  // v3 (M-EVENTS) adds the logbook and the cat flag. Same story as v2: the
+  // fields are optional, sanitize() fills them from newProfile(), so a v1 or
+  // v2 profile loads with an empty book and no cat rather than failing — and
+  // SAVE_KEY still does not move, because orphaning every existing profile to
+  // add two optional fields is not a migration, it is a deletion.
+  const SAVE_V = 3;
   const DAILY_HISTORY_MAX = 60;   // ~2 months of dailies, then the oldest drop
   const MAX_DEPTH_KEY = 999;      // the Mantle is endless; the record isn't
+  // The logbook's ceiling. Deliberately NOT DC.Events.LOGS.length: meta.js
+  // loads whether or not js/events.js does, and a save must not be able to
+  // grow an unbounded array of integers just because a corrupt file said so.
+  const LOGBOOK_MAX = 64;
 
   function upgradeDef(id) {
     for (let i = 0; i < D.META_UPGRADES.length; i++) {
@@ -33,6 +42,10 @@
       cores: 0, upgrades: {}, bestDepth: 0, wins: 0, runs: 0, totalCores: 0,
       bestSplits: {},     // depth -> best (lowest) seconds spent in that stratum
       dailyHistory: [],   // [{date, depth, timeSec, won, cores}] oldest first
+      // M-EVENTS: indices into DC.Events.LOGS, ascending — the jigsaw, and
+      // the one meta flag that is a companion rather than an upgrade.
+      logbook: [],
+      catFound: false,
     };
   }
 
@@ -80,6 +93,16 @@
         f.dailyHistory = f.dailyHistory.slice(-DAILY_HISTORY_MAX);
       }
     }
+    // ---- M-EVENTS fields (absent in v1 and v2 saves) ----
+    if (Array.isArray(p.logbook)) {
+      for (let i = 0; i < p.logbook.length; i++) {
+        const n = p.logbook[i];
+        if (typeof n === 'number' && isFinite(n) && n >= 0 && n < LOGBOOK_MAX &&
+            f.logbook.indexOf(Math.floor(n)) < 0) f.logbook.push(Math.floor(n));
+      }
+      f.logbook.sort(function (a, b) { return a - b; });
+    }
+    f.catFound = !!p.catFound;
     f.v = SAVE_V;
     return f;
   }
@@ -244,6 +267,40 @@
     return true;
   }
 
+  // ===================== M-EVENTS: the logbook & the cat =====================
+
+  function logbook(profile) {
+    if (!profile) return [];
+    if (!Array.isArray(profile.logbook)) profile.logbook = [];
+    return profile.logbook;
+  }
+
+  // Files a found log entry. Returns true only when the book actually grew,
+  // which is what the Foundry's "NEW" mark and the save write both key on.
+  function recordLog(profile, index) {
+    const i = Math.floor(index);
+    if (!profile || !(i >= 0 && i < LOGBOOK_MAX)) return false;
+    const b = logbook(profile);
+    if (b.indexOf(i) >= 0) return false;
+    b.push(i);
+    b.sort(function (a, b2) { return a - b2; });
+    save(profile);
+    return true;
+  }
+  function hasLog(profile, index) {
+    return logbook(profile).indexOf(Math.floor(index)) >= 0;
+  }
+
+  // The cat is not an upgrade and cannot be bought: it is found once, in one
+  // vignette, and then it is simply yours.
+  function catFound(profile) { return !!(profile && profile.catFound); }
+  function findCat(profile) {
+    if (!profile || profile.catFound) return false;
+    profile.catFound = true;
+    save(profile);
+    return true;
+  }
+
   // Whole-run version: engine hands over run.splits at award time. Saves once.
   function recordSplits(profile, splits) {
     if (!profile || !Array.isArray(splits)) return 0;
@@ -262,5 +319,8 @@
     SAVE_V, DAILY_HISTORY_MAX,
     dailyKey, dailySeed, dailyEntry, dailyHistory, recordDaily,
     bestSplit, bestSplits, recordSplit, recordSplits,
+    // M-EVENTS
+    LOGBOOK_MAX,
+    logbook, recordLog, hasLog, catFound, findCat,
   };
 })();

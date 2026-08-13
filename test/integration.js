@@ -50,6 +50,16 @@ function assertEq(a, b, msg) {
 }
 function key(x, y) { return x + ',' + y; }
 function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+// `navigator` is a real getter-only global from Node 21 on, so the plain
+// assignment the clipboard checks used to make now throws under 'use strict'
+// and took the whole suite down on a modern runtime. Define it instead — the
+// property is configurable either way, so `delete` still restores "no
+// navigator at all", which is the file:// case those checks are about.
+function setNav(v) {
+  if (v === undefined) { delete globalThis.navigator; return; }
+  Object.defineProperty(globalThis, 'navigator',
+    { value: v, configurable: true, writable: true });
+}
 function defEffects() { return DC.Meta.effects(DC.Meta.newProfile()); }
 
 // Debug aid: DC_DEBUG=1 prints the map on bot failures.
@@ -1461,10 +1471,18 @@ function engineBarksSection(seed) {
   const pickId = run.pendingOffers[1];
   key('2');
   assertEq(run.depth, preDepth + 1, "'2' picked the second schematic");
-  assertEq(st.screen, 'run', 'back on the run screen');
   assert(run.schematics.indexOf(pickId) >= 0, 'schematic applied');
   assertEq(run.foreman && run.foreman.text, B.SCHEM_LINES[pickId],
     'bespoke schematic bark fired on applySchematic');
+  // M-EVENTS: a quarter of descents open with a vignette rather than with the
+  // floor. The descent's own effects are asserted above it, because answering
+  // the fork puts GRIT's line about the fork on top of his schematic line.
+  if (st.screen === 'vignette') {
+    assert(DC.Events && DC.Events.pending(run),
+      'the vignette screen actually has a vignette on it');
+    key('1');
+  }
+  assertEq(st.screen, 'run', 'back on the run screen');
   assert(st.ui.flash && st.ui.flash.text.indexOf('STRATUM ' + run.depth) >= 0,
     'stratum-2 arrival flash set');
   assertEq(st.ui.flash.color, D.STRATA[1].accent, 'arrival flash uses stratum-2 accent');
@@ -1700,6 +1718,7 @@ function recapSection(seed) {
     assertEq(run.splits[0].gears, run.breachReq.gear, 'the split carries its feed totals');
     frames(140);
     key('1');
+    if (st.screen === 'vignette') key('1');   // M-EVENTS: walk through the fork
     assertEq(run.depth, 2, 'into stratum 2');
     assert(run.t < t1, 'the stratum clock reset behind the split');
 
@@ -1771,22 +1790,22 @@ function recapSection(seed) {
     }
 
     // --- C: clipboard, and both ways it can fail --------------------------
-    global.navigator = {
+    setNav({
       clipboard: { writeText: function (t) { captured = t; return { catch: function () {} }; } },
-    };
+    });
     key('c');
     assertEq(captured, txt, 'C copied exactly the card that is on screen');
     assert(/COPIED/.test(st.ui.copied), 'the copy is confirmed on the card');
     assertEq(st.screen, 'recap', 'copying does not leave the card');
-    global.navigator = {                                   // permission denied
+    setNav({                                               // permission denied
       clipboard: { writeText: function () { return { catch: function (fn) { fn(new Error('no')); } }; } },
-    };
+    });
     key('c');
     assert(/REFUSED/.test(st.ui.copied), 'a rejected write leaves a readable notice');
-    global.navigator = {};                                 // file:// has none
+    setNav({});                                            // file:// has none
     key('c');
     assert(/CLIPBOARD/.test(st.ui.copied), 'no clipboard is a notice, not a crash');
-    delete global.navigator;
+    setNav(undefined);
     key('c');
     assert(st.ui.copied && st.ui.copied.length > 0, 'no navigator at all is survivable');
 
@@ -1852,9 +1871,9 @@ function recapSection(seed) {
     paint();
     assert(shown('CONTINUE INTO THE MANTLE'), 'the victory stats view offers the Mantle');
     key('Tab');
-    global.navigator = {
+    setNav({
       clipboard: { writeText: function (t) { captured = t; return { catch: function () {} }; } },
-    };
+    });
     captured = null;
     key('c');
     assert(captured && captured.indexOf('CORE BREACHED') >= 0,
@@ -1928,7 +1947,7 @@ function recapSection(seed) {
     delete global.location;
     delete global.requestAnimationFrame;
     delete global.localStorage;
-    delete global.navigator;
+    setNav(undefined);
   }
 }
 
@@ -3874,6 +3893,350 @@ function wondersSection(seed) {
   return D.LANDMARKS.length + ' kinds, mechanics verified';
 }
 
+// =========================================================================
+// SECTION 15 — M-EVENTS: dig finds, the logbook, vignettes and the cat
+// headless.js proves the rolls and the payloads. This proves the WIRING: a
+// find reaches GRIT's mouth through the real event queue, a foreman's log
+// reaches the profile on disk the instant it is read (not at the end of the
+// run — a rig that dies on the next quake keeps what it learned), and the
+// vignette screen is a real screen with real keys.
+// =========================================================================
+function eventsSection(seed) {
+  SECTION = 'events seed=' + seed;
+  require('../js/barks.js');
+  require('../js/events.js');
+  require('../js/fx.js');
+  require('../js/render.js');
+  require('../js/engine.js');
+  const B = DC.Barks, E = DC.Events, M = DC.Meta;
+  assert(E && typeof E.rollDig === 'function', 'events.js is loaded');
+
+  const handlers = {};
+  const drawn = [];
+  const ctxStub = {
+    fillStyle: '', font: '', textBaseline: '', textAlign: '',
+    setTransform: function () {}, fillRect: function () {},
+    save: function () {}, restore: function () {}, scale: function () {},
+    fillText: function (s) { drawn.push(String(s)); },
+    measureText: function () { return { width: 10 }; },
+  };
+  const canvasStub = {
+    style: {},
+    getContext: function () { return ctxStub; },
+    addEventListener: function (t, fn) { handlers[t] = fn; },
+    getBoundingClientRect: function () {
+      return { left: 0, top: 0, width: D.COLS * 10, height: D.ROWS * 19 };
+    },
+  };
+  global.window = { addEventListener: function (t, fn) { handlers[t] = fn; } };
+  global.document = { getElementById: function () { return canvasStub; } };
+  global.location = { search: '?seed=' + seed };
+  let rafCb = null;
+  global.requestAnimationFrame = function (fn) { rafCb = fn; };
+  const cell = {};
+  global.localStorage = {
+    getItem: (k) => (k in cell ? cell[k] : null),
+    setItem: (k, v) => { cell[k] = String(v); },
+  };
+
+  let now = 2e7;
+  function frames(n) {
+    for (let i = 0; i < n; i++) {
+      now += 1000 / HZ;
+      const cb = rafCb;
+      assert(cb, 'rAF loop stays scheduled');
+      rafCb = null;
+      cb(now);
+    }
+  }
+  function key(k) {
+    handlers.keydown({ key: k, shiftKey: false, preventDefault: function () {} });
+  }
+  function paint() { drawn.length = 0; frames(1); }
+  // Some screens type themselves in (fx.js). `settle` gives them long enough
+  // to finish before anything asserts on what is written there.
+  function settle() { drawn.length = 0; frames(24); }
+  function shown(s) { return drawn.some(x => x.indexOf(s) >= 0); }
+  // Draw one frame WITHOUT running the loop, for assertions about how a piece
+  // of state is painted: going through frames() would tick the sim first and
+  // the state under test would be gone by the time it was drawn.
+  function paintOnly() {
+    drawn.length = 0;
+    now += 1000 / HZ;
+    DC.Render.frame(DC.state, now);
+  }
+
+  try {
+    DC.Engine.start();
+    const st = DC.state;
+    key('Enter');
+    const run = st.run;
+    assert(run, 'a run is running');
+
+    // --- a find reaches GRIT through the real queue -----------------------
+    // The find is injected as the sim's own event record rather than waited
+    // for on a lucky seed: what is under test here is the engine's drain, and
+    // the roll that produces the record is headless.js's business.
+    // Jumping totalT clears the 6s bark cooldown; the idle ladder measures
+    // against the same clock, so the activity stamps move with it or GRIT
+    // starts heckling the player for standing still and eats the find line.
+    function skipCooldown() {
+      run.totalT += 60 * HZ;
+      run.stats.lastPlaceT = run.totalT;
+      run.stats.lastFeedT = run.totalT;
+    }
+    skipCooldown();
+    run.events.push({ type: 'find', t: run.totalT, data: { id: 'bones', bark: 'bones' } });
+    frames(1);
+    assert(run.foreman && B.POOLS.bones.indexOf(run.foreman.text) >= 0,
+      'a dig find gets GRIT\'s answer: "' + (run.foreman && run.foreman.text) + '"');
+    // a find whose pool barks.js has not grown is quiet, never a crash
+    skipCooldown();
+    frames(1);
+    assertEq(run.foreman, null, 'the bar is clear again');
+    run.events.push({ type: 'find', t: run.totalT, data: { id: 'x', bark: 'nosuchpool' } });
+    frames(1);
+    assertEq(run.foreman, null, 'an unwritten find pool is silence, not an error');
+
+    // --- a foreman's log is filed the instant it is read ------------------
+    assertEq(M.logbook(st.meta).length, 0, 'the book starts empty');
+    run.events.push({ type: 'foremanLog', t: run.totalT, data: { index: 5 } });
+    frames(1);
+    assert(M.hasLog(st.meta, 5), 'the entry is in the profile');
+    const saved = JSON.parse(cell[D.SAVE_KEY] || '{}');
+    assert(Array.isArray(saved.logbook) && saved.logbook.indexOf(5) >= 0,
+      'and on disk, before the run is over');
+    run.events.push({ type: 'foremanLog', t: run.totalT, data: { index: 5 } });
+    frames(1);
+    assertEq(M.logbook(st.meta).length, 1, 'reading it twice does not file it twice');
+
+    // --- and the whole path, for real: dig a hole, take what is in it -----
+    // Excavate every reachable rock tile on the floor and let the sim run the
+    // digs out. With ~8% of a few hundred excavations paying, this finds
+    // something on any seed; the assertion is on the counter, not on luck.
+    let holes = 0;
+    for (let y = 0; y < D.MAP_H; y++)
+      for (let x = 0; x < D.MAP_W; x++) {
+        const t = run.grid[y][x];
+        if (t.t !== 'rock' || t.lm) continue;
+        t.revealed = true;
+        if (DC.Sim.demolishAt(run, x, y).ok) holes++;
+      }
+    assert(holes > 100, 'the floor had rock in it (' + holes + ' holes)');
+    frames(D.DIG_ROCK + 4);
+    const ev = E.peek(run);
+    assertEq(ev.digs, holes, 'every hole was reported to events.js');
+    assert(ev.finds > 0, 'digging out a whole floor found something (' +
+      ev.finds + ' finds in ' + holes + ' holes)');
+    assert(run.messages.some(m => /pocket|cache|lunchbox|Bones|shaft|dead rig|tin/i.test(m.text)),
+      'and the LOG says what it was');
+
+    // --- the Company Seal hands over a page of the jigsaw ------------------
+    // M-WONDERS welded that hatch shut; whoever did it filed something first.
+    {
+      const seal = D.LANDMARK_BY_ID.seal;
+      assert(seal, 'the Company Seal is still a landmark');
+      const before2 = E.peek(run).logs.length;
+      // install the seal under the cursor, exactly as mapgen would
+      const sx = run.hub.x + 6, sy = run.hub.y;
+      const cells = [];
+      for (let dy = 0; dy < seal.art.length; dy++)
+        for (let dx = 0; dx < seal.art[dy].length; dx++) {
+          const t = run.grid[sy + dy][sx + dx];
+          t.t = seal.base; t.lm = { id: 'seal', g: seal.art[dy][dx] };
+          t.revealed = true; t.machine = null; t.belt = null; t.rubble = false;
+          t.ore = null; t.oreAmt = 0; t.digT = 0;
+          cells.push({ x: sx + dx, y: sy + dy, was: 'rock' });
+        }
+      run.landmark = { id: 'seal', x: sx, y: sy, cx: sx + 0.5, cy: sy + 0.5,
+                       cells: cells, on: false, onAt: 0, jam: false,
+                       fired: false, found: true };
+      run.inv.ironPlate = (run.inv.ironPlate || 0) + 40;
+      const res = DC.Sim.clickTile(run, sx, sy);
+      assert(res && res.handled, 'the seal opens for 20 plates');
+      assertEq(E.peek(run).logs.length, before2 + 1,
+        'opening the Company Seal recovers a foreman log');
+      frames(1);
+      assert(M.logbook(st.meta).length >= 2, '...and it is filed in the book');
+    }
+
+    // --- the logbook screen -----------------------------------------------
+    st.screen = 'title';
+    key('f');
+    assertEq(st.screen, 'foundry', 'F opens the Foundry');
+    paint();
+    assert(shown('[L] LOGBOOK'), 'the Foundry floor advertises the logbook');
+    key('l');
+    assertEq(st.screen, 'logbook', 'L opens the logbook');
+    paint();
+    assert(shown('DEAD FOREMEN OF THE DEEP'), 'the logbook has its masthead');
+    assert(!shown('RENDER ERROR'), 'the logbook renders clean');
+    const bookN = M.logbook(st.meta).length;
+    assert(shown('RECOVERED ' + bookN + ' / ' + E.LOGS.length),
+      'the page counts what has been recovered');
+    // a found entry is legible ON THE GRID; an unfound one is a hole of dots
+    const rows = [];
+    for (let r = 0; r < D.ROWS; r++) {
+      let line = '';
+      for (let c = 0; c < D.COLS; c++) line += (DC.Render.cellAt(c, r) || { ch: ' ' }).ch;
+      rows.push(line);
+    }
+    for (const i of M.logbook(st.meta))
+      assert(rows.some(l => l.indexOf(E.LOGS[i]) >= 0),
+        'a recovered entry is readable on the page IN FULL: ' + E.LOGS[i]);
+    // ...and the page has room for the longest entry the corpus permits, so
+    // no future log can be clipped mid-word by being written to the limit
+    {
+      const longest = E.LOGS.slice().sort((a, b) => b.length - a.length)[0];
+      M.recordLog(st.meta, E.LOGS.indexOf(longest));
+      paint();
+      let widest = '';
+      for (let r = 0; r < D.ROWS; r++) {
+        let line = '';
+        for (let c = 0; c < D.COLS; c++) line += (DC.Render.cellAt(c, r) || { ch: ' ' }).ch;
+        if (line.indexOf(longest) >= 0) widest = line;
+      }
+      assert(widest, 'the widest entry in the book (' + longest.length +
+        ' cols) still fits the page unclipped');
+    }
+    assert(rows.some(l => /·{20,}/.test(l)),
+      'an unrecovered entry is a hole shaped like the line that belongs in it');
+    // the entries clear the text floor; the holes are furniture at 3:1
+    const R2 = DC.Render;
+    assert(R2.contrast(D.COLORS.gold, D.COLORS.bg) >= R2.MIN_CONTRAST,
+      'a recovered entry clears the text contrast floor');
+    key('Escape');
+    assertEq(st.screen, 'foundry', 'ESC returns to the Foundry');
+
+    // --- the vignette screen ----------------------------------------------
+    // A vignette is forced onto a live run rather than waited for at 25% per
+    // descent: the roll is headless.js's business, and what is under test
+    // here is that the screen is a real screen with real keys and that the
+    // choice reaches the sim, the profile and GRIT's mouth.
+    st.screen = 'title';
+    key('Enter');
+    const vrun = st.run;
+    const V = E.VIGNETTES;
+    function force(id) {
+      const v = V.filter(x => x.id === id)[0];
+      assert(v, 'vignette ' + id + ' exists');
+      E.state(vrun).vignette = v;
+      st.screen = 'vignette';
+      return v;
+    }
+    {
+      const v = force('vault');
+      settle();                                       // the title types itself
+      assert(!shown('RENDER ERROR'), 'the vignette screen renders clean');
+      assert(shown(v.title), 'the panel is titled');
+      assert(shown(v.choices[0].label) && shown(v.choices[1].label),
+        'both choices are on screen');
+      assert(shown('CHOOSE — [1] OR [2]'), 'and the screen says how to answer');
+      // ESC is not a way out of a fork
+      key('Escape');
+      assertEq(st.screen, 'vignette', 'ESC does not dismiss a vignette');
+      const plates = vrun.inv.ironPlate || 0;
+      const inst = vrun.instability;
+      vrun.totalT += 60 * HZ;
+      vrun.stats.lastPlaceT = vrun.totalT;
+      vrun.stats.lastFeedT = vrun.totalT;
+      key('1');                                       // BREACH IT
+      assertEq(st.screen, 'run', 'answering returns you to the floor');
+      assertEq(vrun.inv.ironPlate, plates + 30, 'the choice reached the hub');
+      assert(vrun.instability > inst, 'and the pressure it cost is real');
+      assertEq(vrun.foreman && vrun.foreman.text, B.VIGNETTE_LINES['vault:0'],
+        "GRIT's bespoke line for that choice landed");
+      assertEq(E.pending(vrun), null, 'the vignette is spent');
+    }
+    {  // the mouse route, over Render.layout.choices
+      force('coin');
+      paint();
+      const rows = DC.Render.layout.choices;
+      assert(Array.isArray(rows) && rows.length === 2,
+        'render publishes both choices as hit boxes');
+      const r = rows[1];
+      handlers.mousemove({ clientX: (r.col + 2) * 10 + 5, clientY: r.row * 19 + 9 });
+      assertEq(st.ui.hoverChoice, 1, 'hovering the second choice highlights it');
+      const inst = vrun.instability;
+      handlers.mousedown({ clientX: (r.col + 2) * 10 + 5, clientY: r.row * 19 + 9 });
+      assertEq(st.screen, 'run', 'clicking a choice answers it');
+      assert(vrun.instability < inst, 'paying the rock vented pressure');
+    }
+    {  // the cat: found once, and yours from then on
+      assertEq(DC.Meta.catFound(st.meta), false, 'no cat yet');
+      force('crate');
+      vrun.totalT += 60 * HZ;
+      key('1');                                       // OPEN IT
+      assert(DC.Meta.catFound(st.meta), 'opening the crate finds the cat');
+      assert(JSON.parse(cell[D.SAVE_KEY] || '{}').catFound === true,
+        '...and the cat is on disk');
+    }
+
+    // --- the cat, on screen ------------------------------------------------
+    {
+      const cat = E.cat(vrun);
+      assert(cat, 'the run has a cat after the crate');
+      assertEq(st.screen, 'run', 'and we are back on the floor');
+      // she is drawn on the map, as a `c`, on her own tile
+      cat.x = vrun.hub.x + 4; cat.y = vrun.hub.y + 1; cat.mode = 'wander';
+      vrun.grid[cat.y][cat.x].revealed = true;
+      vrun.grid[cat.y][cat.x].t = 'floor';
+      paintOnly();
+      const cell0 = DC.Render.cellAt(D.MAP_X + cat.x, D.MAP_Y + cat.y);
+      assertEq(cell0 && cell0.ch, 'c', 'the cat is drawn on her tile');
+      // her colour is state, not decoration: the flee is the brightest thing
+      // she does, because that is the two seconds the player must notice
+      const wanderCol = cell0.fg;
+      cat.mode = 'flee';
+      paintOnly();
+      const fleeCol = DC.Render.cellAt(D.MAP_X + cat.x, D.MAP_Y + cat.y).fg;
+      assert(fleeCol !== wanderCol, 'a fleeing cat reads differently');
+      assert(DC.Render.contrast(fleeCol, D.COLORS.bg) >
+             DC.Render.contrast(wanderCol, D.COLORS.bg),
+        'and she is BRIGHTER while she runs, not dimmer');
+      cat.mode = 'wander';
+
+      // an unrevealed tile hides her, like everything else on the map
+      vrun.grid[cat.y][cat.x].revealed = false;
+      paintOnly();
+      assert(DC.Render.cellAt(D.MAP_X + cat.x, D.MAP_Y + cat.y).ch !== 'c',
+        'the cat does not show through unscanned rock');
+      vrun.grid[cat.y][cat.x].revealed = true;
+
+      // gameover: the rig is gone, the cat is not
+      DC.Sim.abandon(vrun);
+      st.screen = 'gameover';
+      settle();
+      assert(!shown('RENDER ERROR'), 'the gameover screen renders clean');
+      assert(shown(B.CAT_EPITAPH), 'GRIT says the cat made it out');
+
+      // title: she is on the rig ever after
+      st.screen = 'title';
+      st.run = null;
+      paintOnly();
+      const grid2 = [];
+      for (let r = 0; r < D.ROWS; r++) {
+        let line = '';
+        for (let c2 = 0; c2 < D.COLS; c2++)
+          line += (DC.Render.cellAt(c2, r) || { ch: ' ' }).ch;
+        grid2.push(line);
+      }
+      assert(DC.Meta.catFound(st.meta), 'the profile still has a cat');
+      assert(grid2.slice(6, 24).some(l => l.indexOf('c') >= 0),
+        'and she is sitting on the title rig');
+    }
+
+    return ev.finds + ' finds / ' + holes + ' holes, book ' + bookN +
+           ', ' + V.length + ' vignettes, cat ok';
+  } finally {
+    delete global.window;
+    delete global.document;
+    delete global.location;
+    delete global.requestAnimationFrame;
+    delete global.localStorage;
+  }
+}
+
 // -------------------------------------------------------------------- main
 const SEED = process.env.DC_SEED ? (parseInt(process.env.DC_SEED, 10) | 0) : 1337;
 try {
@@ -3899,6 +4262,7 @@ try {
   // the victory sphere and would otherwise inherit whichever mode ran last.
   const walls = coreLoreSection(SEED + 43);
   const wonders = wondersSection(SEED + 47);
+  const events = eventsSection(SEED + 53);
   // The webfont section is the one asynchronous check in the suite — a
   // document.fonts.ready handler cannot be driven synchronously — so the
   // PASS line waits on it rather than racing it.
@@ -3910,6 +4274,7 @@ try {
       ' | braille probe->blocks (' + rimGlyphs + ' rim glyphs)' +
       ' | core gate 3 beats | ' + walls + ' walls' +
       ' | wonders ' + wonders +
+      ' | events ' + events +
       ' | cadence 16/12/10 | overdrive x2 | damper ok | charge+bronze ok | mantle ok' +
       ' | engine+barks ok | ' + (Date.now() - t0) + 'ms');
     process.exit(0);
