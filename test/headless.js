@@ -20,6 +20,9 @@ function fail(msg) {
   process.exit(1);
 }
 function assert(cond, msg) { if (!cond) fail(msg); }
+function assertEq(a, b, msg) {
+  if (a !== b) fail(msg + ' (expected ' + JSON.stringify(b) + ', got ' + JSON.stringify(a) + ')');
+}
 function key(x, y) { return x + ',' + y; }
 function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
 
@@ -1347,6 +1350,228 @@ function checkCat() {
   return 'cat: wanders, perches, flees';
 }
 
+// ------------------------------------------------ M-ONBOARD: the diagnostics
+// THE reason this brief exists. The director could not play his own game while
+// every suite here was green: an extractor placed on a revealed vein with no
+// belt on its output mines an ore, sets status 'blocked', and sits there
+// forever emitting NOTHING. The bot in test/balance.js has never once failed to
+// connect an extractor, because it knows the rules by construction — so a green
+// sweep proved the game winnable and said nothing at all about whether it was
+// playable. This section tests the second property.
+//
+// Every scenario below runs on its own fresh run, because the whole contract is
+// "once per run per cause" and shared runs would hide a cause that never fired.
+
+// A revealed, buildable ore tile, preferring `ore` when asked for one.
+function freeVein(r, ore) {
+  let any = null;
+  for (let y = 0; y < D.MAP_H; y++)
+    for (let x = 0; x < D.MAP_W; x++) {
+      const t = r.grid[y][x];
+      if (!t.revealed || !t.ore || t.oreAmt <= 0) continue;
+      if (t.t !== 'floor' || t.rubble || t.machine !== null || t.belt || t.lm) continue;
+      if (!ore || t.ore === ore) return { x: x, y: y, t: t };
+      if (!any) any = { x: x, y: y, t: t };
+    }
+  return any;
+}
+// Somewhere `type` will actually go, asked of the sim rather than guessed —
+// a 2x2 smelter needs four clear tiles and the first bare floor on the map is
+// usually not one of them. `pad` also demands that many clear tiles to the
+// WEST, for the belt-feeds-machine scenarios.
+function freeSpot(r, type, pad) {
+  for (let y = 0; y < D.MAP_H; y++)
+    for (let x = 0; x < D.MAP_W; x++) {
+      if (!S.canPlace(r, type, x, y, 1).ok) continue;
+      let clear = true;
+      for (let i = 1; i <= (pad || 0); i++)
+        if (!S.canPlace(r, 'belt', x - i, y, 1).ok) { clear = false; break; }
+      if (clear) return { x: x, y: y, t: r.grid[y][x] };
+    }
+  return null;
+}
+function texts(r) { return r.messages.map((m) => m.text); }
+function countMsg(r, needle) {
+  return texts(r).filter((t) => t.indexOf(needle) >= 0).length;
+}
+function tickRun(r, n) { for (let i = 0; i < n; i++) S.tick(r); }
+
+function checkDiagnostics() {
+  // ---- THE REPRODUCTION -------------------------------------------------
+  // Verbatim from the brief: an extractor on a revealed vein, NO belt on its
+  // output side, 600 ticks. Before this brief that produced zero messages.
+  {
+    const r = S.newRun(DC.Meta.effects(DC.Meta.newProfile()), 12345);
+    const v = freeVein(r);
+    assert(v, 'the reproduction needs a revealed vein to build on');
+    assert(S.place(r, 'extractor', v.x, v.y, 1), 'could not place the extractor');
+    const want = S.diagLine('blocked', { name: D.BUILDINGS.extractor.name });
+    let namedAt = -1;
+    for (let i = 0; i < 600; i++) {
+      S.tick(r);
+      if (namedAt < 0 && countMsg(r, want)) namedAt = i + 1;
+    }
+    const m = Object.keys(r.machines).map((k) => r.machines[k])
+      .filter((x) => x.type === 'extractor')[0];
+    assertEq(m.status, 'blocked', 'the reproduction must still reproduce the STATE');
+    assert(namedAt > 0,
+      'THE BUG: 600 ticks with a blocked extractor and the LOG never named the cause');
+    // It has to arrive while the player is still looking at the thing they just
+    // placed, not five minutes later.
+    assert(namedAt <= (D.DIAG.blockedT + 4) * D.TICK_HZ,
+      'the blocked cause took ' + namedAt + ' ticks to reach the LOG');
+    // ...and the fix must be in the sentence, not just the fault.
+    assert(/belt/i.test(want) && /output/i.test(want),
+      'the blocked line names the fault but not the fix: ' + want);
+  }
+
+  // ---- once per run per CAUSE, not per machine and not per tick ----------
+  // A message that repeats is a message players learn to ignore.
+  {
+    const r = S.newRun(DC.Meta.effects(DC.Meta.newProfile()), 909);
+    const a = freeVein(r);
+    assert(S.place(r, 'extractor', a.x, a.y, 1), 'first extractor placed');
+    tickRun(r, 400);
+    // a SECOND machine hitting the same cause must stay silent
+    const b = freeVein(r);
+    assert(b && (b.x !== a.x || b.y !== a.y), 'a second free vein for the repeat test');
+    assert(S.place(r, 'extractor', b.x, b.y, 1), 'second extractor placed');
+    tickRun(r, 600);
+    const want = S.diagLine('blocked', { name: D.BUILDINGS.extractor.name });
+    assertEq(countMsg(r, want), 1,
+      'the blocked cause was named ' + countMsg(r, want) + ' times in one run');
+    assertEq(r.diag.blocked > 0, true, 'the cause is stamped on the run');
+  }
+
+  // ---- every failure state in the brief names itself ---------------------
+  const named = [];
+  function scenario(label, seed, build, ticks, cause, ctx) {
+    const r = S.newRun(DC.Meta.effects(DC.Meta.newProfile()), seed);
+    build(r);
+    tickRun(r, ticks);
+    const want = S.diagLine(cause, ctx || {});
+    assert(want, 'diagLine has wording for ' + cause);
+    assertEq(countMsg(r, want), 1,
+      label + ': expected exactly one "' + want + '", got ' + countMsg(r, want) +
+      ' — log was:\n    ' + texts(r).join('\n    '));
+    named.push(cause);
+    return r;
+  }
+
+  // out of fuel: a smelter with ore to melt and no coal to melt it with
+  scenario('nofuel', 4242, (r) => {
+    r.inv.ironPlate = 999;
+    const f = freeSpot(r, 'smelter');
+    assert(f && S.place(r, 'smelter', f.x, f.y, 1), 'smelter placed');
+    const sm = r.machines[r.nextId - 1];
+    sm.input.ironOre = 4;                    // scaffold: ore in, nothing to burn
+  }, (D.DIAG.nofuelT + 4) * D.TICK_HZ, 'nofuel', { name: D.BUILDINGS.smelter.name });
+
+  // depleted vein: the last ore comes out and the extractor is a dead pump
+  scenario('depleted', 77, (r) => {
+    const v = freeVein(r);
+    v.t.oreAmt = 1;                          // scaffold: one ore left in the rock
+    assert(S.place(r, 'extractor', v.x, v.y, 1), 'extractor placed');
+  }, 200, 'depleted');
+
+  // jammed belt, shape one: a line laid into bare ground. Facing 3 is west,
+  // and freeSpot's padding guarantees the tile west of it is clear floor —
+  // which is precisely the mistake: somewhere for the item to go, and nothing
+  // there to take it.
+  scenario('beltJam/dead end', 31337, (r) => {
+    r.inv.ironPlate = 999;
+    const f = freeSpot(r, 'belt', 1);
+    assert(f && S.place(r, 'belt', f.x, f.y, 3), 'belt placed');
+    f.t.belt.item = 'ironOre';               // scaffold: give it something to carry
+  }, (D.DIAG.beltJamT + 4) * D.TICK_HZ, 'beltJam');
+
+  // a starving assembler: it has the recipe and nothing to build it from
+  scenario('starved', 2024, (r) => {
+    r.inv.ironPlate = 999;
+    const f = freeSpot(r, 'assembler');
+    assert(f && S.place(r, 'assembler', f.x, f.y, 1), 'assembler placed');
+  }, (D.DIAG.starveT + 4) * D.TICK_HZ, 'starved',
+     { id: 'ironPlate', item: D.ITEMS.ironPlate.name });
+
+  // the rig, stalled for want of a specific item
+  scenario('stallGear', 5150, () => {}, (D.DIAG.stallT + 4) * D.TICK_HZ, 'stallGear');
+  scenario('stallCharge', 5151, (r) => {
+    r.gearsFed = r.breachReq.gear;           // scaffold: gears done, charges are not
+    r.breachReq.charge = 4;
+  }, (D.DIAG.stallT + 4) * D.TICK_HZ, 'stallCharge');
+
+  // jammed belt, shape two: a line into something that will never want its
+  // cargo. This is the branch that must NOT fire on a merely-full buffer.
+  {
+    const r = S.newRun(DC.Meta.effects(DC.Meta.newProfile()), 616);
+    r.inv.ironPlate = 999; r.inv.copperPlate = 999;
+    const f = freeSpot(r, 'damper', 1);
+    assert(f && S.place(r, 'damper', f.x, f.y, 1), 'damper placed');
+    // a belt one tile west of the damper, pointing east into it, carrying
+    // something a damper will never burn
+    const bx = f.x - 1, by = f.y;
+    assert(S.place(r, 'belt', bx, by, 1), 'belt placed west of the damper');
+    r.grid[by][bx].belt.item = 'ironPlate';
+    tickRun(r, (D.DIAG.beltJamT + 4) * D.TICK_HZ);
+    const want = S.diagLine('beltJam',
+      { name: D.BUILDINGS.damper.name, item: D.ITEMS.ironPlate.name });
+    assertEq(countMsg(r, want), 1,
+      'a belt feeding a machine that refuses its cargo must say so — log was:\n    ' +
+      texts(r).join('\n    '));
+  }
+
+  // back-pressure is NOT a mistake and must never be taught as one: a belt
+  // stopped against a machine that wants its cargo but is full is a tuning
+  // question, and the machine's own 'blocked' line already covers that story.
+  {
+    const r = S.newRun(DC.Meta.effects(DC.Meta.newProfile()), 8080);
+    r.inv.ironPlate = 999; r.inv.copperPlate = 999;
+    const f = freeSpot(r, 'damper', 1);
+    assert(f && S.place(r, 'damper', f.x, f.y, 1), 'damper placed');
+    const dm = r.machines[r.nextId - 1];
+    dm.input.coal = D.INPUT_CAP;             // scaffold: buffer full, wants more
+    const bx = f.x - 1, by = f.y;
+    assert(S.place(r, 'belt', bx, by, 1), 'belt placed west of the damper');
+    r.grid[by][bx].belt.item = 'coal';
+    tickRun(r, (D.DIAG.beltJamT + 6) * D.TICK_HZ);
+    assert(!r.diag.beltJam,
+      'back-pressure against a full buffer was taught as a belt mistake');
+  }
+
+  // ---- determinism: same seed, same inputs, same messages, same order ----
+  function scripted(seed) {
+    const r = S.newRun(DC.Meta.effects(DC.Meta.newProfile()), seed);
+    const v = freeVein(r);
+    S.place(r, 'extractor', v.x, v.y, 1);
+    tickRun(r, 700);
+    return texts(r).join('\n');
+  }
+  assertEq(scripted(1234), scripted(1234),
+    'two runs on one seed with one script produced different logs');
+
+  // ---- law 7: a player mistake must not move the sim's stream ------------
+  // The whole point of the law. These messages fire exactly when somebody has
+  // built something wrong, so if naming one cost a draw, the quake schedule
+  // would depend on the shape of a base rather than on the tuning — and every
+  // number in test/balance.js would drift with it. 400 ticks keeps both runs
+  // under D.QUAKE.startInst, where quake TARGETING (which legitimately reads
+  // the built list) cannot confound the comparison.
+  {
+    const quiet = S.newRun(DC.Meta.effects(DC.Meta.newProfile()), 4711);
+    const noisy = S.newRun(DC.Meta.effects(DC.Meta.newProfile()), 4711);
+    const v = freeVein(noisy);
+    assert(S.place(noisy, 'extractor', v.x, v.y, 1), 'extractor placed');
+    tickRun(quiet, 400);
+    tickRun(noisy, 400);
+    assert(noisy.diag.blocked, 'the noisy run must actually have fired a diagnostic');
+    assert(quiet.instability < D.QUAKE.startInst, 'the comparison stays pre-quake');
+    assertEq(noisy.rng(), quiet.rng(),
+      'naming a fault advanced run.rng — a disconnected belt moved the quake schedule');
+  }
+
+  return named.length;
+}
+
 function main() {
   checkArt();
   const glyphN = checkGlyphInventory();
@@ -1355,6 +1580,7 @@ function main() {
   const vignettes = checkVignettes();
   const catNote = checkCat();
   const lmSweep = checkLandmarkSweep();
+  const diagN = checkDiagnostics();   // M-ONBOARD: the game explains itself
 
   const eff = DC.Meta.effects(DC.Meta.newProfile());
   assert(eff && typeof eff.instMult === 'number' && eff.offerCount === 3,
@@ -1416,7 +1642,8 @@ function main() {
     ' | ' + vignettes + ' | ' + catNote +
     ' | landmarks ' + lmSweep.withLm + '/' + lmSweep.maps + ' maps, ' +
     lmSweep.cells + ' cells, ' + Object.keys(lmSweep.ids).length + ' kinds, ' +
-    'veins+connectivity held');
+    'veins+connectivity held' +
+    ' | diagnostics: ' + diagN + ' causes named, once each, rng untouched');
 }
 
 function sumOre() {
