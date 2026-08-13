@@ -116,7 +116,8 @@ function dirBetween(a, b) {
 // 'core' (M-CORELORE, stratum 8 only) and 'landmark' (M-WONDERS, every
 // stratum that fits one) join the v1.1 set from SPEC2 §B.
 const EVENT_TYPES = ['quake', 'magma', 'depleted', 'breachReady', 'death', 'won',
-                     'descend', 'core', 'landmark'];
+                     'descend', 'core', 'landmark',
+                     'diagnostic'];   // M-ONBOARD: a failure state named itself
 function mkDrainer(run) {
   const seen = {};              // type -> count
   const samples = {};           // type -> first event object
