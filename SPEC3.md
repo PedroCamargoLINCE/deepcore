@@ -574,6 +574,93 @@ binding cross-check vs engine; contrast assertions on every palette pair used.
 
 ---
 
+### M-ONBOARD — Teach the First Five Minutes (P0 — the director could not play his own game)
+
+> Director, 2026-08-12, after playing a build: *"i could not play the game! my
+> belts didnt corner correctly and i could not make a extractor work."*
+
+**This brief exists because of a measured failure, and the measurement matters
+more than the anecdote.** Both reported problems were investigated at HEAD:
+
+- **Belt cornering is not broken.** Laying an L through `Sim.place` turns the
+  corner correctly, and `engine.js`'s keyboard lay-mode and mouse drag go
+  through the SAME `enterCell` → `stepGesture` path, which re-aims the previous
+  belt toward each new cell. Verified on a real generated map.
+- **The extractor was not broken either — it was working perfectly and
+  invisibly.** Placed on a revealed vein it mines an ore on the first cycle,
+  puts it in `machine.out`, finds no belt on its output side, and sets
+  `status: 'blocked'`. It then sits forever. Over 600 ticks it emitted
+  **zero log messages.** `render.js` draws a red `!` over it — and nothing,
+  anywhere, ever says what that `!` means.
+
+So the mechanics are sound and the *teaching* is absent. A player places a
+machine, sees nothing happen, gets one unexplained punctuation mark, and
+concludes the game is broken. That is a §0 law 6 failure of the first order:
+the state is legible to the simulation and illegible to the human.
+
+**The lesson for the whole project:** the bot in `test/balance.js` has never
+once failed to connect an extractor, because it knows the rules by
+construction. A green sweep says the game is *winnable*, never that it is
+*playable*. Those are different properties and only one of them is tested.
+
+#### Part 1 — Diagnostics (do this first; it is small and it is most of the win)
+
+Make every failure state say its own cause, once, in the LOG. Not a tutorial —
+a game that explains itself.
+
+- **Blocked output** — the case that beat the director. First time any machine
+  sets `status: 'blocked'`, log it in the machine's own voice: *"The extractor
+  is full. Nothing is carrying it away — lay a belt on its output side (R
+  rotates before you place)."* Once per run per cause, never nagging.
+- **`!` needs a legend.** It currently means blocked, nofuel or depleted with
+  no way to tell which. Either differentiate the glyph or make hovering/
+  cursoring the machine state the reason in the SCAN panel — that panel already
+  exists and already has room.
+- **No fuel, depleted vein, jammed belt, unpowered assembler**: same treatment.
+- The rig itself should say what it is waiting for when the breach stalls.
+
+#### Part 2 — The first-run tutorial
+
+Only after Part 1, because a game that explains itself needs less tutorial.
+
+- Trigger on a profile with zero completed runs; skippable from the first
+  keypress and never shown again once skipped or finished (persist in meta).
+- **Teach by doing, on the real map, not a scripted sandbox.** Four beats, each
+  gated on the player actually doing it: place an extractor on a vein · rotate
+  its output · lay a belt to the rig · watch the first ore arrive. Stratum 1
+  already opens with a guaranteed iron vein near the rig.
+- **GRIT teaches, because GRIT is already the voice.** He does not explain
+  mechanics (law 3) — so he *mocks the Company induction video* he is being
+  forced to read out. That keeps the tone and delivers the content: *"Step one.
+  'Place the extractor upon the ore.' Upon it. Not near it. They put that in
+  writing because someone tried near."*
+- Pressure pauses during the tutorial: instability does not climb until the
+  first ore reaches the rig. Nobody should lose their first run to a quake
+  while reading.
+
+#### Part 3 — Make the manual's first page findable
+
+`H` opens a good two-page manual now (M-MANUAL). A first-time player does not
+know it exists. Say so on the title screen and once in the first run.
+
+**Contracts:** `js/sim.js` (cause messages on state transitions — these are sim
+events, so they must be deterministic and DOM-free), `js/engine.js` (tutorial
+step machine, skip handling), `js/meta.js` (tutorial-seen flag, save-compatible
+default), `js/barks.js` (the induction-video pool), `js/render.js` (SCAN panel
+reason line, title-screen hint). `js/data.js` additive only.
+
+**Acceptance:** a headless test that places an extractor with no output belt
+and asserts the LOG names the cause within N ticks — the exact scenario that
+defeated the director. Tutorial steps each assert-driven in
+`test/integration.js`. Save written before this brief still loads.
+**Size:** ~150 lines for Part 1, ~250 for Part 2.
+
+**Dispatch note:** the director asked for this "after everything else". Part 1
+should not wait — he intends to playtest every major change from here, and a
+game that cannot explain its own failure states makes every one of those
+sessions cost more than it should. Part 2 can follow whenever.
+---
+
 ### M-HIRES — Fill the Screen, Then Sharpen It (P0-adjacent — dispatch anytime)
 
 > Director's note (2026-08-11): *"make the definition of ascii better: Canvas
