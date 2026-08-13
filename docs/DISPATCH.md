@@ -23,6 +23,7 @@ with `git add -A`).
 | M-GRITPLUS | barks.js, art.js, engine.js (420 buffer), render.js (tint) |
 | M-WONDERS | map.js, sim.js, data.js (additive), render.js, barks.js |
 | M-EVENTS | **new js/events.js**, sim.js, engine.js, meta.js, render.js, barks.js, art.js |
+| M-ONBOARD | sim.js (cause messages), engine.js (tutorial steps), meta.js (seen flag), barks.js, render.js (SCAN reason line) |
 | M-HIRES | render.js (**metrics/scaling — the whole file's coordinate basis**), style.css, art.js (rasterizer), engine.js (resize), vendor/, tools/build.js |
 
 **Rules that follow from the table:**
@@ -52,6 +53,7 @@ with `git add -A`).
 | 4 | ~~M-EVENTS (big)~~ ✅ **merged 2026-08-12** (rescued by patch — see cloud notes) | — | — |
 | 5 | **M-TIER2 first, ALONE** (see below) | then M-MANTLE + M-SCHEMS2 | — |
 | 6 | M-WORMS | M-ACHIEVE + M-RIGSKINS | M-SOUND |
+| — | **M-ONBOARD Part 1 (diagnostics)** — small, and blocks the director playtesting; run it whenever a slot is free | M-ONBOARD Part 2 (tutorial) — after the rest, as requested | — |
 
 **Why M-TIER2 goes first and alone in wave 5.** SPEC3 §Z pairs it with
 M-MANTLE + M-SCHEMS2 in parallel, but two things argue against that:
