@@ -431,6 +431,43 @@
   // line holds the foreman bar until ~12s; this waits it out (see sim.js).
   D.LANDMARK_BARK_T = 14;
 
+  // ---------------- M-EVENTS: dig finds, vignettes & the cat ----------------
+  // The rock has things in it, the dark between strata asks questions, and one
+  // of the answers purrs. Timing and weights live here; every word of it lives
+  // in js/events.js (the finds and the vignettes) and js/barks.js (GRIT's
+  // answer to both). js/events.js owns all of this content's randomness on a
+  // stream DERIVED from run.seed rather than run.rng — see the header of that
+  // file for why the roll must not move the sim's stream position.
+  D.EVENTS = {
+    findRate: 0.08,       // fraction of completed ROCK excavations that yield
+    vignetteChance: 0.25, // chance of an expedition vignette after a pick
+    gasFuse: 8,           // ticks between the hiss and the pop (1s of warning)
+    shaftR: 6,            // Old Shaft: radius of map revealed around the dig
+    rigOncePerStratum: true, // a dead rig is salvaged once per floor, not five
+    // The cave-cat. Everything here is presentation cadence — the cat writes
+    // nothing back into the sim, so none of it can move a balance number.
+    catStep: 6,           // ticks between cat moves (~0.75s — chunky, law 2)
+    catPerch: 40,         // ticks it holds a warm smelter before moving on
+    catFlee: 2,           // seconds before a quake it breaks for the rig
+    // The vignette panel. 40x14 is the brief's ceiling and the art is built to
+    // it exactly, so every event frames identically and the choices land on
+    // the same two rows every time (SPEC3 §0 law 6 — find it in one glance).
+    panelW: 40, panelH: 14,
+  };
+  // Dig finds, weighted. `bark` names the js/barks.js pool GRIT answers with;
+  // an absent pool is silently no barked line, never an error. Weights are
+  // relative and need not sum to anything in particular — they sum to 100 here
+  // because that makes the table readable as percentages of a find.
+  D.FINDS = [
+    { id: 'ore',      w: 24, amt: [6, 10], bark: 'digFind' },
+    { id: 'cache',    w: 20, amt: [8, 15], bark: 'digFind' },
+    { id: 'lunchbox', w: 14, bark: 'lunchbox' },
+    { id: 'bones',    w: 14, bark: 'bones' },
+    { id: 'gas',      w: 12, inst: 8, bark: 'gasPocket' },
+    { id: 'shaft',    w: 10, bark: 'oldShaft' },
+    { id: 'rig',      w: 6,  plates: 12, bark: 'deadRig' },
+  ];
+
   D.SAVE_KEY = 'deepcore_save_v1';
   // Display only (title-screen corner). v1.1 is the shipped feature set —
   // GRIT, the rig portrait, keyboard play — plus this polish round. The save

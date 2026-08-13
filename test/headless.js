@@ -10,6 +10,7 @@ require('../js/art.js');
 require('../js/map.js');
 require('../js/sim.js');
 require('../js/meta.js');
+require('../js/events.js');   // M-EVENTS: dig finds, vignettes, the cat
 const DC = globalThis.DC;
 const D = DC.DATA;
 const S = DC.Sim;
@@ -35,6 +36,31 @@ function checkArt() {
     }
   }
   for (const k of Object.keys(DC.Art)) walk(k, DC.Art[k]);
+}
+
+// -------------------------------------------------- the vendored font subset
+// `vendor/deepcore-mono.woff2` carries EXACTLY the inventory tools/glyphs.js
+// reports, and regenerating it needs Python + fontTools that these suites
+// deliberately do not require. So adding a glyph to a bark, an art asset or a
+// data table without regenerating the font puts a tofu box on the screen of
+// every player whose system font is missing it — the exact class of bug
+// M-HIRES vendored the font to end, and one nothing else in the tree would
+// catch. This pins the inventory. If it fails you have added a glyph: either
+// use one of the 110 below, or run `node tools/font.js` and update this list
+// deliberately, in the same commit.
+const FONT_GLYPHS =
+  '¢¤§«°±·»×˙—’†‡•…←↑→↓↵−∩≈≋≡≤≫⌐─│┌┐└┘├┤┬┼═║╒╔╕╗╘╚╛╝╞╟╠╡╢╣╥╦╧╨╩╪╫╬' +
+  '▀▁▂▃▄▅▆▇█▉▊▋▌▍▎▏▐░▒▓▖▗▘▙▚▛▜▝▞▟▣▪▬▲▶▸▼◀◆◇◈○◎☼♠♦⣿';
+function checkGlyphInventory() {
+  const drawn = require('../tools/glyphs.js').glyphs.join('');
+  const have = new Set(FONT_GLYPHS.split(''));
+  const added = drawn.split('').filter((c) => !have.has(c));
+  assert(added.length === 0,
+    'these glyphs are not in vendor/deepcore-mono.woff2 and will tofu: ' +
+    added.join(' ') + ' (' + added.map((c) =>
+      'U+' + c.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')).join(' ') +
+    ') — see tools/font.js');
+  return drawn.length;
 }
 
 // ------------------------------------------------------------------ the run
@@ -651,6 +677,24 @@ function checkSave() {
   assert(M.recordSplits(p, [{ depth: 5, sec: 90 }, { depth: 6, sec: 80 }, null]) === 2,
     'recordSplits banks a whole run and survives holes in the list');
 
+  // M-EVENTS: the logbook and the cat. Both are optional fields a v1/v2 save
+  // has never heard of, so both must default rather than fail (checked in the
+  // migration block below), and the book must never hold the same entry twice.
+  assert(Array.isArray(fresh.logbook) && fresh.logbook.length === 0,
+    'a fresh profile has an empty logbook');
+  assert(fresh.catFound === false, 'a fresh profile has no cat yet');
+  assert(M.recordLog(p, 4) === true, 'a found log entry is filed');
+  assert(M.recordLog(p, 4) === false, 'the same entry is never filed twice');
+  assert(M.recordLog(p, 1) === true, 'a second entry is filed');
+  assert(M.logbook(p).join(',') === '1,4', 'the book reads in entry order');
+  assert(M.hasLog(p, 4) === true && M.hasLog(p, 9) === false,
+    'the book knows what it holds');
+  assert(M.recordLog(p, -1) === false && M.recordLog(p, M.LOGBOOK_MAX) === false,
+    'an out-of-range entry is refused rather than stored');
+  assert(M.catFound(p) === false, 'the cat is not found by default');
+  assert(M.findCat(p) === true && M.catFound(p) === true, 'the cat is found once');
+  assert(M.findCat(p) === false, '...and cannot be found twice');
+
   // the Daily Shaft: one seed per UTC date, one ranked attempt per date
   assert(M.dailyKey(Date.UTC(2026, 0, 5, 23, 59, 59)) === '2026-01-05', 'dailyKey is UTC');
   assert(M.dailyKey(Date.UTC(2026, 0, 6, 0, 0, 1)) === '2026-01-06', 'dailyKey rolls at UTC midnight');
@@ -690,14 +734,28 @@ function checkSave() {
       'a v1 profile loads with no ghosts rather than undefined');
     assert(old.dailyHistory.length === 0,
       'a v1 profile loads with an empty daily history rather than undefined');
+    assert(Array.isArray(old.logbook) && old.logbook.length === 0,
+      'a v1 profile loads with an empty logbook rather than undefined');
+    assert(old.catFound === false, 'a v1 profile loads without a cat');
     // it can then take new records and round-trip them
     M.recordSplit(old, 2, 88.5);
     M.recordDaily(old, { date: '2026-02-02', depth: 3, timeSec: 300, cores: 2 });
+    M.recordLog(old, 11);
+    M.findCat(old);
     M.save(old);
     const back = M.load();
     assert(back.bestSplits['2'] === 88.5, 'a new record round-trips through the save');
     assert(back.dailyHistory.length === 1 && back.dailyHistory[0].date === '2026-02-02',
       'the daily history round-trips through the save');
+    assert(back.logbook.join(',') === '11', 'the logbook round-trips through the save');
+    assert(back.catFound === true, 'the cat round-trips through the save');
+    // and a save full of nonsense is sanitized, never trusted
+    cell[D.SAVE_KEY] = JSON.stringify({ logbook: [3, 3, -1, 'x', 999, 2], catFound: 'yes' });
+    const junk = M.load();
+    assert(junk.logbook.join(',') === '2,3',
+      'a corrupt logbook is filtered and deduped, not repaired (got ' +
+      junk.logbook.join(',') + ')');
+    assert(junk.catFound === true, 'a truthy cat flag reads as a cat');
 
     // a save corrupted in the NEW fields must degrade, never throw
     cell[D.SAVE_KEY] = JSON.stringify({
@@ -725,9 +783,577 @@ function checkSave() {
   assert(M.recordSplit(legacy, 2, 100) === true, 'a v1 profile can still take a record');
 }
 
+// ======================================================================
+// M-EVENTS — dig finds at the sim layer.
+// The find table is exercised directly (a 4000-dig sweep is the only honest
+// way to see an 8% roll), and the SIM HOOK is proved separately by digging a
+// real hole through the public API and watching the counter move. The two
+// halves matter: a perfect find table nobody calls is a perfect no-op.
+// ======================================================================
+function checkDigFinds() {
+  const E = DC.Events;
+  assert(E && typeof E.rollDig === 'function', 'DC.Events.rollDig exists');
+  assert(typeof E.tick === 'function', 'DC.Events.tick exists');
+  const eff = DC.Meta.effects(DC.Meta.newProfile());
+
+  // ---- the table: rate, coverage, and every payload ---------------------
+  const r0 = S.newRun(eff, 4242);
+  const seen = {};
+  const N = 4000;
+  for (let i = 0; i < N; i++) {
+    const id = E.rollDig(r0, 5, 5);
+    if (id) seen[id] = (seen[id] || 0) + 1;
+    r0.instability = 0;       // keep the gas pockets from ending the run
+    r0.ev.rigTaken = false;   // scaffold: the per-floor lock is checked below
+  }
+  const st0 = E.peek(r0);
+  assert(st0.digs === N, 'every excavation is counted (' + st0.digs + ')');
+  const rate = st0.finds / st0.digs;
+  assert(rate > 0.05 && rate < 0.11,
+    'about 8% of excavations yield (got ' + (rate * 100).toFixed(1) + '%)');
+  for (const f of D.FINDS)
+    assert(seen[f.id] > 0, 'find "' + f.id + '" turned up in ' + N + ' digs');
+  // EGG-420's dig route (M-GRITPLUS asked for it; without this it is the typed
+  // code or nothing). Rolled per excavation rather than per find — see the
+  // note in events.js — and only ever once in a run.
+  assert(seen.tin > 0, 'the pre-collapse tin is findable at all');
+  {
+    const run = S.newRun(eff, 4242);
+    let tins = 0;
+    for (let i = 0; i < 20000; i++) {
+      if (E.rollDig(run, 5, 5) === 'tin') tins++;
+      run.instability = 0;
+      run.ev.rigTaken = false;
+    }
+    assert(tins === 1, 'the tin turns up exactly once in a run (got ' + tins + ')');
+    assert(run.eggSeen === true, 'and it really opened the window');
+  }
+
+  // ---- the payloads, one at a time, on a clean run ----------------------
+  function forced(id, at) {
+    // Drive the stream until the wanted find comes up, then report the run it
+    // came up on. Cheaper and far clearer than stubbing the rng.
+    const run = S.newRun(eff, 99);
+    // The dig site matters for exactly one find (the Old Shaft reveals map
+    // around it), so callers may say where the hole is; everything else is
+    // indifferent to it.
+    const p = at || { x: 20, y: 12 };
+    for (let i = 0; i < 20000; i++) {
+      const before = {
+        inv: JSON.parse(JSON.stringify(run.inv)),
+        inst: run.instability,
+        revealed: countRevealed(run),
+        msgs: run.messages.length,
+      };
+      const got = E.rollDig(run, p.x, p.y);
+      if (got === id) return { run: run, before: before };
+      run.instability = 0;
+      run.ev.rigTaken = false;
+    }
+    fail('never rolled the "' + id + '" find in 20000 digs');
+  }
+  function countRevealed(run) {
+    let n = 0;
+    for (let y = 0; y < D.MAP_H; y++)
+      for (let x = 0; x < D.MAP_W; x++) if (run.grid[y][x].revealed) n++;
+    return n;
+  }
+  function invTotal(inv, keys) {
+    let n = 0;
+    for (const k of keys) n += inv[k] || 0;
+    return n;
+  }
+
+  {  // ore pocket: 6-10 of one of THIS stratum's ores, straight to the hub
+    const { run, before } = forced('ore');
+    const ores = Object.keys(D.STRATA[run.depth - 1].ores);
+    const gained = invTotal(run.inv, ores) - invTotal(before.inv, ores);
+    assert(gained >= 6 && gained <= 10,
+      'an ore pocket pays 6-10 ore (got ' + gained + ')');
+  }
+  {  // cache: 8-15 plates
+    const { run, before } = forced('cache');
+    const gained = (run.inv.ironPlate || 0) - (before.inv.ironPlate || 0);
+    assert(gained >= 8 && gained <= 15,
+      'a cache pays 8-15 plates (got ' + gained + ')');
+  }
+  for (const quiet of ['lunchbox', 'bones']) {
+    const { run, before } = forced(quiet);
+    assert(JSON.stringify(run.inv) === JSON.stringify(before.inv),
+      'a ' + quiet + ' pays nothing but a story');
+    assert(run.messages.length > before.msgs, '...and it does tell the story');
+  }
+  {  // gas pocket: a second of warning, THEN the pressure
+    const { run, before } = forced('gas');
+    const S0 = E.peek(run);
+    assert(S0.gas && S0.gas.at === run.t + D.EVENTS.gasFuse,
+      'the gas pocket arms a one-second fuse');
+    assert(run.instability === before.inst, 'the hiss costs nothing by itself');
+    const inst0 = run.instability;
+    for (let i = 0; i < D.EVENTS.gasFuse; i++) { run.t++; E.tick(run); }
+    assert(Math.abs(run.instability - (inst0 + 8)) < 1e-9,
+      'the pocket pops for +8 pressure (got +' +
+      (run.instability - inst0).toFixed(2) + ')');
+    assert(E.peek(run).gas === null, 'and the fuse is spent, not repeating');
+  }
+  {  // the Old Shaft: a 6-radius chunk of map, revealed
+    // dug in the corner furthest from the rig, which is the only place the
+    // opening scan has certainly not already lit up
+    const probe = S.newRun(eff, 99);
+    const far = { x: probe.hub.x < D.MAP_W / 2 ? D.MAP_W - 2 : 1,
+                  y: probe.hub.y < D.MAP_H / 2 ? D.MAP_H - 2 : 1 };
+    const { run, before } = forced('shaft', far);
+    const gained = countRevealed(run) - before.revealed;
+    assert(gained > 0,
+      'the old shaft reveals map the scan had not reached (got ' + gained + ')');
+    assert(gained <= Math.PI * D.EVENTS.shaftR * D.EVENTS.shaftR + 8,
+      'and it reveals a 6-radius chunk, not the floor (got ' + gained + ')');
+  }
+  {  // the dead rig: 12 plates, a log entry, and only once per stratum
+    const { run, before } = forced('rig');
+    assert((run.inv.ironPlate || 0) - (before.inv.ironPlate || 0) === 12,
+      'a dead rig salvages 12 plates');
+    const st = E.peek(run);
+    assert(st.logs.length === 1, 'a dead rig hands over one foreman log');
+    assert(typeof E.logText(st.logs[0]) === 'string', '...and it is a real entry');
+    assert(st.rigTaken === true, 'the floor remembers it has been salvaged');
+    let more = 0;
+    for (let i = 0; i < 5000; i++) if (E.rollDig(run, 5, 5) === 'rig') more++;
+    assert(more === 0, 'the same floor never yields a second dead rig');
+    run.depth++;                                  // scaffold: descend a floor
+    E.tick(run);
+    assert(E.peek(run).rigTaken === false, 'the next floor has its own wreck');
+  }
+
+  // ---- the contract that protects every balance number ------------------
+  // events.js draws from a stream derived from run.seed, never from run.rng.
+  // If that ever changes, the number of holes a player dug starts deciding
+  // which tiles the next quake eats.
+  {
+    function stream(withDigs) {
+      const run = S.newRun(eff, 8080);
+      if (withDigs) for (let i = 0; i < 500; i++) { E.rollDig(run, 5, 5); run.instability = 0; }
+      return [run.rng(), run.rng(), run.rng()].join(',');
+    }
+    assert(stream(true) === stream(false),
+      'digging never moves the sim rng stream');
+    // ...and it is still deterministic on the seed
+    function finds(seed) {
+      const run = S.newRun(eff, seed);
+      const out = [];
+      for (let i = 0; i < 300; i++) { out.push(E.rollDig(run, 5, 5)); run.instability = 0; }
+      return out.join(',');
+    }
+    assert(finds(31337) === finds(31337), 'the same seed digs up the same things');
+    assert(finds(31337) !== finds(31338), 'a different seed digs up different things');
+  }
+
+  // ---- the sim hook: a real hole in real rock ---------------------------
+  {
+    const run = S.newRun(eff, 606);
+    let dug = 0, rubbles = 0;
+    for (let y = 0; y < D.MAP_H && dug < 60; y++)
+      for (let x = 0; x < D.MAP_W && dug < 60; x++) {
+        const t = run.grid[y][x];
+        if (t.t !== 'rock' || t.lm) continue;
+        t.revealed = true;
+        if (!S.demolishAt(run, x, y).ok) continue;
+        dug++;
+      }
+    assert(dug > 0, 'the scaffold found rock to excavate');
+    for (let i = 0; i < D.DIG_ROCK + 2; i++) S.tick(run);
+    const st = E.peek(run);
+    assert(st && st.digs === dug,
+      'sim.js reports every completed excavation to events.js (' +
+      (st && st.digs) + ' of ' + dug + ')');
+    // rubble is not rock: clearing it is housekeeping, not prospecting
+    const before = st.digs;
+    for (let y = 0; y < D.MAP_H && rubbles < 5; y++)
+      for (let x = 0; x < D.MAP_W && rubbles < 5; x++) {
+        const t = run.grid[y][x];
+        if (t.t !== 'floor' || t.machine !== null || t.belt || t.lm) continue;
+        t.rubble = true; t.revealed = true;
+        if (S.demolishAt(run, x, y).ok) rubbles++;
+      }
+    assert(rubbles > 0, 'the scaffold found rubble to clear');
+    for (let i = 0; i < D.DIG_RUBBLE + 2; i++) S.tick(run);
+    assert(E.peek(run).digs === before, 'clearing rubble is not an excavation');
+  }
+  return st0.finds;
+}
+
+// ======================================================================
+// M-EVENTS — the expedition vignettes, at the sim layer.
+// The catalog is audited as DATA first (what an event is allowed to do is
+// the whole safety story of the feature), then the roll, then every effect
+// kind, then the two house rules the module claims: a vignette can never
+// kill you, and a one-stratum modifier is really one stratum.
+// ======================================================================
+function checkVignettes() {
+  const E = DC.Events;
+  const A = DC.Art;
+  const eff = DC.Meta.effects(DC.Meta.newProfile());
+  assert(typeof E.rollVignette === 'function' && typeof E.apply === 'function',
+    'DC.Events exposes rollVignette/apply');
+  const V = E.VIGNETTES;
+  assert(Array.isArray(V) && V.length >= 20,
+    'twenty expedition vignettes are authored (got ' + (V && V.length) + ')');
+
+  // ---- the catalog as data ---------------------------------------------
+  // FX_KEYS is the contract. SPEC3 limits a vignette to inventory deltas,
+  // integrity/pressure, a one-stratum modifier, or the cat; anything else
+  // appearing here is a vignette that has quietly become a game mechanic.
+  const FX_KEYS = ['inv', 'ore', 'integrity', 'inst', 'reveal', 'schematic',
+                   'log', 'cat', 'modsSet', 'modsMul'];
+  const ids = new Set();
+  let catGivers = 0, choices = 0;
+  for (const v of V) {
+    assert(typeof v.id === 'string' && !ids.has(v.id), 'unique vignette id: ' + v.id);
+    ids.add(v.id);
+    assert(typeof v.title === 'string' && v.title.length <= 34,
+      v.id + ': the title fits the panel (' + v.title.length + ')');
+    assert(Array.isArray(v.text) && v.text.length >= 1 && v.text.length <= 2,
+      v.id + ': one or two lines of prose');
+    for (const p of v.text)
+      assert(p.length <= 64, v.id + ': prose line fits 64 columns (' + p.length + ')');
+    assert(v.min >= 1 && v.min <= D.STRATA_COUNT,
+      v.id + ': the depth gate names a real stratum');
+    assertEqJSON(v.choices.length, 2, v.id + ': a vignette is a fork, not a menu');
+    for (const c of v.choices) {
+      choices++;
+      assert(typeof c.label === 'string' && c.label.length <= 30,
+        v.id + ': choice label fits (' + c.label.length + '): ' + c.label);
+      assert(typeof c.hint === 'string' && c.hint.length <= 46,
+        v.id + ': choice hint fits (' + (c.hint || '').length + ')');
+      assert(typeof c.result === 'string' && c.result.length <= 66,
+        v.id + ': the result line fits (' + (c.result || '').length + ')');
+      for (const k in (c.fx || {}))
+        assert(FX_KEYS.indexOf(k) >= 0,
+          v.id + ': "' + k + '" is not an effect a vignette may have');
+      if (c.fx && c.fx.cat) catGivers++;
+    }
+    // house rule 2: every choice does something (see events.js). The Coin's
+    // keepsake is the single authored exception and is named here so that
+    // adding a SECOND do-nothing option has to be a deliberate edit.
+    const inert = v.choices.filter(c => !c.fx || Object.keys(c.fx).length === 0);
+    assert(inert.length === 0 || v.id === 'coin',
+      v.id + ': "walk away" has to buy something');
+    // and a panel to look at
+    const art = A.eventFrame(v.id);
+    assert(Array.isArray(art) && art.length && art.length <= A.EVENT_H,
+      v.id + ': has a panel that fits ' + A.EVENT_H + ' rows');
+    assert(A.eventFrames[v.id], v.id + ': has its OWN panel, not the placeholder');
+    for (const ln of art)
+      assert([...ln].length <= A.EVENT_W,
+        v.id + ': panel row fits ' + A.EVENT_W + ' columns: ' + ln);
+  }
+  assert(catGivers === 1, 'exactly one choice in the whole catalog gives the cat');
+
+  // ---- the roll ---------------------------------------------------------
+  {
+    // Rate, measured on a run parked at the deepest stratum so the whole
+    // catalog is eligible; `seen` is cleared each time because the once-per-
+    // run rule is what the next block is about.
+    const run = S.newRun(eff, 5150);
+    run.depth = D.STRATA_COUNT;
+    let hits = 0;
+    const N = 4000;
+    for (let i = 0; i < N; i++) {
+      run.ev = null;                       // a fresh run's worth of state
+      const S2 = E.state(run);
+      S2.rng = DC.util.mulberry32(i + 1);  // scaffold: an independent draw each time
+      if (E.rollVignette(run)) hits++;
+    }
+    const rate = hits / N;
+    assert(rate > 0.20 && rate < 0.30,
+      'about 25% of descents ask you something (got ' +
+      (rate * 100).toFixed(1) + '%)');
+  }
+  {
+    // Never twice in a run, and never above its depth gate.
+    const run = S.newRun(eff, 77);
+    const got = [];
+    for (let d = 1; d <= 40; d++) {
+      run.depth = 1 + (d % D.STRATA_COUNT);
+      E.state(run);                        // sync the floor
+      const v = E.rollVignette(run);
+      if (v) {
+        assert(got.indexOf(v.id) < 0, 'no vignette is offered twice a run: ' + v.id);
+        assert(v.min <= run.depth, v.id + ' respects its depth gate');
+        got.push(v.id);
+      }
+    }
+    assert(got.length > 2, 'the drive saw a few vignettes (' + got.length + ')');
+  }
+  {
+    // the cat's vignette is withdrawn once you have a cat
+    const run = S.newRun(eff, 4);
+    const st = E.state(run);
+    st.cat = { x: 1, y: 1 };
+    for (let i = 0; i < 400; i++) {
+      st.seen = {};
+      const v = E.rollVignette(run);
+      assert(!v || v.id !== 'crate', 'the crate is not offered to a cat owner');
+    }
+  }
+
+  // ---- every effect kind, applied ---------------------------------------
+  function byId(id) { return V.filter(v => v.id === id)[0]; }
+  function fresh(depth) {
+    const run = S.newRun(eff, 313);
+    run.depth = depth || 1;
+    E.state(run);
+    return run;
+  }
+  {  // inventory, both directions
+    const run = fresh();
+    run.inv.ironPlate = 5;
+    E.apply(run, byId('vault'), 0);
+    assert(run.inv.ironPlate === 35, 'a vignette adds to the hub (got ' +
+      run.inv.ironPlate + ')');
+    const run2 = fresh();
+    run2.inv.gear = 1;
+    E.apply(run2, byId('shrine'), 0);     // costs 2 gears; only 1 in stock
+    assert(run2.inv.gear === 0, 'a cost never takes an inventory negative');
+  }
+  {  // pressure, clamped both ends
+    const run = fresh();
+    run.instability = 3;
+    E.apply(run, byId('vault'), 1);       // -10
+    assert(run.instability === 0, 'pressure clamps at 0');
+    const run2 = fresh();
+    run2.instability = 96;
+    E.apply(run2, byId('vault'), 0);      // +15
+    assert(run2.instability === D.INSTAB_MAX, 'pressure clamps at the ceiling');
+  }
+  {  // HOUSE RULE 1: a vignette can never end a run
+    const run = fresh(6);
+    run.integrity = 3;
+    E.apply(run, byId('offer'), 0);       // -15 hull
+    assert(run.integrity === 1,
+      'a costly vignette leaves you alive at 1 (got ' + run.integrity + ')');
+    assert(run.status !== 'dead', 'and the run is still going');
+    // ...and it never overheals
+    const run2 = fresh();
+    run2.integrity = run2.maxIntegrity - 2;
+    E.apply(run2, byId('rations'), 0);    // +12 hull
+    assert(run2.integrity === run2.maxIntegrity, 'healing stops at max integrity');
+  }
+  {  // the map
+    const run = fresh(3);
+    let hidden = 0;
+    for (let y = 0; y < D.MAP_H; y++)
+      for (let x = 0; x < D.MAP_W; x++) if (!run.grid[y][x].revealed) hidden++;
+    assert(hidden > 0, 'the scaffold has map left to reveal');
+    E.apply(run, byId('crack'), 0);
+    for (let y = 0; y < D.MAP_H; y++)
+      for (let x = 0; x < D.MAP_W; x++)
+        assert(run.grid[y][x].revealed, 'listening maps the whole stratum');
+  }
+  {  // a schematic, installed without a descent
+    const run = fresh(2);
+    const d0 = run.depth, n0 = run.schematics.length;
+    E.apply(run, byId('ghost'), 0);
+    assert(run.schematics.length === n0 + 1, 'the ghost trades you a schematic');
+    assert(run.depth === d0, '...without descending a floor');
+  }
+  {  // a foreman log
+    const run = fresh(4);
+    E.apply(run, byId('watchman'), 1);
+    assert(E.peek(run).logs.length === 1, 'the watchman leaves you her log');
+  }
+  {  // HOUSE RULE: one-stratum modifiers really are one stratum
+    const run = fresh(2);
+    const base = run.mods.offerCount;
+    E.apply(run, byId('drone'), 0);
+    assert(run.mods.offerCount === 4, 'the bribe buys a fourth schematic offer');
+    // it survives the whole floor...
+    for (let i = 0; i < 200; i++) S.tick(run);
+    assert(run.mods.offerCount === 4, '...for the whole of that floor');
+    // ...and is handed back on arrival at the next one
+    run.depth++;
+    E.state(run);
+    assert(run.mods.offerCount === base,
+      'and the next floor gets its own offers back (got ' + run.mods.offerCount + ')');
+    // multiplicative modifiers restore exactly, not approximately
+    const run2 = fresh(3);
+    const inst0 = run2.mods.instMult;
+    E.apply(run2, byId('seam'), 1);
+    assert(Math.abs(run2.mods.instMult - inst0 * 0.8) < 1e-9,
+      'the quiet seam calms the floor by a fifth');
+    run2.depth++;
+    E.state(run2);
+    assert(run2.mods.instMult === inst0, 'and hands the multiplier back exactly');
+  }
+
+  // ---- and none of it touches the sim's stream --------------------------
+  {
+    function stream(withVignettes) {
+      const run = S.newRun(eff, 6161);
+      run.depth = 5;
+      if (withVignettes) {
+        for (let i = 0; i < 40; i++) {
+          const v = E.rollVignette(run);
+          if (v) E.apply(run, v, i % 2);
+          run.ev.seen = {};
+        }
+      }
+      return [run.rng(), run.rng(), run.rng()].join(',');
+    }
+    assert(stream(true) === stream(false),
+      'vignettes never move the sim rng stream');
+  }
+  return V.length + ' vignettes, ' + choices + ' choices';
+}
+
+// ======================================================================
+// M-EVENTS — the cave-cat.
+// Three promises, all of them checkable: she stays somewhere legal, she
+// sits on furnaces that are actually lit, and she breaks for the rig
+// BEFORE every quake rather than after it. Plus the one that makes her
+// safe to ship at all — she never writes into the sim, so a run with a cat
+// and a run without one are the same run.
+// ======================================================================
+function checkCat() {
+  const E = DC.Events;
+  const eff = DC.Meta.effects(DC.Meta.newProfile());
+  assert(typeof E.grantCat === 'function' && typeof E.cat === 'function',
+    'DC.Events exposes the cat');
+
+  function withCat(seed) {
+    const run = S.newRun(eff, seed || 808);
+    assert(E.cat(run) === null, 'a run has no cat until one is found');
+    const cat = E.grantCat(run);
+    assert(cat && E.cat(run) === cat, 'granting a cat gives the run a cat');
+    assert(E.grantCat(run) === cat, 'and she is not granted twice');
+    return run;
+  }
+
+  {  // she starts somewhere legal, and stays there
+    const run = withCat(808);
+    const cat = E.cat(run);
+    assert(run.grid[cat.y][cat.x].t === 'floor', 'the cat starts on floor');
+    let illegal = 0, moved = 0;
+    let last = cat.x + ',' + cat.y;
+    for (let i = 0; i < 60 * D.TICK_HZ; i++) {
+      S.tick(run);
+      if (run.status === 'dead') break;
+      const t = run.grid[cat.y] && run.grid[cat.y][cat.x];
+      if (!t || (t.t !== 'floor' && t.machine !== 0)) illegal++;
+      const now = cat.x + ',' + cat.y;
+      if (now !== last) { moved++; last = now; }
+    }
+    assert(illegal === 0, 'the cat never stands in rock, glass or magma');
+    assert(moved > 10, 'the cat actually wanders (' + moved + ' moves)');
+    // ...and never far enough away to be somebody else's cat
+    const c = { x: run.hub.x + 1, y: run.hub.y + 1 };
+    assert(Math.abs(cat.x - c.x) <= 20 && Math.abs(cat.y - c.y) <= 20,
+      'the cat stays in sight of the rig');
+  }
+
+  {  // the perch: a smelter that is genuinely burning
+    const run = withCat(909);
+    const cat = E.cat(run);
+    // scaffold: a smelter next to the rig, mid-smelt
+    const sx = run.hub.x + 4, sy = run.hub.y;
+    for (let y = sy; y < sy + 2; y++)
+      for (let x = sx; x < sx + 2; x++) {
+        const t = run.grid[y][x];
+        t.t = 'floor'; t.ore = null; t.oreAmt = 0; t.lm = null; t.revealed = true;
+      }
+    const id = run.nextId++;
+    run.machines[id] = {
+      id: id, type: 'smelter', x: sx, y: sy, w: 2, h: 2, facing: 1, hp: 2,
+      progress: 4, recipe: null, input: { ironOre: 8 }, fuel: 9,
+      status: 'ok', repairAt: 0, blockedSince: 0, nofuelSince: 0,
+      out: [], job: 'smeltIron',
+    };
+    for (let y = sy; y < sy + 2; y++)
+      for (let x = sx; x < sx + 2; x++) run.grid[y][x].machine = id;
+    let perched = false;
+    for (let i = 0; i < 90 * D.TICK_HZ && !perched; i++) {
+      S.tick(run);
+      run.machines[id].job = 'smeltIron';       // scaffold: keep the fire lit
+      run.machines[id].input.ironOre = 8;
+      run.machines[id].fuel = 9;
+      if (cat.mode === 'perch') perched = true;
+    }
+    assert(perched, 'the cat finds a lit smelter and sits on it');
+    assert(cat.x >= sx && cat.x < sx + 2 && cat.y >= sy && cat.y < sy + 2,
+      'and the perch is ON the furnace');
+    // the smelter is unharmed by being sat on
+    assert(run.machines[id].hp === 2 && run.machines[id].job === 'smeltIron',
+      'a cat on a smelter costs the smelter nothing');
+  }
+
+  {  // THE TELL: she runs before the quake, not after it
+    const run = withCat(1111);
+    const cat = E.cat(run);
+    const c = { x: run.hub.x + 1, y: run.hub.y + 1 };
+    const dist = () => Math.max(Math.abs(cat.x - c.x), Math.abs(cat.y - c.y));
+    run.instability = 60;                       // scaffold: quakes are scheduled
+    let flees = 0, quakes = 0, lateFlees = 0, closedIn = 0;
+    let armed = 0, distAtArm = 0;
+    for (let i = 0; i < 300 * D.TICK_HZ; i++) {
+      const before = run.quakeAt;
+      S.tick(run);
+      run.instability = 60;                     // hold the pressure steady
+      run.integrity = run.maxIntegrity;         // and keep her human alive
+      const fleeing = run.quakeAt > 0 &&
+        run.quakeAt - run.t <= D.EVENTS.catFlee * D.TICK_HZ;
+      if (fleeing) {
+        if (!armed) { armed = 1; distAtArm = dist(); flees++; }
+        if (cat.mode !== 'flee') lateFlees++;
+      } else if (armed) {
+        armed = 0;
+      }
+      // the tick a quake actually lands on: quakeAt was armed and is now spent
+      if (before > 0 && run.quakeAt === 0 && run.t >= before) {
+        quakes++;
+        if (dist() <= distAtArm) closedIn++;
+        assert(E.cat(run) === cat, 'the quake did not take the cat');
+      }
+    }
+    assert(quakes >= 5, 'the scaffold produced quakes to flee (' + quakes + ')');
+    assert(flees >= 5, 'the cat had a flee window before each of them');
+    assert(lateFlees === 0,
+      'the cat is already fleeing for the whole window (' + lateFlees + ' late ticks)');
+    assert(closedIn === quakes,
+      'and she is closer to the rig when it lands, every time (' +
+      closedIn + '/' + quakes + ')');
+  }
+
+  {  // a descent re-homes her: the rig is rebuilt around her every floor
+    const run = withCat(1212);
+    const cat = E.cat(run);
+    for (let i = 0; i < 40; i++) S.tick(run);
+    run.depth = 2;
+    S.startStratum(run);
+    E.state(run);
+    assert(run.grid[cat.y][cat.x].t === 'floor',
+      'the cat lands on floor on the new stratum, not in rock');
+  }
+
+  {  // and the promise that lets her exist at all
+    function stream(withCatToo) {
+      const run = S.newRun(eff, 1313);
+      if (withCatToo) E.grantCat(run);
+      for (let i = 0; i < 200 * D.TICK_HZ; i++) S.tick(run);
+      return [run.rng(), run.rng(), run.rng(), run.integrity, run.instability].join(',');
+    }
+    assertEqJSON(stream(true), stream(false),
+      'a run with a cat in it is the same run as one without');
+  }
+  return 'cat: wanders, perches, flees';
+}
+
 function main() {
   checkArt();
+  const glyphN = checkGlyphInventory();
   checkSave();
+  const digFinds = checkDigFinds();
+  const vignettes = checkVignettes();
+  const catNote = checkCat();
   const lmSweep = checkLandmarkSweep();
 
   const eff = DC.Meta.effects(DC.Meta.newProfile());
@@ -785,6 +1411,9 @@ function main() {
     ' | quakes ' + (shakes - shakes0) + ' (' + quakeMsgs.length + ' msgs)' +
     ' | integrity ' + integ0 + '->' + run.integrity +
     ' | status ' + run.status +
+    ' | glyphs ' + glyphN + ' in the subset' +
+    ' | dig finds ' + digFinds + '/4000, all 7 kinds' +
+    ' | ' + vignettes + ' | ' + catNote +
     ' | landmarks ' + lmSweep.withLm + '/' + lmSweep.maps + ' maps, ' +
     lmSweep.cells + ' cells, ' + Object.keys(lmSweep.ids).length + ' kinds, ' +
     'veins+connectivity held');

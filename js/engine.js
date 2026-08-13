@@ -194,6 +194,15 @@
       // M-WONDERS: the stratum's landmark, found by the sweep or used by the
       // player. The Bell is the one that reaches past GRIT: ringing it is
       // heard, and something far below answers early (SPEC3 M-CORELORE hook).
+      // M-EVENTS: the rock handed something over. The find names its own bark
+      // pool, so a pool js/barks.js has not grown yet is simply a quiet find.
+      else if (ev.type === 'find' && ev.data) bark(ev.data.bark, ev.data.id);
+      // ...and a dead foreman's last log goes in the book, for good.
+      else if (ev.type === 'foremanLog' && ev.data) recordLog(run, ev.data.index);
+      // ...and the cat. 'flee' is the one that matters: it is the seismograph
+      // saying out loud what the map is already showing.
+      else if (ev.type === 'cat' && ev.data)
+        bark(ev.data.act === 'flee' ? 'catFlee' : 'cat');
       else if (ev.type === 'landmark' && ev.data) {
         lmPending = { trigger: ev.data.act === 'find' ? 'landmarkFound' : 'landmarkUse',
                       id: ev.data.id };
@@ -201,6 +210,15 @@
           coreBeat(run, { kind: 'intrusion' });
       }
     }
+  }
+
+  // M-EVENTS: a found log entry is filed the instant it is read, not at the
+  // end of the run — a rig that dies on the next quake still keeps what its
+  // foreman learned, which is the only reason the logbook fills up at all.
+  function recordLog(run, index) {
+    const st = DC.state, M = DC.Meta;
+    if (!st || !M || typeof M.recordLog !== 'function') return;
+    try { M.recordLog(st.meta, index); } catch (e) { /* meta stays optional */ }
   }
 
   // Optional Core wiring — no-op unless js/barks.js exposes the second voice.
@@ -273,6 +291,14 @@
     st.run.daily = daily;
     st.run.splits = [];
     st.run.startedAt = Date.now();
+    // M-EVENTS: once she has been found, the cat comes on every run. Quietly
+    // — she is only news the first time — and only ever as decoration plus
+    // the quake tell, so a profile with a cat in it is not a profile with an
+    // advantage in it.
+    if (DC.Events && DC.Events.grantCat && DC.Meta.catFound &&
+        DC.Meta.catFound(st.meta)) {
+      try { DC.Events.grantCat(st.run, true); } catch (e) { /* optional */ }
+    }
     awarded = false; awardedCores = 0; breachFlashed = false; lmPending = null;
     const ui = st.ui;
     ui.tool = null; ui.facing = 1; ui.hover = null;
@@ -436,6 +462,36 @@
     st.ui.hover = null;
     centerCursor(st);
     acc = 0;
+    // M-EVENTS: sim.js rolled the expedition vignette on the way down. If the
+    // dark asked something, it gets the screen before the floor does.
+    st.ui.hoverChoice = -1;
+    st.screen = vignetteWaiting(st) ? 'vignette' : 'run';
+  }
+
+  // M-EVENTS ------------------------------------------------------------
+  function vignetteWaiting(st) {
+    const E = DC.Events;
+    if (!E || typeof E.pending !== 'function' || !st.run) return false;
+    try { return !!E.pending(st.run); } catch (e) { return false; }
+  }
+  // Answering it. Everything mechanical happens inside events.js; the engine
+  // owns exactly the two things that module cannot reach — GRIT's editorial,
+  // and the meta save (a cat, once found, is yours in every run after this).
+  function answerVignette(st, i) {
+    const E = DC.Events, run = st.run;
+    if (!run) return;
+    const ev = vignetteWaiting(st) ? E.pending(run) : null;
+    if (!ev || !ev.choices || i < 0 || i >= ev.choices.length) return;
+    let chosen = null;
+    try { chosen = E.apply(run, ev, i); } catch (e) { /* never trap the player */ }
+    if (chosen) {
+      bark('vignette', ev.id + ':' + i);
+      if (chosen.fx && chosen.fx.cat && DC.Meta && DC.Meta.findCat) {
+        try { DC.Meta.findCat(st.meta); } catch (e) { /* meta stays optional */ }
+      }
+    }
+    st.ui.hoverChoice = -1;
+    acc = 0;
     st.screen = 'run';
   }
 
@@ -508,6 +564,9 @@
       }
       case 'foundry':
         if (k === 'Escape' || k === 'Enter') st.screen = 'title';
+        // M-EVENTS: the logbook. It hangs off the Foundry because that is the
+        // one screen between runs where you are already reading your record.
+        else if (lk === 'l') st.screen = 'logbook';
         else {
           const i = 'abcdefghi'.indexOf(lk);
           if (i >= 0 && i < D.META_UPGRADES.length) {
@@ -522,6 +581,23 @@
             }
           } else handled = false;
         }
+        break;
+      // M-EVENTS: the vignette. Two keys, and no way past it that is not an
+      // answer — ESC does not dismiss a fork, and the run is not ticking
+      // behind it, so there is nothing to be impatient about.
+      case 'vignette': {
+        const ev = vignetteWaiting(st) ? DC.Events.pending(st.run) : null;
+        const n = (k >= '1' && k <= '9') ? k.charCodeAt(0) - 49 : -1;
+        if (ev && n >= 0 && n < ev.choices.length) answerVignette(st, n);
+        else if (!ev && (k === 'Enter' || k === 'Escape')) st.screen = 'run';
+        else handled = false;
+        break;
+      }
+      // M-EVENTS: the logbook is a reading screen and nothing else — every
+      // way out of it goes back to the floor you opened it from.
+      case 'logbook':
+        if (k === 'Escape' || k === 'Enter' || lk === 'l') st.screen = 'foundry';
+        else handled = false;
         break;
       case 'help':
         // M-MANUAL: the manual is a two-page pager. ←/→ (and the page numbers)
@@ -766,6 +842,8 @@
       }
     } else if (st.screen === 'descend') {
       st.ui.hoverCard = cardAt(st, c);
+    } else if (st.screen === 'vignette') {
+      st.ui.hoverChoice = choiceAt(st, c);
     }
   }
 
@@ -787,6 +865,9 @@
     } else if (st.screen === 'descend') {
       const i = cardAt(st, c);
       if (i >= 0) applyChoice(st, i);
+    } else if (st.screen === 'vignette') {
+      const i = choiceAt(st, c);
+      if (i >= 0) answerVignette(st, i);
     }
   }
 
@@ -820,6 +901,22 @@
     }
     if (!t || typeof t !== 'string') return;
     setTool(st, t === st.ui.tool ? null : t);
+  }
+
+  // M-EVENTS: vignette choice hit test, over DC.Render.layout.choices
+  // ([{col,row,w,h,index}, ...]). Keyboard 1/2 is the real route and always
+  // works; this is here because every other screen in the game answers a
+  // mouse and a screen that silently does not feels broken.
+  function choiceAt(st, c) {
+    const L = DC.Render.layout;
+    const rows = L && L.choices;
+    if (!Array.isArray(rows)) return -1;
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      if (r && c.col >= r.col && c.col < r.col + r.w &&
+          c.row >= r.row && c.row < r.row + r.h) return r.index;
+    }
+    return -1;
   }
 
   // Descend-screen card hit test: DC.Render.layout.cards

@@ -54,6 +54,11 @@ require('../js/art.js');
 require('../js/map.js');
 require('../js/sim.js');
 require('../js/meta.js');
+// M-EVENTS: loaded because the shipped game loads it — the bot digs, and a
+// sweep that measures a rig the rock never pays is measuring a different game.
+// The finds roll on their own derived stream, so this changes what the bot
+// FINDS, never when the quakes land (see the header of js/events.js).
+require('../js/events.js');
 const DC = globalThis.DC;
 const D = DC.DATA;
 const S = DC.Sim;
@@ -65,7 +70,16 @@ function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
 
 // ------------------------------------------------------------ wall budget
 const T0 = Date.now();
-const BUDGET_MS = parseInt(process.env.DC_BAL_BUDGET || '200', 10) * 1000;
+// 400s, not 200 — headroom for a busy machine. The sweep normally finishes all
+// 14 seeds in ~40s, but on a laptop running several agent sessions it hit the
+// old 200s ceiling and aborted at 11 of 14, printing a PARTIAL table. That is
+// the dangerous failure mode: the numbers still look plausible ("10/11, 91%"),
+// so a short run reads as a real result and a genuine regression could hide
+// behind the smaller n. The budget exists to bound a hang, not to pace a
+// healthy run, so it should sit far above the honest cost. If you see BUDGET
+// rows, raise it and re-run rather than trusting the short table — the
+// footer's targets all assume 14 seeds.
+const BUDGET_MS = parseInt(process.env.DC_BAL_BUDGET || '400', 10) * 1000;
 function elapsed() { return (Date.now() - T0) / 1000; }
 function outOfTime() { return Date.now() - T0 > BUDGET_MS; }
 
