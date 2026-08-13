@@ -39,7 +39,7 @@ dispatch prompt):
 
 ---
 
-## §0 The Six Laws (design compass — read before inventing anything)
+## §0 The Seven Laws (design compass — read before inventing anything)
 
 1. **Animation is honest.** Every animated glyph communicates true sim state
    (a fire flickers because the smelter is actually smelting). Decoration that
@@ -65,6 +65,34 @@ dispatch prompt):
    `render.js`, where a missing platform font silently degraded the whole grid.
    "Cool" and "clean" are the same axis here, not competing ones — the game
    looks best exactly when it reads best.
+7. **`run.rng` is the sim's stream, and nothing else may spend from it.**
+   Determinism is not just "same seed, same map" — it is that *what the player
+   does must not move the stream*. `run.rng` schedules quakes and picks the
+   tiles they land on, so any other consumer makes gameplay depend on player
+   behaviour and makes every number in `test/balance.js` drift with the shape
+   of a base rather than with the tuning.
+
+   Two ways this gets violated, both non-obvious:
+
+   - **Render draws.** `js/render.js` must never call anything that rolls from
+     `run.rng`. Barks are the trap: a line rolled on a frame that only happens
+     if the player pressed a key (TAB for the recap card) shifts the stream, and
+     the victory screen's run is still LIVE — `C` continues it into the Mantle,
+     so a different draw means different schematics and a different map. Found
+     and fixed in M-RECAP: `Barks.review` now picks by a pure FNV-1a hash of
+     (seed, tier, depth). `epitaph`/`toast` get away with it only because their
+     screens draw unconditionally — that is luck, not design. Caching per run
+     stops a per-frame re-roll but does NOT stop the first draw from moving the
+     stream.
+   - **New subsystems rolling their own events.** Derive a stream from the seed
+     instead of sharing `run.rng`. `js/events.js` does exactly this and
+     documents why; `js/data.js`'s EGG-420 note states the same contract.
+
+   **How to comply:** pick by seed hash, roll once inside the game loop and
+   store the result on the run, or own a derived stream. **Lock it with a
+   test** — snapshot `run.rng()` across the call (see `review never advances
+   run.rng` in `test/barks_test.js`, the Mantle-invariance case in
+   `test/integration.js`, and the events-on/off quake-schedule comparison).
 
 ---
 
