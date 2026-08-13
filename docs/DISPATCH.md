@@ -51,9 +51,16 @@ with `git add -A`).
 | 2.5 | ~~M-HIRES (alone)~~ ✅ **merged 2026-08-12** | — | — |
 | 3 | ~~M-CORELORE + M-GRITPLUS~~ ✅ | ~~M-WONDERS~~ ✅ **merged 2026-08-12** | — |
 | 4 | ~~M-EVENTS (big)~~ ✅ **merged 2026-08-12** (rescued by patch — see cloud notes) | — | — |
-| 5 | **M-TIER2 first, ALONE** (see below) | then M-MANTLE + M-SCHEMS2 | — |
+| 5 | **M-TIER2 first, ALONE** (see below) — runs AFTER M-ONBOARD-1 merges | then M-MANTLE + M-SCHEMS2 | — |
 | 6 | M-WORMS | M-ACHIEVE + M-RIGSKINS | M-SOUND |
-| — | **M-ONBOARD Part 1 (diagnostics)** — small, and blocks the director playtesting; run it whenever a slot is free | M-ONBOARD Part 2 (tutorial) — after the rest, as requested | — |
+| 4.5 | **M-ONBOARD Part 1 (diagnostics)** — dispatched 2026-08-12, ahead of wave 5 | — | — |
+| later | M-ONBOARD Part 2 (the tutorial) — after the rest, as the director asked | — | — |
+
+**Why M-ONBOARD Part 1 jumped the queue.** The director found it by playing:
+he could not get an extractor working while all five suites were green. It is
+~150 lines, it unblocks his playtesting of everything after it, and it collides
+with M-TIER2 on both `sim.js` and `render.js` — so the two run in sequence, not
+in parallel. Prompt: `docs/prompts/M-ONBOARD-1.cloud.txt`.
 
 **Why M-TIER2 goes first and alone in wave 5.** SPEC3 §Z pairs it with
 M-MANTLE + M-SCHEMS2 in parallel, but two things argue against that:
