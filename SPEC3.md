@@ -629,14 +629,46 @@ Only after Part 1, because a game that explains itself needs less tutorial.
   gated on the player actually doing it: place an extractor on a vein · rotate
   its output · lay a belt to the rig · watch the first ore arrive. Stratum 1
   already opens with a guaranteed iron vein near the rig.
-- **GRIT teaches, because GRIT is already the voice.** He does not explain
-  mechanics (law 3) — so he *mocks the Company induction video* he is being
-  forced to read out. That keeps the tone and delivers the content: *"Step one.
-  'Place the extractor upon the ore.' Upon it. Not near it. They put that in
-  writing because someone tried near."*
+- **GRIT TEACHES, LOUDLY, AND HE IS FUNNY** (director's call, 2026-08-12,
+  verbatim: *"I WANT MY MAN FOREMAN TEACHING AND MAKING JOKES! ... AND CHILD
+  JOKES! AND DAD JOKES! I DONT GIVE A FUCK IF PLAYERS NEED TO PARSE A JOKE!"*).
+  This overrides the usual restraint. The tutorial is the one place GRIT is
+  *contractually obliged* to explain things, and he hates it — the bit is that
+  he has been handed the Company induction script and cannot get through a line
+  without riffing on it. Law 3 (GRIT never explains) is suspended here BY the
+  fiction: he is not choosing to explain, he is being made to.
+
+  **Register: the whole range, deliberately mixed.** Dad jokes and groaners.
+  Jokes a nine-year-old would make about a drill going into a hole. Filthy
+  adult ones. Puns he is visibly proud of. He should be funny *and* a bit
+  embarrassing, the way a man twenty years down a hole with nobody to talk to
+  gets. Aim for **~60 authored lines** so a second playthrough is not the same
+  script — the tutorial is many players' first impression, and it should be the
+  reason they tell someone about this game.
+
+  Same guardrails as everywhere: profanity, innuendo, gallows humour and
+  Company-hating are the point; slurs, hate, explicit anatomy and non-consent
+  framing are still out. That line has held for the whole project and it is
+  where the humour is *better*, not weaker.
+
+- **Presentation: centre stage, not the foreman bar** (director's call). The
+  two-row bar at the bottom is for ambient barks; a tutorial delivered there is
+  easy to miss and impossible to make feel dynamic. Give these lines a
+  **centred panel or a popup near what he is talking about** — a speech box
+  that can point at the vein, the machine, the key. It should move, land, and
+  get out of the way. Sub-cell block art (M-HIRES's rasterizer) can give the
+  box a real tail/pointer without leaving the character grid.
+
+- **The one thing that must survive the comedy.** However dumb the joke, the
+  ACTION must be unmissable on screen at the same time: the key drawn as an
+  inverse keycap, and the target tile highlighted. That is not a limit on the
+  humour — it is what *lets* the humour be as stupid as it likes, because the
+  player is never relying on the joke to know what to press. A beat where the
+  gag is the only instruction is a beat that gets rewritten.
+
 - Pressure pauses during the tutorial: instability does not climb until the
   first ore reaches the rig. Nobody should lose their first run to a quake
-  while reading.
+  while reading — least of all to a punchline.
 
 #### Part 3 — Make the manual's first page findable
 
@@ -644,7 +676,8 @@ Only after Part 1, because a game that explains itself needs less tutorial.
 know it exists. Say so on the title screen and once in the first run.
 
 **Contracts:** `js/sim.js` (cause messages on state transitions — these are sim
-events, so they must be deterministic and DOM-free), `js/engine.js` (tutorial
+events, so they must be deterministic and DOM-free), `js/art.js` (the speech
+box and its pointer; sub-cell block art from M-HIRES's rasterizer is available), `js/engine.js` (tutorial
 step machine, skip handling), `js/meta.js` (tutorial-seen flag, save-compatible
 default), `js/barks.js` (the induction-video pool), `js/render.js` (SCAN panel
 reason line, title-screen hint). `js/data.js` additive only.
@@ -653,7 +686,9 @@ reason line, title-screen hint). `js/data.js` additive only.
 and asserts the LOG names the cause within N ticks — the exact scenario that
 defeated the director. Tutorial steps each assert-driven in
 `test/integration.js`. Save written before this brief still loads.
-**Size:** ~150 lines for Part 1, ~250 for Part 2.
+**Size:** ~150 lines for Part 1; ~250 for Part 2's machinery plus ~60 authored
+GRIT lines, which is the half that decides whether the tutorial is a chore or
+the thing players quote.
 
 **Dispatch note:** the director asked for this "after everything else". Part 1
 should not wait — he intends to playtest every major change from here, and a
