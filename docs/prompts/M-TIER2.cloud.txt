@@ -1,0 +1,42 @@
+Work in this repository. Create and switch to a branch named M-TIER2 off
+origin/master, and do all your work on it. You are the ONLY session running
+this wave — this brief rewrites the logistics layer every other system feeds
+through, so it gets an empty board.
+
+Read SPEC.md, SPEC2.md, and SPEC3.md section M-TIER2 in full (it absorbs the old
+ROADMAP M2), plus js/data.js and js/sim.js. Honor SPEC3's rules of engagement.
+
+This is the strongest systems brief on the board: you are extending the
+logistics layer that every other system feeds through. Belt throughput must
+comfortably exceed any single machine's rate (SPEC §12) — lines may only jam
+when the player under-builds, because that is the intended lesson. Preserve the
+existing belt push-mechanics contract: multi-pass compression and backpressure
+behave as test/headless.js asserts.
+
+Worth knowing: the scripted bot in test/balance.js currently CANNOT build the
+tier-2 chain, which is why high-Foundry runs stall at s5+ with 'no-breach' and
+'crystal-noroute'. If your work makes tier-2 logistics buildable by that bot,
+teaching it the chain is in scope and would lift the whole sweep's ceiling —
+but tune the BOT, never data.js, to achieve it.
+
+js/data.js ADDITIVE ONLY. sim stays DOM-free and deterministic on run.rng.
+
+Gate: all five suites green and node tools/build.js parses, extended to cover
+the new logistics. Run test/balance.js before and after and report both.
+Checkpoint-commit AND PUSH your branch after every green milestone, with a Co-Authored-By: Claude
+Opus 5 <noreply@anthropic.com> trailer.
+
+When done: push your branch to origin and STOP. Report: what you built, your
+before/after balance numbers, and anything the orchestrator must know to merge.
+
+Two decisions already made for you, so do not re-litigate them:
+
+- SPEC3 notes your underground belt pair partially obsoletes Ghost Belts from
+  M-SCHEMS2 and says "pick ONE". The call is: KEEP underground belts. Ghost
+  Belts will be cut from M-SCHEMS2, which has not been dispatched yet.
+- SPEC3 §0 now has SEVEN laws. Two matter here. Law 6: readability is the
+  objective — new building glyphs must be findable at a glance on the map, and
+  a splitter or filter gate the player cannot identify mid-run is a failed
+  design however elegant the logic. Law 7: run.rng is the sim's stream and
+  nothing else may spend from it; if any of your logistics needs randomness,
+  derive a stream from the seed as js/events.js does, and pin it with a test.

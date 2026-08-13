@@ -49,9 +49,25 @@ with `git add -A`).
 | 2 | ~~M-ANIM-1 + M-ANIM-2~~ ✅ | ~~M-RECAP~~ ✅ | ~~M-MANUAL~~ ✅ **all merged 2026-08-11** |
 | 2.5 | ~~M-HIRES (alone)~~ ✅ **merged 2026-08-12** | — | — |
 | 3 | ~~M-CORELORE + M-GRITPLUS~~ ✅ | ~~M-WONDERS~~ ✅ **merged 2026-08-12** | — |
-| 4 | **M-EVENTS** (big — dispatched to cloud 2026-08-12) | — | — |
-| 5 | M-MANTLE + M-SCHEMS2 | M-TIER2 | — |
+| 4 | ~~M-EVENTS (big)~~ ✅ **merged 2026-08-12** (rescued by patch — see cloud notes) | — | — |
+| 5 | **M-TIER2 first, ALONE** (see below) | then M-MANTLE + M-SCHEMS2 | — |
 | 6 | M-WORMS | M-ACHIEVE + M-RIGSKINS | M-SOUND |
+
+**Why M-TIER2 goes first and alone in wave 5.** SPEC3 §Z pairs it with
+M-MANTLE + M-SCHEMS2 in parallel, but two things argue against that:
+
+1. **They collide on a decision, not just a file.** M-TIER2's underground belt
+   pair partially obsoletes M-SCHEMS2's Ghost Belts — SPEC3 says outright
+   "pick ONE". Run in parallel, both sessions decide independently and one of
+   them is wrong. **The call is made: keep underground belts, CUT Ghost Belts
+   from M-SCHEMS2.** M-SCHEMS2's prompt must say so, which it can only do once
+   M-TIER2 has actually landed them.
+2. **M-SCHEMS2 keys schematics to buildings.** Four of M-TIER2's schematics are
+   for buildings that do not exist yet. A schematic batch written against a
+   logistics layer that is still moving is a batch written twice.
+
+M-TIER2 is also the highest-risk brief left: it rewrites belt push mechanics,
+the thing every other system feeds through. It deserves an empty board.
 
 **Why M-HIRES runs alone at 2.5:** it turns `render.js`'s `CW`/`CH` from
 constants into runtime values — the coordinate basis every other draw path is
