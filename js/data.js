@@ -54,6 +54,20 @@
   D.STRATA_COUNT = 8;     // breach stratum 8 => victory; 9+ = The Mantle
   D.DEPTH_M = 120;        // meters per stratum (flavor)
 
+  // ---------------- M-ONBOARD: diagnostics (SPEC3 M-ONBOARD Part 1) ----------
+  // Seconds a fault must PERSIST before the LOG names its cause. These are
+  // debounce windows, not timers: a machine whose output backs up for a moment
+  // in a busy base is working correctly, and a line that fires on that teaches
+  // nothing. Long enough that ordinary play never trips them, short enough that
+  // a player who has genuinely stalled is told while still looking at the thing.
+  D.DIAG = {
+    blockedT: 8,   // output full and nothing taking it away
+    nofuelT: 6,    // a burner gone dry
+    starveT: 15,   // an assembler missing an input its recipe needs
+    beltJamT: 8,   // an item on a belt that has not advanced
+    stallT: 60,    // the rig short of a breach item with none in stock
+  };
+
   // ---------------- palette (semantic) ----------------
   D.COLORS = {
     bg:       '#0a0a08',
