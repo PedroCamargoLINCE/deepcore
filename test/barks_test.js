@@ -1196,7 +1196,9 @@ let scanLines = 0;
   // scaffold: one of every building, in every status, damaged and whole, with
   // every input buffer full — the widest strings the panel can be asked to draw
   const types = ['belt', 'extractor', 'smelter', 'assembler', 'damper'];
-  const statuses = ['ok', 'idle', 'jammed', 'nofuel', 'blocked', 'dead'];
+  // 'depleted' joins the sweep with M-ONBOARD: it is one of the three statuses
+  // render draws the red '!' for, so it now prints a legend line of its own.
+  const statuses = ['ok', 'idle', 'jammed', 'nofuel', 'blocked', 'dead', 'depleted'];
   let id = 1000;
   const spots = [];
   for (let y = 1; y < D.MAP_H - 3; y++)
@@ -1235,6 +1237,106 @@ let scanLines = 0;
   sweep();
   assert(scanLines > 1000, 'the sweep actually exercised the panel (' + scanLines + ')');
   assert(seen.some(l => /repair/.test(l)), 'the damaged-machine repair line was covered');
+}
+
+// ---------------------------------- M-ONBOARD: the game explains itself
+// Part 1's contracts, held here because this suite is where the wording and
+// panel-geometry lints live. Three separate things:
+//   * every sentence the diagnostics can emit fits the LOG (checked with the
+//     prose panels below, which is where wrapClamp is already loaded)
+//   * the '!' legend fits the SCAN panel AND covers exactly the statuses
+//     render draws that '!' for — a fourth one added later fails here until
+//     somebody writes its line
+//   * GRIT's editorial never spends run.rng (SPEC3 §0 law 7)
+SECTION = 'onboard';
+let diagN = 0;
+{
+  assertEq(typeof S.diagLine, 'function', 'Sim exports diagLine');
+  assertEq(typeof S.diagLines, 'function', 'Sim exports diagLines');
+  const lines = S.diagLines();
+  diagN = lines.length;
+  assert(diagN >= 40, 'diagLines enumerates the wording (' + diagN + ')');
+  for (const l of lines) {
+    assert(typeof l === 'string' && l.length > 0, 'every diagnostic is a string');
+    // Reason AND fix, always. A line that only names the fault leaves the
+    // player exactly where the director was: told something is wrong, not
+    // told what to do. Every one of these ends in an instruction.
+    assert(/belt|demolish|mine |assembler|takes/i.test(l),
+      'diagnostic names a fault but no fix: ' + JSON.stringify(l));
+  }
+  assertEq(new Set(lines).size >= 20, true, 'the causes do not all say the same thing');
+
+  // --- the '!' legend ---
+  const H = S.STATUS_HINT;
+  assert(H && typeof H === 'object', 'Sim exports STATUS_HINT');
+  for (const k in H) {
+    assert(typeof H[k] === 'string' && H[k].length > 0, 'legend for ' + k + ' is a string');
+    assert(H[k].length <= S.SCAN_W, 'the ' + k + ' legend is ' + H[k].length +
+      ' cols, panel clips at ' + S.SCAN_W + ': ' + JSON.stringify(H[k]));
+  }
+  // The legend is a WARNING the player has to find at a glance, so it is held
+  // to the same 4.5:1 text floor every other panel is, and deliberately not to
+  // the dim tone the passive 'click:' hints use — that one measures 2.96:1 and
+  // would have buried the one line this brief exists to surface (law 6).
+  {
+    require('../js/render.js');
+    const R = DC.Render;
+    const lit = R.resolveColor ? R.resolveColor(D.COLORS.amber) : D.COLORS.amber;
+    assert(R.contrast(lit, D.COLORS.bg) >= R.MIN_CONTRAST,
+      "the '!' legend paints at " + R.contrast(lit, D.COLORS.bg).toFixed(2) +
+      ':1, under the ' + R.MIN_CONTRAST + ':1 text floor');
+  }
+  // render.js is the authority on which statuses get the glyph; scrape it so
+  // the two can never drift. This is the actual M-ONBOARD requirement: the
+  // mark meant blocked OR nofuel OR depleted with no way to tell which.
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const src = fs.readFileSync(path.join(__dirname, '../js/render.js'), 'utf8');
+    const mrk = src.match(/const bad = ([^;]+);/);
+    assert(mrk, "found render.js's '!' condition");
+    const drawn = (mrk[1].match(/'(\w+)'/g) || []).map(s => s.replace(/'/g, ''));
+    assert(drawn.length >= 3, "render's '!' covers several statuses (" + drawn.join(',') + ')');
+    for (const st of drawn)
+      assert(H[st], "render draws '!' for status '" + st +
+        "' and the SCAN panel has no legend line for it");
+    for (const st in H)
+      assert(drawn.indexOf(st) >= 0, 'STATUS_HINT explains ' + st +
+        " but render never draws '!' for it");
+  }
+
+  // --- GRIT editorializes, and it costs the stream nothing ---
+  assertEq(typeof B.diag, 'function', 'Barks exports diag');
+  for (const cause in B.DIAG_POOL) {
+    const pool = B.POOLS[B.DIAG_POOL[cause]];
+    assert(Array.isArray(pool) && pool.length >= 4 && pool.length <= 8,
+      'diag pool for ' + cause + ' has 4-8 lines');
+  }
+  // The causes GRIT already covers through an ambient must NOT get a second
+  // line — two GRIT reactions to one fault is nagging.
+  for (const cause of ['blocked', 'nofuel', 'depleted'])
+    assert(!B.DIAG_POOL[cause], cause + ' already reaches GRIT through an ambient pool');
+  // Stream safety, measured against a twin that never speaks: these lines fire
+  // only when the player has built something wrong, so a draw here would make
+  // the quake schedule depend on the shape of a base. Same technique as the
+  // 'review never advances run.rng' lint above.
+  {
+    const a = S.newRun(defEffects(), 20260813);
+    const b = S.newRun(defEffects(), 20260813);
+    for (const cause in B.DIAG_POOL) {
+      a.totalT += 60 * HZ; b.totalT += 60 * HZ;
+      const line = B.diag(a, cause);
+      assert(typeof line === 'string', 'GRIT answers ' + cause);
+      assertEq(a.rng(), b.rng(), 'Barks.diag(' + cause + ') advanced run.rng');
+    }
+    // same seed, same cause, same line — every time
+    const c = S.newRun(defEffects(), 20260813);
+    const d = S.newRun(defEffects(), 20260813);
+    c.totalT += 60 * HZ; d.totalT += 60 * HZ;
+    assertEq(B.diag(c, 'beltJam'), B.diag(d, 'beltJam'),
+      'one seed and one cause must pick one line');
+    assertEq(B.diag(c, 'nope'), null, 'an unknown cause is a silence, not a throw');
+  }
 }
 
 // ------------------------ CX-11: STOCK rows are unambiguous and never clipped
@@ -1348,6 +1450,14 @@ SECTION = 'prose-panels';
   ];
   for (const t of lits.concat(dyn)) checkWrap(t, LW, LR, 'LOG sim message');
 
+  // M-ONBOARD: the diagnostics are too long to survive the regex scrape above
+  // (they are built from a table, not written inline at the msg() call), and
+  // they are the longest prose the LOG ever carries — a cause that names itself
+  // in a sentence the panel truncates would have re-created the original bug in
+  // a new place. Sim.diagLines() is exactly the enumeration this needs.
+  const diagLits = S.diagLines();
+  for (const t of diagLits) checkWrap(t, LW, LR, 'LOG diagnostic');
+
   // M-EVENTS writes into the same LOG panel. The dead foremen are the tight
   // case — 70 columns of somebody else's handwriting has to survive three
   // rows of 29 — and events.js's own messages get the same treatment as
@@ -1380,7 +1490,7 @@ SECTION = 'prose-panels';
   ];
   for (const t of evLits.concat(evDyn)) checkWrap(t, LW, LR, 'LOG event message');
   PROSE_N = allLines.length * 2 + lits.length + dyn.length +
-            logLines.length + evLits.length + evDyn.length;
+            logLines.length + evLits.length + evDyn.length + diagLits.length;
 }
 
 console.log('PASS barks | categories ' + CATALOG.length +
@@ -1399,6 +1509,8 @@ console.log('PASS barks | categories ' + CATALOG.length +
   DC.Art.help.length + ' data-composed, ' + MANUAL_COLORS + ' colours, ink ' +
   DC.Art.helpPages.map(p => (p.ink * 100).toFixed(0) + '%').join('/') +
   ' | scan lines ' + scanLines + ' <= ' + S.SCAN_W +
+  ' | diagnostics ' + diagN + ' lines, ' + Object.keys(S.STATUS_HINT).length +
+  " legends for '!', GRIT costs no rng" +
   ' | stock labels ' + D.ITEM_ORDER.length + ' unambiguous' +
   ' | prose ' + PROSE_N + ' lines wrap whole (LOG ' + DC.Render.LOG_MSG_ROWS +
   'x' + DC.Render.SCAN_COL_W + ', bar 2x' + DC.Render.FOREMAN_ROW_W + ')');

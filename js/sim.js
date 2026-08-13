@@ -718,12 +718,17 @@
     // so the threshold converts to steps once, here. `moved` is the honest
     // test: it is set on both ends of a handoff, so any cell where traffic is
     // actually flowing re-arms itself.
+    // Nothing below this line matters once the lesson has been given, and the
+    // walk is the one diagnostic that is not O(1): a fully backed-up network
+    // would re-walk itself from every cell, every belt step, forever.
+    if (run.diag && run.diag.beltJam) return;
     const jamSteps = Math.max(1, Math.round(D.DIAG.beltJamT * HZ / D.BELT_PERIOD));
     for (const e of belts) {
       const b = e.b;
       if (!b.item || b.moved) { b.jamT = 0; continue; }
-      b.jamT = (b.jamT || 0) + 1;
-      if (b.jamT >= jamSteps) diagBelt(run, e.x, e.y, b);
+      if ((b.jamT = (b.jamT || 0) + 1) < jamSteps) continue;
+      b.jamT = jamSteps;                 // clamp: it is stuck, not getting stucker
+      if (diagBelt(run, e.x, e.y, b)) return;
     }
   }
 
@@ -739,18 +744,18 @@
       if (!t) break;                                    // the line runs off the map
       if (t.machine !== null) {
         const tm = run.machines[t.machine];
-        if (!tm || tm.id === 0) return;                 // the rig swallows anything
+        if (!tm || tm.id === 0) return false;           // the rig swallows anything
         // Wants it but is full: back-pressure, which is a tuning problem and
         // not a mistake. The machine's own 'blocked' line covers that story.
-        if (machineWants(run, tm, cb.item)) return;
-        return void diag(run, 'beltJam', { name: D.BUILDINGS[tm.type].name,
-                                           item: D.ITEMS[cb.item].name });
+        if (machineWants(run, tm, cb.item)) return false;
+        return diag(run, 'beltJam', { name: D.BUILDINGS[tm.type].name,
+                                      item: D.ITEMS[cb.item].name });
       }
       if (!t.belt) break;                               // ends on bare ground
-      if (!t.belt.item) return;                         // the line ahead is clear
+      if (!t.belt.item) return false;                   // the line ahead is clear
       cx += d.dx; cy += d.dy; cb = t.belt;
     }
-    diag(run, 'beltJam', {});
+    return diag(run, 'beltJam', {});
   }
 
   // ---------------- drill (§5.7) ----------------
