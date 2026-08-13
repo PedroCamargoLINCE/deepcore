@@ -714,14 +714,15 @@
     }
     // M-ONBOARD: an item that never advances is the other silent failure — a
     // line laid into bare rock looks exactly like a line that is merely busy.
+    //
+    // Nothing below here matters once the lesson has been given, and this is
+    // the one diagnostic that is not O(1): a fully backed-up network would
+    // re-walk itself from every cell, on every belt step, forever.
+    if (run.diag && run.diag.beltJam) return;
     // `jamT` counts BELT STEPS (this function runs every D.BELT_PERIOD ticks),
     // so the threshold converts to steps once, here. `moved` is the honest
     // test: it is set on both ends of a handoff, so any cell where traffic is
     // actually flowing re-arms itself.
-    // Nothing below this line matters once the lesson has been given, and the
-    // walk is the one diagnostic that is not O(1): a fully backed-up network
-    // would re-walk itself from every cell, every belt step, forever.
-    if (run.diag && run.diag.beltJam) return;
     const jamSteps = Math.max(1, Math.round(D.DIAG.beltJamT * HZ / D.BELT_PERIOD));
     for (const e of belts) {
       const b = e.b;
