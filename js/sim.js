@@ -802,6 +802,165 @@
     return { gearPerSec: g / win, chargePerSec: c / win };
   }
 
+  // ---------------- M-WIDE: the production chain, as numbers --------------
+  // What the base COULD do, stage by stage, from the machines that are
+  // standing in it — the reading the CHAIN panel teaches with. This is the
+  // single most useful thing the game can tell a new player, because the trap
+  // is arithmetic they have no reason to have done: one smelter is 0.5
+  // plate/s, one assembler wants 2 plates every 2.75s = 0.73 plate/s, so ONE
+  // SMELTER CANNOT FEED ONE ASSEMBLER. A panel that prints both numbers makes
+  // that visible; a manual page behind H does not.
+  //
+  // Capacity, not measurement: a machine that is momentarily blocked is still
+  // a machine, and a rate that flickered every time a belt backed up would be
+  // unreadable. What DOES remove a machine from its stage is permanent (a
+  // mined-out vein) or halving (a damaged one) — both true sim state.
+  //
+  // Pure: reads the run, writes nothing, and draws nothing from run.rng
+  // (SPEC3 §0 law 7 — a rate readout that moved the stream would make every
+  // number in test/balance.js depend on the shape of the base).
+  function machineRate(run, m) {
+    const B = D.BUILDINGS[m.type];
+    const dmg = m.hp === 1 ? 0.5 : 1;                 // halfSkip: every other tick
+    if (m.type === 'extractor') {
+      if (m.status === 'depleted') return 0;
+      return HZ * run.mods.extractMult * auraMult(run, 'extract', m.x, m.y) / B.period * dmg;
+    }
+    if (m.type === 'smelter') {
+      return HZ * run.mods.smeltMult * auraMult(run, 'smelt', m.x, m.y) /
+             D.RECIPES.smeltIron.ticks * dmg;
+    }
+    if (m.type === 'assembler') {
+      const rec = D.RECIPES[m.recipe || 'gear'];
+      return HZ / rec.ticks * dmg;
+    }
+    return 0;
+  }
+  // Which plate a smelter is making: the job it is running, else the ore it
+  // has buffered, else iron (its default the moment ore arrives).
+  function smelterRecipe(m) {
+    if (m.job) return m.job;
+    if ((m.input.ironOre || 0) > 0) return 'smeltIron';
+    if ((m.input.copperOre || 0) > 0) return 'smeltCopper';
+    return 'smeltIron';
+  }
+  function chain(run) {
+    const flow = {};                                   // itemId -> net per second
+    const add2 = function (id, n) { if (id) flow[id] = (flow[id] || 0) + n; };
+    let oreRate = 0, oreN = 0;                         // smeltable ore only
+    let plateRate = 0, plateN = 0;
+    let gearRate = 0, gearN = 0, gearIn = 0, gearOut = 0;
+    let chargeRate = 0, chargeN = 0;
+    let noCoal = false, blocked = false, starved = false, damaged = false;
+    for (const id in run.machines) {
+      const m = run.machines[id];
+      if (!m || m.id === 0) continue;
+      const r = machineRate(run, m);
+      if (m.type === 'extractor') {
+        const t = tileAt(run, m.x, m.y);
+        const ore = t && t.ore;
+        add2(ore, r);
+        if (ore === 'ironOre' || ore === 'copperOre') { oreRate += r; oreN++; }
+      } else if (m.type === 'smelter') {
+        const rec = D.RECIPES[smelterRecipe(m)];
+        for (const k in rec.in) add2(k, -r * rec.in[k]);
+        for (const k in rec.out) add2(k, r * rec.out[k]);
+        add2('coal', -r / (D.FUEL_PER * (run.mods.coalX2 ? 2 : 1)));
+        plateRate += r; plateN++;
+        if (m.status === 'nofuel') noCoal = true;
+      } else if (m.type === 'assembler') {
+        const rec = D.RECIPES[m.recipe || 'gear'];
+        for (const k in rec.in) add2(k, -r * rec.in[k]);
+        for (const k in rec.out) add2(k, r * rec.out[k]);
+        if (m.recipe === 'charge') { chargeRate += r * (rec.out.charge || 1); chargeN++; }
+        else {
+          let inN = 0, outN = 0;
+          for (const k in rec.in) inN += rec.in[k];
+          for (const k in rec.out) outN += rec.out[k];
+          gearRate += r * (rec.out.gear || 1);
+          gearN++; gearIn += inN * r; gearOut += outN * r;
+          if (m.starveSince) starved = true;
+        }
+      } else if (m.type === 'damper') {
+        add2('coal', -HZ / D.BUILDINGS.damper.coalTicks);
+      }
+      if (m.status === 'blocked') blocked = true;
+      if (m.hp === 1) damaged = true;
+    }
+    // Plates per gear, from the recipes actually installed (2 for the plain
+    // gear, 1 for Bronze Gearworks, which is the whole point of that pick).
+    const perGear = gearOut > 0 ? gearIn / gearOut : D.RECIPES.gear.in.ironPlate;
+    const req = run.breachReq || { gear: 0, charge: 0 };
+    const drillRate = HZ / drillPeriod(run);
+    // Each stage's throughput expressed in the same unit — gears per second —
+    // so they can be compared at all. The smallest is the bottleneck.
+    const stages = [
+      { id: 'ore',   item: 'ironOre',   name: 'ore',   letter: 'E',
+        n: oreN,   rate: oreRate,   gears: oreRate / perGear },
+      { id: 'plate', item: 'ironPlate', name: 'plate', letter: 'S',
+        n: plateN, rate: plateRate, gears: plateRate / perGear },
+      { id: 'gear',  item: 'gear',      name: 'gear',  letter: 'A',
+        n: gearN,  rate: gearRate,  gears: gearRate },
+    ];
+    if (req.charge > 0) {
+      stages.push({ id: 'charge', item: 'charge', name: 'charge', letter: 'A',
+        n: chargeN, rate: chargeRate, gears: Infinity });
+    }
+    // The limiting stage: lowest throughput, earliest on a tie (the upstream
+    // stage is the real constraint — fixing the one below it changes nothing).
+    let lim = null;
+    for (const s of stages) {
+      if (s.id === 'charge') continue;
+      if (!lim || s.gears < lim.gears - 1e-9) lim = s;
+    }
+    if (lim) lim.limiting = true;
+    for (const s of stages) {
+      s.flag = s.n === 0 ? 'NONE'
+        : (s.id === 'plate' && noCoal) ? 'NO COAL'
+        : s.limiting ? 'STARVED' : '';
+    }
+    // A charge stage that cannot keep up is its own lesson, and charges gate
+    // the breach from stratum 5 down, so it is flagged on its own terms.
+    const cs = stages[3];
+    if (cs) cs.flag = cs.n === 0 ? 'NONE' : (cs.rate <= 0 ? 'STALLED' : '');
+    const gears = lim ? Math.max(0, lim.gears) : 0;
+    return {
+      stages: stages, flow: flow,
+      gearRate: gears, chargeRate: chargeRate, drillRate: drillRate,
+      perGear: perGear, noCoal: noCoal, blocked: blocked,
+      starved: starved, damaged: damaged,
+      breachSec: breachEta(run, gears, chargeRate, drillRate),
+    };
+  }
+  // How long the breach is away AT THIS RATE — the number that turns a base
+  // into a clock. Stock is fed first (the drill can only swallow one item per
+  // drillPeriod however full the crate is), then production carries the rest.
+  // null when the rig is short of something nothing is making: that is not a
+  // large number, it is a different sentence, and the panel says so.
+  function breachEta(run, gearsPerSec, chargesPerSec, drillRate) {
+    const req = run.breachReq || { gear: 0, charge: 0 };
+    let t = 0;
+    const leg = function (need, stock, prod) {
+      if (need <= 0) return 0;
+      const fromStock = Math.min(need, stock);
+      let s = fromStock / drillRate;
+      const rest = need - fromStock;
+      if (rest > 0) {
+        if (!(prod > 0)) return null;
+        s += rest / Math.min(drillRate, prod);
+      }
+      return s;
+    };
+    const g = leg(req.gear - run.gearsFed, run.inv.gear || 0, gearsPerSec);
+    if (g === null) return null;
+    t += g;
+    const perCharge = run.mods.chargeX2 ? 2 : 1;
+    const c = leg((req.charge - run.chargesFed) / perCharge,
+                  run.inv.charge || 0, chargesPerSec);
+    if (c === null) return null;
+    return t + c;
+  }
+
   // ---------------- M-CORELORE: the Core Gate (§B) ----------------
   // Stratum 8 only, once per run. The breach feed is the drama: at a quarter,
   // three fifths and a hair short of done, the planet says something. The sim
@@ -1374,6 +1533,9 @@
     // M-EVENTS: a schematic granted outside a descent (the caller picks it)
     installSchematic: installSchematic,
     describeTile: describeTile, feedRate: feedRate, msg: msg,
+    // M-WIDE: the production chain as numbers (stage rates, the bottleneck,
+    // net flow per item, and the breach projection). Read-only and rng-free.
+    chain: chain,
     // M-CORELORE / M-GRITPLUS: the Core Gate's progress reading, the EGG-420
     // window (engine opens it from the typed code; js/events.js may open it
     // from a dig find), and the collapse counter's numeral.
