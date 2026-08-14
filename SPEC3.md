@@ -39,7 +39,7 @@ dispatch prompt):
 
 ---
 
-## §0 The Seven Laws (design compass — read before inventing anything)
+## §0 The Eight Laws (design compass — read before inventing anything)
 
 1. **Animation is honest.** Every animated glyph communicates true sim state
    (a fire flickers because the smelter is actually smelting). Decoration that
@@ -93,6 +93,23 @@ dispatch prompt):
    test** — snapshot `run.rng()` across the call (see `review never advances
    run.rng` in `test/barks_test.js`, the Mantle-invariance case in
    `test/integration.js`, and the events-on/off quake-schedule comparison).
+8. **Dread is not data. The quake is a surprise, permanently** (director's law,
+   2026-08-14: *"i like the quake to be a surprise. no timer for it never."*).
+   `run.quakeAt` holds the next quake's tick and is trivially displayable —
+   displaying it, in any panel, tooltip, gauge or debug overlay that ships, is
+   forbidden. The quake is the game's best moment because it is not scheduled
+   from the player's side; a countdown converts dread into a spreadsheet and
+   camping into arithmetic.
+
+   **Tells yes, timers never.** §A2's pre-collapse dread — the map dimming two
+   ticks before a collapse quake at instability ≥ 99 — is shipped and stays. A
+   flinch you feel in your gut is the opposite of a number you plan around.
+
+   Generalise it: this game is played *forward under pressure*. Any readout that
+   lets a player optimise instead of decide costs the game something, and must
+   earn its place against that. Vein-depletion counters were rejected on the
+   same grounds — the extractor announces a dead vein when it dies, which is
+   when it matters.
 
 ---
 
@@ -696,7 +713,7 @@ game that cannot explain its own failure states makes every one of those
 sessions cost more than it should. Part 2 can follow whenever.
 ---
 
-### M-WIDE — Fill the Sides, and Use Them to Teach (P1)
+### M-WIDE — Fill the Sides: your Rig, always on screen (P1)
 
 > Director, 2026-08-14, looking at a running game: *"i feel like if we used more
 > of the screen available, it would be more clear. what are our actual plans to
@@ -730,15 +747,43 @@ clothes. **Every new column is UI.** Run `test/balance.js` before and after and
 require the numbers to be unchanged; if they moved, the map grew and the work
 is wrong.
 
-#### What the space is for — teaching the chain
+#### What the space is for — FOUR panels that breathe
 
-The director could not work out what a smelter was for, and had to ask. The
-manual explains the chain on page 1 and he still had to ask, because the manual
-is behind `H` and the chain is a *live* thing you need to see while it is
-failing. That is what the new columns are for.
+Directed 2026-08-14, after a round of options. **Exactly four**, chosen so the
+set answers four different questions, and deliberately not the nine that would
+fit: *"id rather have four that breathe than nine that cram."* Three of the four
+are pictures, which is the point — the governing principle the director gave is
+that **the side space belongs to whatever benefits most from resolution.**
 
-**A live CHAIN panel — the headline feature of this brief.** A permanent column
-showing the production line as it actually is, right now:
+| Panel | Answers |
+|---|---|
+| **RIG** | what you are |
+| **STOCK** | what you have |
+| **CHAIN** | what it is doing |
+| **LOADOUT** | what you picked |
+
+**1. RIG — your machine, on screen, always. The headline of this brief.**
+`js/art.js` already composes it: `composeRig` layers `rigParts[upgradeId]` so
+every Foundry upgrade is visibly bolted on. But it is currently only drawn on
+the **title screen and in the Foundry** — between runs, when it means nothing.
+Law 5 says *reward = picture changes*, and the picture currently changes
+somewhere the player is not looking. Put it in the sidebar and every run is
+played beside the machine built out of all the previous ones. It is the single
+biggest beneficiary of M-HIRES's sub-cell rasterizer in the game: draw it at
+block resolution and give it room.
+
+**2. STOCK — all eight items, with icons and a trend.** Today three items are
+crammed into two rows. Give each of the eight its own row, and draw each item
+as a **3×2 block-art icon** (M-HIRES's rasterizer) rather than a single glyph —
+a real gear, a real ingot, a real crystal. The feature is not the space, it is
+the **trend arrow**: `• iron ore 68 ↑` says the extractors are outrunning the
+smelters, which tells the player what to build next without doing arithmetic.
+Same icon treatment is worth giving the BUILD list.
+
+**3. CHAIN — the teacher.** The director could not work out what a smelter was
+for, and had to ask. The manual explains the chain on page 1 and he still had to
+ask, because the manual is behind `H` and the chain is a *live* thing you need
+to see while it is failing.
 
 ```
   CHAIN
@@ -761,7 +806,35 @@ Three things it must do, in priority order:
 3. **Project the breach.** "breach in ~2:14 at this rate" turns the whole base
    into a clock, which is the game's actual subject.
 
-Secondary uses, in order of value: give the LOG more rows (it is the game's
+**4. LOADOUT — what you are actually running.** `run.schematics` and `run.mods`
+are tracked and then vanish the moment the pick screen closes; twenty minutes
+later the player has forgotten they took Salvage Claws. List them with their
+icons and a one-line effect each.
+
+#### Two things that were considered and REJECTED — do not add them
+
+Both were proposed and the director turned them down. They are recorded because
+the data for both is sitting in plain sight and the next person will have the
+same idea I did.
+
+- **NO QUAKE TIMER. NOT EVER.** `run.quakeAt` holds the next quake's tick and is
+  trivially displayable. Displaying it is forbidden: *"i like the quake to be a
+  surprise. no timer for it never."* The quake is the game's best moment
+  precisely because it is not scheduled from the player's side, and a countdown
+  converts dread into a spreadsheet. **This is not the same as atmosphere** —
+  §A2's pre-collapse dread (the map dimming two ticks before a collapse quake at
+  instability ≥ 99) is already shipped and stays: a two-tick flinch you feel is
+  the opposite of a number you plan around. Tells yes, timers never.
+- **No vein-depletion readout.** Every tile carries `oreAmt`; showing it was
+  rejected as too much information. The extractor already announces a dead vein
+  through M-ONBOARD's diagnostics, which is the right amount: you learn it when
+  it matters, not as a gauge you monitor.
+
+The through-line for both: this game is played *forward under pressure*, and
+every readout that lets a player optimise instead of decide costs it something.
+Four panels that breathe, and no telemetry.
+
+Secondary uses if room remains: give the LOG more rows (it is the game's
 narrator and currently shows ~5); widen the SCAN panel past its 29-column clip;
 give the recap card and the manual room to breathe.
 
@@ -792,14 +865,18 @@ keeping.
 - §0 law 7: a rate readout must not consume `run.rng`, and must derive from
   state the sim already keeps.
 
-**Contracts:** `js/data.js` (COLS), `js/render.js` (layout constants, the new
-CHAIN panel, every screen's width), `js/art.js` (any boxed asset with a baked
-width), `test/*` (width assertions).
+**Contracts:** `js/data.js` (COLS), `js/render.js` (layout constants, the four
+new panels, every screen's width), `js/art.js` (the run-screen rig portrait,
+3x2 item/building icons via the M-HIRES rasterizer, any boxed asset with a
+baked width), `test/*` (width assertions).
 **Acceptance:** balance numbers identical before/after (proves the map did not
 grow); every screen rendered at 112 columns in a stub-canvas test with no row
 exceeding the grid; the CHAIN panel's bottleneck marker asserted against a
 constructed starved base; `tools/build.js` parses.
-**Size:** ~250 lines for the widening and the audit, ~150 for the CHAIN panel.
+**Size:** ~250 lines for the widening and the audit, ~350 for the four panels.
+Ship them in this order, committing each: RIG (it is already drawn — mostly
+placement), STOCK, LOADOUT, CHAIN (most logic). A session that runs short
+should leave the rig on screen, which is the change the director most wants.
 ---
 
 ### M-HIRES — Fill the Screen, Then Sharpen It (P0-adjacent — dispatch anytime)
