@@ -54,7 +54,8 @@ with `git add -A`).
 | 4 | ~~M-EVENTS (big)~~ ✅ **merged 2026-08-12** (rescued by patch — see cloud notes) | — | — |
 | 5 | **M-TIER2 first, ALONE** (see below) — runs AFTER M-ONBOARD-1 merges | then M-MANTLE + M-SCHEMS2 | — |
 | 6 | M-WORMS | M-ACHIEVE + M-RIGSKINS | M-SOUND |
-| 4.5 | **M-ONBOARD Part 1 (diagnostics)** — dispatched 2026-08-12, ahead of wave 5 | — | — |
+| 4.5 | ~~M-ONBOARD Part 1 (diagnostics)~~ ✅ **merged 2026-08-14** (rescued by patch) | — | — |
+| 4.6 | **M-WIDE** — ALONE, next. Changes COLS; everything after needs the new width | — | — |
 | later | M-ONBOARD Part 2 (the tutorial) — after the rest, as the director asked | — | — |
 
 **Why M-ONBOARD Part 1 jumped the queue.** The director found it by playing:
