@@ -4368,7 +4368,27 @@ function wideSection(seed) {
   const run = S.newRun(M.effects(meta), seed);
   run.schematics = ['s_extract', 's_smelt', 's_salvage'];
   S.msg(run, 'The rig bites into the topsoil ridge.', D.COLORS.amber);
-  for (let i = 0; i < 120; i++) S.tick(run);
+  for (let i = 0; i < 160; i++) S.tick(run);
+  // the classic first base, placed through the public API: two iron
+  // extractors, one smelter, one assembler — the exact shape whose ratio
+  // problem the CHAIN panel exists to name.
+  let built = 0;
+  for (let y = 0; y < D.MAP_H && built < 2; y++) {
+    for (let x = 0; x < D.MAP_W && built < 2; x++) {
+      if (run.grid[y][x].ore !== 'ironOre' || !run.grid[y][x].revealed) continue;
+      if (S.canPlace(run, 'extractor', x, y, 1).ok && S.place(run, 'extractor', x, y, 1)) built++;
+    }
+  }
+  assertEq(built, 2, 'two extractors placed for the panel checks');
+  for (const type of ['smelter', 'assembler']) {
+    let ok = false;
+    for (let y = 0; y < D.MAP_H && !ok; y++) {
+      for (let x = 0; x < D.MAP_W && !ok; x++) {
+        if (S.canPlace(run, type, x, y, 1).ok) ok = S.place(run, type, x, y, 1);
+      }
+    }
+    assert(ok, 'a ' + type + ' site exists for the panel checks');
+  }
   const state = {
     screen: 'run', meta: meta, run: run, today: '2026-08-14',
     ui: { tool: null, facing: 1, cursor: { x: run.hub.x, y: run.hub.y } },
@@ -4429,6 +4449,48 @@ function wideSection(seed) {
   const damped = portrait(frame(state)).join('\n');
   assert(damped.indexOf('(◎)') >= 0 && damped !== withParts,
     'buying a part changes the picture the run is played beside (§0 law 5)');
+
+  // ---- PANEL 2: STOCK — eight rows, icons, and the arrow -----------------
+  rows = frame(state);
+  function panelRow(rws, needle) {
+    for (let r = 1; r < D.ROWS; r++) {
+      const s = rws[r].slice(L.sb2, L.sb2 + L.sbw2);
+      if (s.indexOf(needle) >= 0) return { row: r, text: s };
+    }
+    return null;
+  }
+  for (const id of D.ITEM_ORDER) {
+    const label = DC.Render.itemLabel(id);
+    const row = panelRow(rows, label);
+    assert(row, 'STOCK has a row for ' + id + ' (' + label + ') even at zero');
+    const icon = DC.Art.itemIcons[id];
+    assert(row.text.indexOf(icon) >= 0, 'STOCK draws the ' + id + ' icon');
+  }
+  // the icons are PICTURES, not one glyph three times: the three raw ores
+  // used to be '•', '•' and '•', told apart by colour alone
+  assert(DC.Art.itemIcons.ironOre !== DC.Art.itemIcons.ironPlate &&
+    DC.Art.itemIcons.gear !== DC.Art.itemIcons.crystal &&
+    DC.Art.itemIcons.coal !== DC.Art.itemIcons.ironOre,
+    'the item icons are distinguishable shapes');
+  assertEq(DC.Art.itemIcons.gear.length, DC.Art.ICON_W, 'an icon is ICON_W cells wide');
+  // the feature: two extractors against one smelter means ore up, plate down,
+  // and the player is told that without doing the arithmetic
+  const flow = S.chain(run).flow;
+  assert(flow.ironOre > 0 && flow.ironPlate < 0, 'the base really is ore-rich, plate-poor');
+  assert(panelRow(rows, DC.Render.itemLabel('ironOre')).text.indexOf('↑') > 0,
+    'STOCK shows iron ore trending UP');
+  assert(panelRow(rows, DC.Render.itemLabel('ironPlate')).text.indexOf('↓') > 0,
+    'STOCK shows iron plate trending DOWN');
+  // and the BUILD list got the same treatment
+  for (const t of D.BUILD_ORDER) {
+    const ic = DC.Art.buildIcons[t];
+    assert(ic && ic.length === DC.Art.ICON_W, t + ' has a build icon');
+    let seen = false;
+    for (let r = 1; r < D.ROWS; r++) {
+      if (rows[r].slice(L.sb, L.sb + L.sbw).indexOf(ic) >= 0) seen = true;
+    }
+    assert(seen, 'the BUILD list draws the ' + t + ' icon');
+  }
 
   // ---- SPEC3 §0 law 8: no quake schedule, anywhere -----------------------
   // run.quakeAt is a tick count sitting in plain sight. Nothing on any screen

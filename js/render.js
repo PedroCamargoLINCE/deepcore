@@ -433,6 +433,21 @@
     } catch (e) { /* ignore */ }
     return [];
   }
+  // M-WIDE: the production model behind the STOCK trends and the CHAIN panel.
+  // Cached per (run, tick) because three panels ask for it on every frame and
+  // it walks every machine; the cache is throwaway render state and can never
+  // feed back into the sim (SPEC3 rule 4).
+  let chainRun = null, chainT = -1, chainVal = null;
+  function chainSafe(run) {
+    if (!run) return null;
+    if (chainRun === run && chainT === run.t) return chainVal;
+    let v = null;
+    try {
+      if (DC.Sim && DC.Sim.chain) v = DC.Sim.chain(run);
+    } catch (e) { /* sim in flux */ }
+    chainRun = run; chainT = run.t; chainVal = v;
+    return v;
+  }
   function feedRateSafe(run) {
     try {
       if (DC.Sim && DC.Sim.feedRate) return DC.Sim.feedRate(run) || { gearPerSec: 0, chargePerSec: 0 };
@@ -868,25 +883,28 @@
       const afford = free || Object.keys(b.cost).every(k => (inv[k] || 0) >= b.cost[k]);
       const costS = free ? 'free'
         : Object.keys(b.cost).map(k => b.cost[k] + (D.ITEMS[k] ? D.ITEMS[k].glyph : '?')).join(' ');
+      // M-WIDE: the same 3-cell pictogram treatment as STOCK, so the thing you
+      // are about to place and the thing it will eat look like each other.
+      const bIcon = buildIcon(t);
       if (ui.tool === t) {
-        text(SBC, y, U.pad(b.key + ' ' + b.letter + ' ' + U.pad(b.name, 10), SCW - costS.length) + costS,
+        text(SBC, y, U.pad(b.key + ' ' + bIcon + ' ' + U.pad(b.name, 10), SCW - costS.length) + costS,
           C.bg, C.amber);
       } else {
         const bad = shade(C.red, 0.8);
         put(SBC, y, b.key, C.amber);
-        put(SBC + 2, y, b.letter, b.color);
-        text(SBC + 4, y, U.pad(b.name, 10), afford ? C.gray : bad);
+        text(SBC + 2, y, bIcon, b.color);
+        text(SBC + 6, y, U.pad(b.name, 10), afford ? C.gray : bad);
         textR(SB + SBW - 2, y, costS, afford ? (free ? C.green : C.amberDim) : bad);
       }
       layout.buildRows.push({ row: y, col: SB, w: SBW, tool: t });
       y++;
     }
     sideWalls(y);
-    if (ui.tool === 'demolish') text(SBC, y, U.pad('X × demolish', SCW), C.bg, C.amber);
+    if (ui.tool === 'demolish') text(SBC, y, U.pad('X  ×  demolish', SCW), C.bg, C.amber);
     else {
       put(SBC, y, 'X', C.amber);
-      put(SBC + 2, y, '×', C.red);
-      text(SBC + 4, y, 'demolish', C.gray);
+      put(SBC + 3, y, '×', C.red);
+      text(SBC + 6, y, 'demolish', C.gray);
     }
     layout.buildRows.push({ row: y, col: SB, w: SBW, tool: 'demolish' });
     y++;
@@ -968,11 +986,64 @@
     return y + h;
   }
 
+  // ---- PANEL 2: STOCK — all eight items, one per row, with a trend --------
+  // The old panel crammed whatever was nonzero into two rows of two, so the
+  // list changed SHAPE as the run went on and nothing was ever in the same
+  // place twice. Eight fixed rows: an item at zero is information too, and a
+  // row you can find without reading is the whole point (§0 law 6).
+  //
+  // The feature is the arrow. A count is a fact about the past; '68 ↑' is the
+  // sentence "your extractors are outrunning your smelters", which is the
+  // decision the player is actually facing, without them doing the
+  // arithmetic. It reads Sim.chain's net flow — capacity in minus capacity
+  // out — so it is a statement about the base, not a sampled derivative that
+  // would flicker every time a belt hiccuped.
+  const TREND_EPS = 0.02;              // per second: below this it is flat
+  function trendMark(net) {
+    if (net > TREND_EPS) return ['↑', C.green];
+    if (net < -TREND_EPS) return ['↓', C.red];
+    return ['·', C.darkgray];
+  }
+  function itemIcon(id) {
+    const ic = DC.Art && DC.Art.itemIcons && DC.Art.itemIcons[id];
+    if (typeof ic === 'string' && ic.length) return ic;
+    return ' ' + ((D.ITEMS[id] || {}).glyph || '?') + ' ';
+  }
+  function buildIcon(t) {
+    const ic = DC.Art && DC.Art.buildIcons && DC.Art.buildIcons[t];
+    if (typeof ic === 'string' && ic.length) return ic;
+    return ' ' + ((D.BUILDINGS[t] || {}).letter || '?') + ' ';
+  }
+  function drawStockPanel(y, run, ch) {
+    y = panelEdge(SB2, SBW2, y, 'sep', 'STOCK');
+    const inv = run.inv || {};
+    const flow = (ch && ch.flow) || {};
+    for (let i = 0; i < D.ITEM_ORDER.length; i++) {
+      const id = D.ITEM_ORDER[i];
+      const it = D.ITEMS[id];
+      const n = inv[id] || 0;
+      const idle = n === 0 && !flow[id];
+      panelWalls(SB2, SBW2, y);
+      const x = SBC2 + 1;
+      text(x, y, itemIcon(id), idle ? shade(it.color, 0.45) : it.color);
+      text(x + 4, y, itemLabel(id).slice(0, STOCK_NAME_W), idle ? C.darkgray : C.gray);
+      // count and arrow ride the right edge: one column of numbers the eye
+      // can run down, rather than eight ragged ones
+      textR(SB2 + SBW2 - 4, y, stockCount(n), n ? C.white : C.darkgray);
+      const tm = trendMark(flow[id] || 0);
+      put(SB2 + SBW2 - 2, y, tm[0], tm[1]);
+      y++;
+    }
+    return y;
+  }
+
   function drawPanels(run, ui, phase, st, meta) {
     if (!TWO_COL) { layout.runRig = null; return; }
     const accent = st.accent || C.amber;
+    const ch = chainSafe(run);
     let y = 1;
     y = drawRigPanel(y, run, meta, accent);
+    y = drawStockPanel(y, run, ch);
     panelEdge(SB2, SBW2, y, 'bot');
   }
 
