@@ -1010,6 +1010,29 @@
     s_salvage: '╘╛', s_survey: '()', s_charge: '‡‡', s_over: '»»',
     s_veins: '≡≡', s_gear: '¤¤',
   };
+  // ---------------- M-WIDE: the LOADOUT panel's two short strings ----------
+  // run.schematics is tracked all run and shown for four seconds on the pick
+  // screen, after which the player has twenty minutes to forget they took
+  // Salvage Claws. The sidebar lists them permanently — which needs a name
+  // that fits a 13-column field and an effect that fits an 11-column one.
+  // The full name and the full sentence still exist on the card you choose
+  // from; these are the reminder, not the pitch.
+  A.SCHEM_SHORT_W = 13;
+  A.SCHEM_EFFECT_W = 11;
+  A.schemShort = {
+    s_beltfree: 'Frictionless', s_extract: 'Twin Drills',  s_smelt: 'Blast Furnace',
+    s_coal: 'Coal Scrubber',    s_plate: 'Hull Plating',   s_damp: 'Seismic Damp',
+    s_repair: 'Repair Swarm',   s_drill: 'Diamond Bit',    s_salvage: 'Salvage Claws',
+    s_survey: 'Deep Sonar',     s_charge: 'Resonance',     s_over: 'OD Coupling',
+    s_veins: 'Rich Veins',      s_gear: 'Bronze Gears',
+  };
+  A.schemEffect = {
+    s_beltfree: 'belts free',   s_extract: 'mine +35%',    s_smelt: 'smelt +30%',
+    s_coal: 'coal x2',          s_plate: '+20 hull',       s_damp: 'press -25%',
+    s_repair: 'self-repair',    s_drill: 'breach -15%',    s_salvage: 'salvage 60%',
+    s_survey: 'full reveal',    s_charge: 'charges x2',    s_over: 'OD cost 1/2',
+    s_veins: 'veins +50%',      s_gear: 'bronze gear',
+  };
   A.schemColors = {
     s_beltfree: 'cyan', s_extract: 'amber', s_smelt: 'magma', s_coal: 'gray',
     s_plate: 'steel', s_damp: 'green', s_repair: 'green', s_drill: 'white',

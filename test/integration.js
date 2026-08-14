@@ -4416,11 +4416,9 @@ function wideSection(seed) {
   // both columns are closed boxes: a wall on the left, a wall on the last cell
   // of the screen — column B is right-aligned to the grid by construction, so
   // a panel that fell short of it would leave a ragged edge against the black.
-  let colB = 1;
-  while (colB + 1 < D.ROWS && '│├┌└'.indexOf(rows[colB + 1][L.sb2]) >= 0) colB++;
   for (let r = 1; r < D.ROWS; r++) {
     assert('│├┌└'.indexOf(rows[r][L.sb]) >= 0, 'row ' + r + ': column A has its left wall');
-    if (r > colB) continue;
+    assert('│├┌└'.indexOf(rows[r][L.sb2]) >= 0, 'row ' + r + ': column B has its left wall');
     assert('│┤┐┘'.indexOf(rows[r][D.COLS - 1]) >= 0,
       'row ' + r + ": column B's right wall is the screen's last cell");
   }
@@ -4491,6 +4489,24 @@ function wideSection(seed) {
     }
     assert(seen, 'the BUILD list draws the ' + t + ' icon');
   }
+
+  // ---- PANEL 3: LOADOUT — what you picked, still on screen ---------------
+  for (const id of run.schematics) {
+    const r2 = panelRow(rows, DC.Art.schemShort[id]);
+    assert(r2, 'LOADOUT lists ' + id + ' by name');
+    assert(r2.text.indexOf(DC.Art.schemBadges[id]) >= 0, 'with its badge');
+    assert(r2.text.indexOf(DC.Art.schemEffect[id]) >= 0, 'and what it actually does');
+  }
+  // a deep run collects more than the panel holds: the oldest picks stay
+  // (they are the forgotten ones) and the overflow is counted, never clipped
+  const many = run.schematics.slice();
+  run.schematics = D.SCHEMATICS.map(s => s.id);
+  const deep = frame(state);
+  assert(panelRow(deep, 'more'), 'LOADOUT counts the picks it cannot fit');
+  assert(panelRow(deep, DC.Art.schemShort[run.schematics[0]]),
+    'and keeps the earliest pick, which is the one you have forgotten');
+  run.schematics = many;
+  rows = frame(state);
 
   // ---- SPEC3 §0 law 8: no quake schedule, anywhere -----------------------
   // run.quakeAt is a tick count sitting in plain sight. Nothing on any screen
