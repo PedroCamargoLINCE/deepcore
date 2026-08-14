@@ -45,7 +45,21 @@
   // style.css's max-width/max-height letterbox it. Above ~2.25 a 16px font has
   // become 36px and the terminal reads as a toy — a 4K panel gets margins
   // rather than 55px text.
-  const MIN_SCALE = 1, MAX_SCALE = 2.25;
+  //
+  // M-WIDE moved the floor. At 80 columns the base grid was 800px wide and a
+  // scale floor of 1 meant "any window at least 800px wide gets crisply
+  // re-rendered text, anything narrower letterboxes". At 112 columns the same
+  // literal floor would silently raise that threshold to 1120px, and an
+  // ordinary windowed browser at 1000px would fall back to CSS-downscaling a
+  // canvas it could have rendered sharply. So the floor is DERIVED from the
+  // width it was chosen for: the renderer keeps shrinking the font until the
+  // grid is the same 800 physical pixels it always bottomed out at.
+  // Quantised to sixteenths so the floor stays a dyadic fraction: cw and ch
+  // are then both exact, and cw/ch is exactly CW/CH — the cell cannot drift
+  // out of shape by a rounding bit at the one scale every small window uses.
+  const FLOOR_PX = 800;
+  const MIN_SCALE = Math.min(1, Math.floor(FLOOR_PX / (COLS * CW) * 16) / 16);
+  const MAX_SCALE = 2.25;
   const UNREV_BG = '#050504';        // near-black for unrevealed tiles (SPEC §7)
   // ---- panel geometry, DERIVED (M-WIDE) --------------------------------
   // These were the literals SB=49, SBW=31, SBC=50, SCW=29. They are computed

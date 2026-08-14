@@ -4416,12 +4416,21 @@ function wideSection(seed) {
   // both columns are closed boxes: a wall on the left, a wall on the last cell
   // of the screen — column B is right-aligned to the grid by construction, so
   // a panel that fell short of it would leave a ragged edge against the black.
+  // Every panel row is a closed box on BOTH sides. This is the mid-word clip
+  // test with teeth: a label, rate or flag that outgrew its field would land
+  // on the wall and show up here as a missing one.
   for (let r = 1; r < D.ROWS; r++) {
     assert('│├┌└'.indexOf(rows[r][L.sb]) >= 0, 'row ' + r + ': column A has its left wall');
+    assert('│┤┐┘'.indexOf(rows[r][L.sb + L.sbw - 1]) >= 0,
+      'row ' + r + ': column A has its right wall (something overran its field?)');
     assert('│├┌└'.indexOf(rows[r][L.sb2]) >= 0, 'row ' + r + ': column B has its left wall');
     assert('│┤┐┘'.indexOf(rows[r][D.COLS - 1]) >= 0,
       'row ' + r + ": column B's right wall is the screen's last cell");
   }
+  // the SCAN panel's text budget is a contract shared with sim.js — the
+  // derived column width may not drift away from the number describeTile
+  // wraps its tooltips to
+  assertEq(L.scw, S.SCAN_W, 'the derived panel width still matches Sim.SCAN_W');
 
   // ---- PANEL 1: the rig, on screen, with its parts on --------------------
   const rig = L.runRig;

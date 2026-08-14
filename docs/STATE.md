@@ -69,6 +69,15 @@ than the stratum being unbeatable. Never tune `data.js` against those.
 - **Wave 1 (M-POLISH) in flight**: 11 CX findings + backlog + balance sweep and
   retune. It is the only brief permitted to change existing `data.js` values.
 - **Waves 2–6 not started.** Order and paste-ready prompts: `docs/DISPATCH.md`.
+- **The grid is 112 × 33, not 80 × 33** (M-WIDE, wave 4.6). `D.COLS` is the only
+  place the number lives; `render.js` derives the map box and BOTH panel
+  columns from it (`DC.Render.LAYOUT` reports what it derived), so the next
+  widening is a one-line change plus an audit of the centred screens. The MAP
+  is untouched at 46 × 26 and must stay that way — every column the widening
+  added is UI, and `test/balance.js` printing identical numbers is the proof.
+  The second column carries the rig portrait, STOCK and LOADOUT; CHAIN sits
+  under DRILL in the first. Anything drawing a new screen should centre itself
+  off `COLS` rather than typing a margin.
 
 ## Conventions (violating these has cost us hours before)
 
