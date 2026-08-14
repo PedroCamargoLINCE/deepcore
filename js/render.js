@@ -999,6 +999,7 @@
   // out — so it is a statement about the base, not a sampled derivative that
   // would flicker every time a belt hiccuped.
   const TREND_EPS = 0.02;              // per second: below this it is flat
+  const SCHEM_NAME_W = 13;             // LOADOUT name field (art.js authors to it)
   function trendMark(net) {
     if (net > TREND_EPS) return ['↑', C.green];
     if (net < -TREND_EPS) return ['↓', C.red];
@@ -1037,6 +1038,54 @@
     return y;
   }
 
+  // ---- PANEL 3: LOADOUT — what you are actually running ------------------
+  // run.schematics is tracked for the whole run and displayed for the four
+  // seconds the pick screen is up. Twenty minutes later the player cannot
+  // tell you whether the belts are free, and plays as though they are not.
+  // One row each, permanently: badge in its own colour, short name, effect.
+  function schemShort(id) {
+    const A = DC.Art;
+    const s = A && A.schemShort && A.schemShort[id];
+    if (typeof s === 'string' && s.length) return s;
+    const def = D.SCHEMATICS.find(x => x.id === id);
+    return def ? def.name : String(id);
+  }
+  function schemEffect(id) {
+    const A = DC.Art;
+    const s = A && A.schemEffect && A.schemEffect[id];
+    return typeof s === 'string' ? s : '';
+  }
+  function drawLoadoutPanel(y, run) {
+    y = panelEdge(SB2, SBW2, y, 'sep', 'LOADOUT');
+    const rowsAvail = (ROWS - 1) - y;              // the bottom edge closes it
+    const scs = run.schematics || [];
+    const nameX = SBC2 + 4, effX = SBC2 + 4 + SCHEM_NAME_W + 1;
+    const effW = SB2 + SBW2 - 1 - effX;
+    if (!scs.length) {
+      for (let i = 0; i < rowsAvail; i++) panelWalls(SB2, SBW2, y + i);
+      if (rowsAvail > 0) text(SBC2 + 1, y, 'nothing picked yet', C.darkgray);
+      if (rowsAvail > 1) text(SBC2 + 1, y + 1, 'one per breach', C.darkgray);
+      return y + rowsAvail;
+    }
+    // Deep runs collect more than fit. The OLDEST are the ones that have
+    // faded, so they are the ones kept on screen — the newest was announced
+    // in the LOG a minute ago and is still in the player's head.
+    const drop = Math.max(0, scs.length - rowsAvail);
+    for (let i = 0; i < rowsAvail; i++) {
+      panelWalls(SB2, SBW2, y + i);
+      if (drop && i === rowsAvail - 1) {
+        text(SBC2 + 1, y + i, '+' + (drop + 1) + ' more', C.darkgray);
+        break;
+      }
+      const id = scs[i];
+      if (id === undefined) continue;
+      text(SBC2 + 1, y + i, schemBadge(id), schemColor(id));
+      text(nameX, y + i, schemShort(id).slice(0, SCHEM_NAME_W), C.gray);
+      text(effX, y + i, schemEffect(id).slice(0, effW), C.amberDim);
+    }
+    return y + rowsAvail;
+  }
+
   function drawPanels(run, ui, phase, st, meta) {
     if (!TWO_COL) { layout.runRig = null; return; }
     const accent = st.accent || C.amber;
@@ -1044,7 +1093,8 @@
     let y = 1;
     y = drawRigPanel(y, run, meta, accent);
     y = drawStockPanel(y, run, ch);
-    panelEdge(SB2, SBW2, y, 'bot');
+    y = drawLoadoutPanel(y, run);
+    panelEdge(SB2, SBW2, Math.min(y, ROWS - 1), 'bot');
   }
 
   function scanLines(run, ui, st) {
