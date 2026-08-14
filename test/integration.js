@@ -4508,6 +4508,64 @@ function wideSection(seed) {
   run.schematics = many;
   rows = frame(state);
 
+  // ---- PANEL 4: CHAIN — the ratio trap, made visible ---------------------
+  function colARow(rws, needle) {
+    for (let r = 1; r < D.ROWS; r++) {
+      const s = rws[r].slice(L.sb, L.sb + L.sbw);
+      if (s.indexOf(needle) >= 0) return { row: r, text: s };
+    }
+    return null;
+  }
+  assert(colARow(rows, 'CHAIN'), 'the CHAIN panel is on the run screen');
+  const model = S.chain(run);
+  const oreRow = colARow(rows, ' ore ');
+  const plateRow = colARow(rows, ' plate ');
+  const gearRow = colARow(rows, ' gear ');
+  assert(oreRow && plateRow && gearRow, 'CHAIN draws a row per stage');
+  assert(oreRow.row < plateRow.row && plateRow.row < gearRow.row,
+    'and draws them in the order the chain actually runs');
+  // how many machines, and the real rate — the two numbers a player cannot
+  // work out by looking at the map
+  assert(oreRow.text.indexOf('2E') >= 0, 'the ore row counts the extractors');
+  assert(plateRow.text.indexOf('1S') >= 0, 'the plate row counts the smelters');
+  assert(gearRow.text.indexOf('1A') >= 0, 'the gear row counts the assemblers');
+  assert(plateRow.text.indexOf('0.50/s') >= 0, 'and prints the smelter rate');
+  assert(gearRow.text.indexOf('0.36/s') >= 0, 'and the assembler rate');
+  // THE lesson: one smelter cannot feed one assembler, and the panel says so
+  // on the stage that is actually holding the base back — and only there
+  assert(plateRow.text.indexOf('←STARVED') >= 0,
+    'the limiting stage is marked in the warning colour: ' + plateRow.text);
+  assert(oreRow.text.indexOf('←') < 0 && gearRow.text.indexOf('←') < 0,
+    'and no other stage is');
+  {
+    const flagCol = L.sb + plateRow.text.indexOf('←');
+    assertEq(DC.Render.cellAt(flagCol, plateRow.row).fg, D.COLORS.red,
+      'the bottleneck marker is drawn in the warning colour');
+  }
+  // and the projection: a base is a clock
+  const proj = colARow(rows, 'BREACH');
+  assert(proj, 'CHAIN projects the breach');
+  assert(/BREACH ~\d+:\d\d/.test(proj.text) || proj.text.indexOf('BREACH  —') >= 0,
+    'the projection is a time (or an honest dash): ' + proj.text);
+  assert(model.breachSec > 0, 'the projection has something to project');
+  // a stage with no machines at all names ITSELF, once — not three warnings
+  {
+    const bare = S.newRun(M.effects(meta), seed + 1);
+    const bch = S.chain(bare);
+    assertEq(bch.stages[0].flag, 'NONE', 'an empty base names the first missing stage');
+    assertEq(bch.stages[1].flag, '', 'and does not shout the same thing three times');
+  }
+  // a smelter with no coal is its own diagnosis
+  {
+    for (const id in run.machines) {
+      const m = run.machines[id];
+      if (m.type === 'smelter') { m.status = 'nofuel'; }
+    }
+    const dry = S.chain(run);
+    assertEq(dry.stages[1].flag, 'NO COAL', 'a dry smelter is named as a dry smelter');
+  }
+  rows = frame(state);
+
   // ---- SPEC3 §0 law 8: no quake schedule, anywhere -----------------------
   // run.quakeAt is a tick count sitting in plain sight. Nothing on any screen
   // may be a function of it. The test is blunt on purpose: move the schedule

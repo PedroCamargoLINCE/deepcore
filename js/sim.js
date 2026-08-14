@@ -914,10 +914,18 @@
       if (!lim || s.gears < lim.gears - 1e-9) lim = s;
     }
     if (lim) lim.limiting = true;
+    // Only the FIRST missing stage is called out. A base with nothing built
+    // has three empty stages, and three warnings in the same colour name no
+    // action at all — the one that matters is the next thing to build.
+    let namedNone = false;
     for (const s of stages) {
-      s.flag = s.n === 0 ? 'NONE'
-        : (s.id === 'plate' && noCoal) ? 'NO COAL'
-        : s.limiting ? 'STARVED' : '';
+      if (s.id === 'charge') continue;
+      if (s.n === 0) {
+        s.flag = namedNone ? '' : 'NONE';
+        namedNone = true;
+      } else {
+        s.flag = (s.id === 'plate' && noCoal) ? 'NO COAL' : s.limiting ? 'STARVED' : '';
+      }
     }
     // A charge stage that cannot keep up is its own lesson, and charges gate
     // the breach from stratum 5 down, so it is flagged on its own terms.

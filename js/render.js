@@ -830,17 +830,10 @@
       run.overdrive ? (phase ? C.red : C.orange) : C.darkgray);
     y++;
 
-    // M-RECAP ghost split: this stratum's clock against your best-ever run at
-    // this depth. The delta is time IN HAND — it counts down as you dig, green
-    // while you are still under the record, red the moment you are not. Only
-    // drawn once a record exists, so a first run costs no sidebar rows.
-    const gs = ghostSplit(run, meta);
-    if (gs) {
-      sideWalls(y);
-      text(SBC, y, 'BEST ' + fmtTime(gs.best), C.darkgray);
-      textR(SB + SBW - 2, y, gs.mark + fmtDelta(gs.delta), gs.delta >= 0 ? C.green : C.red);
-      y++;
-    }
+    // CHAIN — the teacher (M-WIDE). It sits directly under DRILL because it
+    // explains the number DRILL prints: the feed rate is an outcome, and this
+    // is where the outcome is decided.
+    y = drawChainPanel(y, run, meta, phase);
 
     const inv = run.inv || {};
     // STOCK lives in the second column when there is one (M-WIDE: eight items,
@@ -947,6 +940,72 @@
       text(SBC, bottom - 1 - i, painted[i].text.slice(0, SCW), painted[i].color);
     }
     sideEdge(bottom, 'bot');
+  }
+
+  // ---- PANEL 4: CHAIN — the teacher --------------------------------------
+  // The director could not work out what a smelter was for, and had to ask.
+  // Page one of the manual explains the chain and he still had to ask, because
+  // the manual is behind H and the chain is a LIVE thing you need to see while
+  // it is failing. So: one row per stage, how many machines, the real rate,
+  // and the limiting stage named in the warning colour.
+  //
+  // The number that matters most is the one nobody works out on their own: a
+  // smelter makes 0.5 plate/s and a gear assembler eats 0.73, so one smelter
+  // cannot feed one assembler. With that base standing, this panel says
+  // 'plate 1S 0.50/s ←STARVED' — which is the whole lesson, in a row.
+  //
+  // And a projection, because a base is a clock: 'BREACH ~2:14'. Never a
+  // quake countdown — that one is forbidden (SPEC3 §0 law 8), and the two
+  // readouts are opposites: one is the plan, the other is the thing that
+  // happens to the plan.
+  const CHAIN_NAME_X = 2, CHAIN_N_X = 9, CHAIN_RATE_R = 18, CHAIN_FLAG_X = 20;
+  function fmtRate(r) {
+    if (!(r > 0)) return '—';
+    // two decimals below ten, so the three stages read as one column of
+    // numbers you can compare at a glance (0.50 against 0.36, not 1.0)
+    return (r >= 10 ? r.toFixed(0) : r.toFixed(2)) + '/s';
+  }
+  function drawChainPanel(y, run, meta, phase) {
+    const ch = chainSafe(run);
+    y = sideEdge(y, 'sep', 'CHAIN');
+    if (!ch) return y;
+    for (const s of ch.stages) {
+      sideWalls(y);
+      const it = D.ITEMS[s.item] || {};
+      const dead = s.n === 0;
+      put(SBC, y, it.glyph || '·', dead ? C.darkgray : it.color);
+      text(SBC + CHAIN_NAME_X, y, s.name, dead ? C.darkgray : C.gray);
+      text(SBC + CHAIN_N_X, y, s.n + s.letter, dead ? C.darkgray : C.white);
+      textR(SBC + CHAIN_RATE_R, y, fmtRate(s.rate), dead ? C.darkgray : C.white);
+      if (s.flag) {
+        // the warning colour, and only on the stage that is actually holding
+        // the base back — a panel that shouts at three rows teaches nothing
+        // steady, not blinking: a bottleneck is a state that lasts minutes,
+        // and the blink is reserved for the things that are about to hurt
+        text(SBC + CHAIN_FLAG_X, y, ('←' + s.flag).slice(0, SCW - CHAIN_FLAG_X),
+          s.flag === 'NONE' ? C.amberDim : C.red);
+      }
+      y++;
+    }
+    // the projection, and the ghost you are racing (M-RECAP's split, which
+    // asks the same question this row answers)
+    sideWalls(y);
+    const ready = run.status === 'breachReady';
+    if (ready) {
+      text(SBC, y, 'BREACH READY [D]', phase ? C.white : C.green);
+    } else if (ch.breachSec === null || !isFinite(ch.breachSec)) {
+      // nothing is making what the rig still wants; the stage flags above
+      // already say which link is missing, so this row does not repeat it
+      text(SBC, y, 'BREACH  —', C.red);
+    } else {
+      text(SBC, y, 'BREACH ~' + fmtTime(ch.breachSec), C.amber);
+    }
+    const gs = ghostSplit(run, meta);
+    if (gs) {
+      textR(SB + SBW - 2, y, 'BEST ' + gs.mark + fmtDelta(gs.delta),
+        gs.delta >= 0 ? C.green : C.red);
+    }
+    return y + 1;
   }
 
   // ================= THE SECOND PANEL COLUMN (M-WIDE) =================
