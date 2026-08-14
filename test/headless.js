@@ -1572,6 +1572,48 @@ function checkDiagnostics() {
   return named.length;
 }
 
+// ======================================================================
+// A machine whose OUTPUT POINTS AT THE RIG feeds it directly — no belt for
+// that last tile. This has always worked; the test exists because nothing
+// pinned it, and M-TIER2 is about to rewrite belt handoff underneath it.
+//
+// The rule is FACING, not adjacency (director, 2026-08-14, explicitly: "i
+// want to go to the rig if the output is faced to the rig, not if it only
+// is adjacent to it"). A machine parked against the rig pointing the wrong
+// way must still fail, because a belt only ever hands its cargo to the tile
+// it faces and machines must obey the same rule the player is being taught.
+// ======================================================================
+function checkRigOutput() {
+  const eff = DC.Meta.effects(DC.Meta.newProfile());
+
+  // A smelter at hub-relative (dx, dy) pointed `facing`, fed by hand, with no
+  // belt anywhere. Returns plates that reached the rig (START_STOCK seeds 40,
+  // so measure the delta, never the total).
+  function delivered(dx, dy, facing) {
+    const run = S.newRun(eff, 1337);
+    const h = run.hub, x = h.x + dx, y = h.y + dy;
+    const chk = S.canPlace(run, 'smelter', x, y, facing);
+    assert(chk.ok, 'scaffold: smelter placeable at hub' +
+      (dx >= 0 ? '+' : '') + dx + ',' + (dy >= 0 ? '+' : '') + dy +
+      ' (got: ' + chk.reason + ')');
+    S.place(run, 'smelter', x, y, facing);
+    const m = run.machines[run.grid[y][x].machine];
+    m.input = { ironOre: 12 };
+    m.fuel = 99;
+    const before = run.inv.ironPlate || 0;
+    for (let i = 0; i < 400; i++) S.tick(run);
+    return (run.inv.ironPlate || 0) - before;
+  }
+
+  assertEq(delivered(0, -2, 2), 12,
+    'a smelter above the rig, output pointing DOWN into it, needs no belt');
+  assertEq(delivered(-2, 0, 1), 12,
+    'a smelter left of the rig, output pointing RIGHT into it, needs no belt');
+  assertEq(delivered(0, -2, 0), 0,
+    'the same smelter pointing AWAY delivers nothing — facing, not adjacency');
+  return 'rig output-facing feed ok';
+}
+
 function main() {
   checkArt();
   const glyphN = checkGlyphInventory();
@@ -1581,6 +1623,7 @@ function main() {
   const catNote = checkCat();
   const lmSweep = checkLandmarkSweep();
   const diagN = checkDiagnostics();   // M-ONBOARD: the game explains itself
+  const rigFeed = checkRigOutput();
 
   const eff = DC.Meta.effects(DC.Meta.newProfile());
   assert(eff && typeof eff.instMult === 'number' && eff.offerCount === 3,
