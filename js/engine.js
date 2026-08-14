@@ -907,7 +907,14 @@
     let t = null;
     if (Array.isArray(rows)) {
       for (let i = 0; i < rows.length; i++) {
-        if (rows[i] && rows[i].row === c.row) { t = rows[i].tool; break; }
+        const r = rows[i];
+        if (!r || r.row !== c.row) continue;
+        // M-WIDE: there is a second panel column now, and a click over there
+        // lands on the same ROW as a build entry. Entries carry their column
+        // span when render publishes one; older payloads match on row alone.
+        if (typeof r.col === 'number' && (c.col < r.col || c.col >= r.col + (r.w || 1))) continue;
+        t = r.tool;
+        break;
       }
     } else {
       t = rows[c.row];
