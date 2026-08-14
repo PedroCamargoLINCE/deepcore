@@ -1,0 +1,94 @@
+Work in this repository. Create and switch to a branch named M-WIDE off
+origin/master, and do all your work on it. You are the ONLY session running —
+this brief changes COLS, which every screen's layout is written against, so it
+gets an empty board.
+
+Read SPEC.md, SPEC2.md, and SPEC3.md section M-WIDE in full, plus §0's EIGHT
+laws, js/data.js, js/render.js and js/art.js.
+
+WHY. The game is letterboxed with black bars either side. That is not a bug and
+M-HIRES cannot fix it: the grid is 80x33 cells at 10x19px = aspect 1.276 and a
+16:9 screen is 1.778, so aspect-preserving scaling must letterbox. The only fix
+is more columns. Ship COLS = 112 (16:9) and letterbox any remainder rather than
+chasing every aspect. ROWS stays 33.
+
+THE HARD CONSTRAINT: THE MAP DOES NOT GROW. MAP_W = 46 and MAP_H = 26 stay
+exactly as they are. Widening the playfield would move vein density, walk
+distances and quake coverage, making this a balance rewrite wearing a layout
+brief's clothes. EVERY NEW COLUMN IS UI. Run test/balance.js before and after
+and require identical numbers — if they moved, the map grew and the work is
+wrong. Read that harness's footer first; it explains which SPEC §12 target is
+measured under which Foundry loadout.
+
+BUILD EXACTLY FOUR PANELS, IN THIS ORDER, COMMITTING EACH. Four that breathe,
+not nine that cram — this is a direct instruction and adding a fifth is a
+deviation to report, not a bonus. A wider gutter and a shorter line often read
+better than more content (§0 law 6).
+
+  1. RIG — the headline, and the change the director most wants. js/art.js
+     already composes it: composeRig layers rigParts[upgradeId] so every
+     Foundry upgrade is visibly bolted on. Today it is drawn ONLY on the title
+     screen and in the Foundry — between runs, when it means nothing. Put it in
+     the run sidebar so every run is played beside the machine built out of all
+     the previous ones (law 5: reward = picture changes). This is the biggest
+     beneficiary of M-HIRES's sub-cell rasterizer in the game — draw it at
+     block resolution and give it room. Ship this FIRST: if the session runs
+     short, the rig on screen is the win.
+  2. STOCK — all eight items, one per row, replacing the three crammed into
+     two. Draw each item as a 3x2 block-art icon (DC.Art.raster) rather than a
+     single glyph. The feature is the TREND ARROW: "• iron ore 68 ↑" tells the
+     player their extractors are outrunning their smelters without arithmetic.
+     Give the BUILD list the same icon treatment.
+  3. LOADOUT — run.schematics and run.mods are tracked and vanish when the pick
+     screen closes; twenty minutes later the player has forgotten what they
+     took. Icons plus a one-line effect each.
+  4. CHAIN — the teacher. Per stage: how many machines, the real rate, and the
+     LIMITING stage marked in the warning colour. It must make the ratio trap
+     visible as a number: one smelter is 0.5 plate/s, one assembler wants 2
+     plates per 2.75s = 0.73/s, so ONE SMELTER CANNOT FEED ONE ASSEMBLER —
+     the most common reason a first run dies. Project the breach ("~2:14 at
+     this rate").
+
+FORBIDDEN — §0 LAW 8. Do NOT display run.quakeAt, or any countdown, gauge or
+estimate of when the next quake lands, anywhere, including debug overlays that
+ship. The quake is a surprise permanently, by the director's explicit and
+repeated instruction; a countdown converts the game's best moment into a
+spreadsheet. §A2's pre-collapse dimming stays — a tell you feel is the opposite
+of a number you plan around. Also do NOT add a vein-depletion readout
+(tile.oreAmt); it was rejected as too much information.
+
+ALSO WORTH FIXING while you are in the layout: the newest GRIT line is
+currently on screen TWICE at once — mirrored into the LOG while it types in the
+foreman bar. Prefer keeping the typewriter and dropping the mirror until the
+line is superseded.
+
+IMPLEMENTATION
+- COLS lives in js/data.js. The sidebar is SB = 49, SBW = 31, SBC = 50,
+  SCW = 29 in render.js — DERIVE these from COLS rather than moving the
+  numbers, so the next widening is free.
+- Most layout already adapts: centring is (COLS - len) >> 1 and right-aligned
+  text uses COLS - n. There are roughly a dozen literal column numbers in draw
+  calls; audit each.
+- EVERY SCREEN must be checked at the new width, not just the run screen:
+  title, descend/schematic cards, foundry, help (both pages), victory,
+  gameover, recap card, vignette panels. Several centre themselves and will
+  simply work; the boxed ones need their widths re-derived.
+- §0 law 7: no panel may spend from run.rng. Rates and trends derive from state
+  the sim already keeps.
+
+ACCEPTANCE
+- test/balance.js numbers IDENTICAL before and after (proves the map did not grow)
+- every screen rendered at 112 columns in a stub-canvas test, no row exceeding
+  the grid, no panel clipping its own content mid-word
+- the CHAIN bottleneck marker asserted against a constructed starved base
+- the rig portrait asserted present on the run screen with a Foundry upgrade
+  visibly bolted on
+- all five suites green and node tools/build.js parses
+
+Checkpoint-commit AND PUSH your branch after every green milestone, with a
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> trailer.
+
+When done: push your branch to origin and STOP — do not merge, rebase or
+force-push; the orchestrator merges. Report: the four panels, what you did with
+the space you did NOT fill, your before/after balance numbers, and your final
+test output.
