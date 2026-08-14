@@ -24,6 +24,7 @@ with `git add -A`).
 | M-WONDERS | map.js, sim.js, data.js (additive), render.js, barks.js |
 | M-EVENTS | **new js/events.js**, sim.js, engine.js, meta.js, render.js, barks.js, art.js |
 | M-ONBOARD | sim.js (cause messages), engine.js (tutorial steps), meta.js (seen flag), barks.js, render.js (SCAN reason line) |
+| M-WIDE | **data.js (COLS)**, render.js (all layout + new CHAIN panel), art.js (boxed assets) |
 | M-HIRES | render.js (**metrics/scaling — the whole file's coordinate basis**), style.css, art.js (rasterizer), engine.js (resize), vendor/, tools/build.js |
 
 **Rules that follow from the table:**

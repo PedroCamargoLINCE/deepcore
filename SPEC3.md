@@ -696,6 +696,112 @@ game that cannot explain its own failure states makes every one of those
 sessions cost more than it should. Part 2 can follow whenever.
 ---
 
+### M-WIDE — Fill the Sides, and Use Them to Teach (P1)
+
+> Director, 2026-08-14, looking at a running game: *"i feel like if we used more
+> of the screen available, it would be more clear. what are our actual plans to
+> use these black bars at the sides? do we have any plans?"*
+
+There was no plan. This is it.
+
+#### Why the bars are there (it is not a bug, and M-HIRES cannot fix it)
+
+The grid is **80 × 33 cells at 10 × 19 px = 800 × 627, aspect 1.276**. A 16:9
+monitor is 1.778. M-HIRES Phase 1 works — the game scales up instead of sitting
+as an 800px island — but scaling *preserves aspect*, so on any wider screen it
+must letterbox. There is no scaling fix. The only way to fill the sides is
+**more columns**:
+
+| Target | Columns needed | Gain |
+|---|---|---|
+| 16:10 | 100 | +20 |
+| 16:9 | 111 | +31 |
+| the director's window (1.845) | 116 | +36 |
+
+**Ship 112 columns** (16:9, the common case) and letterbox the remainder rather
+than chasing every aspect. `ROWS` stays 33.
+
+#### THE HARD CONSTRAINT: the map does not grow
+
+`MAP_W = 46, MAP_H = 26` stay **exactly as they are**. Widening the playfield
+would change vein density, walk distances, quake coverage and every number in
+`test/balance.js` — it would be a balance rewrite wearing a layout brief's
+clothes. **Every new column is UI.** Run `test/balance.js` before and after and
+require the numbers to be unchanged; if they moved, the map grew and the work
+is wrong.
+
+#### What the space is for — teaching the chain
+
+The director could not work out what a smelter was for, and had to ask. The
+manual explains the chain on page 1 and he still had to ask, because the manual
+is behind `H` and the chain is a *live* thing you need to see while it is
+failing. That is what the new columns are for.
+
+**A live CHAIN panel — the headline feature of this brief.** A permanent column
+showing the production line as it actually is, right now:
+
+```
+  CHAIN
+  •  ore      2 E    1.0/s
+  ▬  plate    1 S    0.5/s   ← STARVED
+  ¤  gear     1 A    0.36/s
+  ─────────────────────────
+  breach in ~2:14 at this rate
+```
+
+Three things it must do, in priority order:
+
+1. **Name the bottleneck.** Mark the stage that is limiting, in the warning
+   colour. This one line would have taught the director more than the manual
+   did.
+2. **Show the ratio problem.** One smelter is 0.5 plate/s; one assembler wants
+   2 plates per 2.75s = 0.73/s. **One smelter cannot feed one assembler** — the
+   single most common reason a first run dies. The panel should make that
+   visible as a number, not a tip you read once.
+3. **Project the breach.** "breach in ~2:14 at this rate" turns the whole base
+   into a clock, which is the game's actual subject.
+
+Secondary uses, in order of value: give the LOG more rows (it is the game's
+narrator and currently shows ~5); widen the SCAN panel past its 29-column clip;
+give the recap card and the manual room to breathe.
+
+#### A duplication worth fixing while you are in here
+
+The newest GRIT line is currently on screen **twice at once** — mirrored into
+the LOG *and* typing in the foreman bar. Two or three rows of a small screen
+spent saying the same sentence. Either drop the mirror for the line currently
+in the bar and let it fall into the LOG once it is superseded, or drop the bar
+and let a wider LOG carry him. The first keeps the typewriter, which is worth
+keeping.
+
+#### Implementation notes
+
+- `COLS` lives in `js/data.js`. The sidebar is `SB = 49, SBW = 31, SBC = 50,
+  SCW = 29` in `render.js` — **derive these from `COLS`** rather than moving the
+  numbers, so the next widening is free.
+- Most layout already adapts: centring is `(COLS - len) >> 1`, right-aligned
+  text uses `COLS - n`. There are roughly a dozen literal column numbers in
+  draw calls — audit each.
+- **Every screen must be checked at the new width**, not just the run screen:
+  title, descend/schematic cards, foundry, help (two pages), victory, gameover,
+  recap card, vignette panels. Several centre themselves and will simply work;
+  the boxed ones need their widths re-derived.
+- §0 law 6 governs: more columns is only better if it reads better. Do not
+  spread the sidebar thin to fill space — a wider gutter and a shorter line
+  length often read *better* than more content.
+- §0 law 7: a rate readout must not consume `run.rng`, and must derive from
+  state the sim already keeps.
+
+**Contracts:** `js/data.js` (COLS), `js/render.js` (layout constants, the new
+CHAIN panel, every screen's width), `js/art.js` (any boxed asset with a baked
+width), `test/*` (width assertions).
+**Acceptance:** balance numbers identical before/after (proves the map did not
+grow); every screen rendered at 112 columns in a stub-canvas test with no row
+exceeding the grid; the CHAIN panel's bottleneck marker asserted against a
+constructed starved base; `tools/build.js` parses.
+**Size:** ~250 lines for the widening and the audit, ~150 for the CHAIN panel.
+---
+
 ### M-HIRES — Fill the Screen, Then Sharpen It (P0-adjacent — dispatch anytime)
 
 > Director's note (2026-08-11): *"make the definition of ascii better: Canvas
