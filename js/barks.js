@@ -352,6 +352,41 @@
       "Right. Back to work. Does this rig have a snack compartment? No?",
       "Clarity returns. So does the appetite. Mostly the appetite. Dig.",
     ],
+    // ---- M-ONBOARD: GRIT's last word on a fault the SIM has already named ----
+    // sim.js has said, plainly, what is wrong and how to fix it. These come
+    // AFTER that, and they carry no information at all — law 3 says GRIT does
+    // not explain mechanics, and law 6 says the boring sentence lands first.
+    // If a player has to parse one of these to learn why their base is stopped,
+    // the brief failed. Read them with the log line deleted: they should still
+    // be funny and still be useless, which is the whole job.
+    //
+    // Four causes only. 'blocked', 'nofuel' and 'depleted' already reach him
+    // through the jam / noCoal / veinDepleted pools, and two GRIT lines about
+    // one fault is nagging.
+    diagBeltJam: [
+      "That belt delivers to nobody. Very Company. Very on-brand.",
+      "Line ends in dirt, kid. The dirt has never once paid us.",
+      "Something on that line has been waiting long enough to vest.",
+      "Cargo with no address. Bold. Stupid, but bold.",
+    ],
+    diagStarved: [
+      "Assembler's sat there empty-handed like a foreman on payday.",
+      "It's got the recipe and no groceries. I know the feeling.",
+      "That thing isn't lazy, kid. Nobody brought it anything to do.",
+      "An idle assembler is just an expensive table. Ours is very expensive.",
+    ],
+    diagStallGear: [
+      "Rig's chewing air. Twenty years, it has never skipped a meal quietly.",
+      "The drill is spinning and judging us. Mostly you, but us.",
+      "She's hungry, kid, and rock is not on the menu she was sold.",
+      "Feed her or don't, but she's going to keep making that noise.",
+    ],
+    diagStallCharge: [
+      "The floor down there does not crack on enthusiasm alone.",
+      "Gears and no bang. That's a firework with the wick left in the box.",
+      "Rig's ready to knock and we brought no knuckles.",
+      "Planet's noticed we're out, kid, and it is being smug about it.",
+    ],
   };
 
   // ---------------- M-CORELORE: the second voice ----------------
@@ -766,6 +801,43 @@
     return say(run, S, line);
   }
 
+  // ---------------- M-ONBOARD API ----------------
+  // engine.js drains sim.js's 'diagnostic' event and lands here, once per cause
+  // per run. The mapping is deliberately partial: a cause with no entry is one
+  // GRIT already covers through an ambient pool, and he says nothing twice.
+  const DIAG_POOL = {
+    beltJam: 'diagBeltJam', starved: 'diagStarved',
+    stallGear: 'diagStallGear', stallCharge: 'diagStallCharge',
+  };
+
+  // Picked by a pure FNV-1a hash of (seed, cause) rather than from run.rng —
+  // the reasoning that moved Barks.review off the stream in M-RECAP, and it
+  // bites harder here. These lines fire ONLY when the player has made a
+  // mistake, so a draw would make the quake schedule depend on whether
+  // somebody laid a belt wrong. Law 7 is explicit: what the player does must
+  // not move the stream. Locked by a run.rng snapshot in test/barks_test.js.
+  function diagPick(run, cause, n) {
+    let h = 0x811c9dc5;
+    const s = String((run && run.seed) >>> 0) + '|diag|' + cause;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    return (h >>> 1) % n;
+  }
+
+  // Returns the line, or null when the cause is one of GRIT's ambients, when
+  // there is no pool, or when the cooldown says he is still talking. Every one
+  // of those is a safe silence: the player has already been told what is wrong.
+  function diagSay(run, cause) {
+    if (!run) return null;
+    const pool = POOLS[DIAG_POOL[cause]];
+    if (!Array.isArray(pool) || !pool.length) return null;
+    const S = stateOf(run);
+    if (run.totalT - S.lastAt < COOLDOWN) return null;
+    return say(run, S, pool[diagPick(run, cause, pool.length)]);
+  }
+
   // ---------------- M-CORELORE API ----------------
   // One entry point for every Core register: 'intrusion' (stratum 6+ ambient),
   // 'gate' (with ctx = the beat index 0..2), 'reveal' (the opened shell, drawn
@@ -1058,6 +1130,8 @@
     tick: tick, fire: fire, epitaph: epitaph, toast: toast,
     // M-CORELORE / M-GRITPLUS
     core: coreSpeak, pause: pause, eggOpen: eggOpen, CORE: CORE,
+    // M-ONBOARD: GRIT's editorial on a fault the sim already explained
+    diag: diagSay, DIAG_POOL: DIAG_POOL,
     // M-RECAP
     review: review, reviewTier: reviewTier, reviewCtx: reviewCtx,
     fillReview: fillReview, REVIEWS: REVIEWS,
