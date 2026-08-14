@@ -36,7 +36,16 @@
   const D = DC.DATA = {};
 
   // ---------------- core dimensions & timing ----------------
-  D.COLS = 80;            // total character grid width
+  // M-WIDE: 112, not 80. The grid is the game's window, and at 80x33 of 10x19
+  // it is aspect 1.276 against a 16:9 monitor's 1.778 — aspect-preserving
+  // scaling MUST letterbox that, so the black bars were never a scaling bug
+  // and no sharpening pass could close them. 112 columns is 16:9 almost
+  // exactly (112*10 / 33*19 = 1.786); wider aspects letterbox the remainder
+  // rather than the game chasing every panel on the market.
+  // THE MAP DOES NOT GROW WITH IT: MAP_W/MAP_H below are untouched, so vein
+  // density, walk distances and quake coverage are the same game they were.
+  // Every column this adds is UI (render.js derives its panel columns from it).
+  D.COLS = 112;           // total character grid width
   D.ROWS = 33;            // total character grid height
   D.MAP_W = 46;           // stratum map width  (tiles)
   D.MAP_H = 26;           // stratum map height (tiles)

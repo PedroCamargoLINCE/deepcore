@@ -47,8 +47,28 @@
   // rather than 55px text.
   const MIN_SCALE = 1, MAX_SCALE = 2.25;
   const UNREV_BG = '#050504';        // near-black for unrevealed tiles (SPEC §7)
-  const SB = 49, SBW = 31;           // sidebar box: cols 49..79
-  const SBC = 50, SCW = 29;          // sidebar content col + width
+  // ---- panel geometry, DERIVED (M-WIDE) --------------------------------
+  // These were the literals SB=49, SBW=31, SBC=50, SCW=29. They are computed
+  // from COLS and MAP_W now, so the next widening is free: put a bigger
+  // number in data.js and the columns fall out of it.
+  //
+  // The map box is MAP_W+2 wide at col 0, then one column of gutter, so the
+  // panels start at MAP_W+3. Everything right of that is UI. A panel column
+  // is 31 wide because that is what the SCAN panel's 29-column text contract
+  // (Sim.SCAN_W) plus its two walls needs — NOT because 31 is half of what is
+  // left. Spreading a column to 40 would not make one line of it easier to
+  // read (§0 law 6); a second column of panels would.
+  const SB = D.MAP_W + 3;            // 49 — first panel column
+  const RIGHT_W = COLS - SB;         // 63 at 112 cols, 31 at 80
+  const PANEL_W = 31;                // one panel column, walls included
+  const TWO_COL = RIGHT_W >= PANEL_W * 2;
+  const SBW = PANEL_W;
+  const SBC = SB + 1, SCW = SBW - 2;                 // content col + width (29)
+  // Second column: right-aligned to the last cell, so any slack between the
+  // two columns becomes gutter rather than a ragged right edge.
+  const SB2 = TWO_COL ? COLS - PANEL_W : -1;
+  const SBW2 = TWO_COL ? PANEL_W : 0;
+  const SBC2 = SB2 + 1, SCW2 = Math.max(0, SBW2 - 2);
   // Tallest one LOG message may grow to once word-wrapped into SCW columns.
   // 3 rows holds the longest mirrored GRIT bark (75 chars with its tag) whole;
   // anything longer ends in '…' on a word boundary. The panel has 9 rows.
@@ -487,7 +507,7 @@
     textR(COLS - 1, 0, 'ELAPSED ' + fmtTime(run.totalT / D.TICK_HZ), C.gray);
 
     // thin rule (row 1, under the map column only — sidebar starts here)
-    text(0, 1, '─'.repeat(SB), C.amberDim);
+    text(0, 1, '─'.repeat(SB - 1), C.amberDim);
 
     // map box rows 2..29, cols 0..47; interior = 46x26 at (MAP_X, MAP_Y)
     box(0, 2, 48, 28, accent, 'STRATUM ' + run.depth + ' ─ ' + st.name, C.white);
@@ -498,6 +518,7 @@
     }
     drawMap(run, ui, phase);
     drawSidebar(run, ui, phase, st, state.meta);
+    drawPanels(run, ui, phase, st, state.meta);
     drawHints(run, ui, phase);
     drawForeman(run);
 
@@ -704,30 +725,46 @@
   }
 
   // ---------------- sidebar ----------------
-  function sideEdge(row, kind, title, titleColor) {
+  // One panel column's furniture. `col`/`w` are passed so the same two
+  // primitives draw both columns (M-WIDE); sideEdge/sideWalls stay as the
+  // column-A shorthand every existing caller already reads as.
+  function panelEdge(col, w, row, kind, title, titleColor) {
     const l = kind === 'top' ? '┌' : kind === 'bot' ? '└' : '├';
     const r = kind === 'top' ? '┐' : kind === 'bot' ? '┘' : '┤';
-    text(SB, row, l + '─'.repeat(SBW - 2) + r, C.amberDim);
-    if (title) text(SB + 2, row, (' ' + title + ' ').slice(0, SBW - 4), titleColor || C.amber);
+    text(col, row, l + '─'.repeat(w - 2) + r, C.amberDim);
+    if (title) text(col + 2, row, (' ' + title + ' ').slice(0, w - 4), titleColor || C.amber);
     return row + 1;
   }
-  function sideWalls(row) { put(SB, row, '│', C.amberDim); put(SB + SBW - 1, row, '│', C.amberDim); }
+  function panelWalls(col, w, row) {
+    put(col, row, '│', C.amberDim);
+    put(col + w - 1, row, '│', C.amberDim);
+  }
+  function sideEdge(row, kind, title, titleColor) {
+    return panelEdge(SB, SBW, row, kind, title, titleColor);
+  }
+  function sideWalls(row) { panelWalls(SB, SBW, row); }
 
   function drawSidebar(run, ui, phase, st, meta) {
     const req = run.breachReq || { gear: 0, charge: 0 };
     const gGlyph = D.ITEMS.gear.glyph, cGlyph = D.ITEMS.charge.glyph;
     let y = 1;
 
-    // RIG — owned meta-upgrade glyph strip on the header row (v1.1 §C.2)
+    // RIG — the hull's two gauges. The owned-upgrade glyph strip that used to
+    // ride this header row (v1.1 §C.2) was a compact stand-in for a picture we
+    // could not afford at 80 columns; at 112 the second column draws the rig
+    // itself, parts and all, so the strip is only kept where that panel is not
+    // (M-WIDE: reward is a picture changing, not a row of runes).
     let edge = y;
     y = sideEdge(y, 'top', 'RIG');
-    const ups = (meta && meta.upgrades) || {};
-    let gx = SB + SBW - 3;
-    for (let i = D.META_UPGRADES.length - 1; i >= 0 && gx > SB + 7; i--) {
-      const id = D.META_UPGRADES[i].id;
-      if (!(ups[id] > 0)) continue;
-      const g = UP_GLYPHS[id] || ['·', 'gray'];
-      put(gx--, edge, g[0], resolveColor(g[1]) || C.amber);
+    if (!TWO_COL) {
+      const ups = (meta && meta.upgrades) || {};
+      let gx = SB + SBW - 3;
+      for (let i = D.META_UPGRADES.length - 1; i >= 0 && gx > SB + 7; i--) {
+        const id = D.META_UPGRADES[i].id;
+        if (!(ups[id] > 0)) continue;
+        const g = UP_GLYPHS[id] || ['·', 'gray'];
+        put(gx--, edge, g[0], resolveColor(g[1]) || C.amber);
+      }
     }
     sideWalls(y);
     text(SBC, y, 'INTEG', C.gray);
@@ -790,27 +827,31 @@
       y++;
     }
 
-    // STOCK — 2 columns, always show ironPlate & gear
-    y = sideEdge(y, 'sep', 'STOCK');
     const inv = run.inv || {};
-    const shown = D.ITEM_ORDER.filter(id => (inv[id] || 0) > 0 || id === 'ironPlate' || id === 'gear');
-    const srows = Math.max(1, Math.ceil(shown.length / 2));
-    for (let i = 0; i < srows; i++) {
-      sideWalls(y + i);
-      for (let k = 0; k < 2; k++) {
-        const id = shown[i * 2 + k];
-        if (!id) continue;
-        const it = D.ITEMS[id], cx = SBC + k * 15;
-        put(cx, y + i, it.glyph, it.color);
-        // CX-11: STOCK_NAME_W columns (the old blank gutter) + a per-item
-        // short name, so 'copper ore' and 'copper plate' stop rendering as
-        // 'copper o/p'.
-        text(cx + 2, y + i, itemLabel(id).slice(0, STOCK_NAME_W), C.gray);
-        text(cx + 2 + STOCK_NAME_W, y + i,
-             U.padL(stockCount(inv[id] || 0), STOCK_COUNT_W), C.white);
+    // STOCK lives in the second column when there is one (M-WIDE: eight items,
+    // one per row, with icons and a trend). At 80 columns it stays here, two
+    // to a row, exactly as it was.
+    if (!TWO_COL) {
+      y = sideEdge(y, 'sep', 'STOCK');
+      const shown = D.ITEM_ORDER.filter(id => (inv[id] || 0) > 0 || id === 'ironPlate' || id === 'gear');
+      const srows = Math.max(1, Math.ceil(shown.length / 2));
+      for (let i = 0; i < srows; i++) {
+        sideWalls(y + i);
+        for (let k = 0; k < 2; k++) {
+          const id = shown[i * 2 + k];
+          if (!id) continue;
+          const it = D.ITEMS[id], cx = SBC + k * 15;
+          put(cx, y + i, it.glyph, it.color);
+          // CX-11: STOCK_NAME_W columns (the old blank gutter) + a per-item
+          // short name, so 'copper ore' and 'copper plate' stop rendering as
+          // 'copper o/p'.
+          text(cx + 2, y + i, itemLabel(id).slice(0, STOCK_NAME_W), C.gray);
+          text(cx + 2 + STOCK_NAME_W, y + i,
+               U.padL(stockCount(inv[id] || 0), STOCK_COUNT_W), C.white);
+        }
       }
+      y += srows;
     }
-    y += srows;
 
     // BUILD — one row per tool + demolish; facing arrow in the title
     edge = y;
@@ -837,7 +878,7 @@
         text(SBC + 4, y, U.pad(b.name, 10), afford ? C.gray : bad);
         textR(SB + SBW - 2, y, costS, afford ? (free ? C.green : C.amberDim) : bad);
       }
-      layout.buildRows.push({ row: y, tool: t });
+      layout.buildRows.push({ row: y, col: SB, w: SBW, tool: t });
       y++;
     }
     sideWalls(y);
@@ -847,7 +888,7 @@
       put(SBC + 2, y, '×', C.red);
       text(SBC + 4, y, 'demolish', C.gray);
     }
-    layout.buildRows.push({ row: y, tool: 'demolish' });
+    layout.buildRows.push({ row: y, col: SB, w: SBW, tool: 'demolish' });
     y++;
 
     // SCAN — tile tooltip / tool description / stratum flavor
@@ -888,6 +929,51 @@
       text(SBC, bottom - 1 - i, painted[i].text.slice(0, SCW), painted[i].color);
     }
     sideEdge(bottom, 'bot');
+  }
+
+  // ================= THE SECOND PANEL COLUMN (M-WIDE) =================
+  // Four panels answering four different questions — what you are (RIG),
+  // what you have (STOCK), what you picked (LOADOUT), what it is all doing
+  // (CHAIN, which lives in column A next to the drill it explains). Four that
+  // breathe rather than nine that cram: every one of them is allowed to leave
+  // columns empty, because a short line in a wide gutter reads better than a
+  // packed one (§0 law 6).
+  //
+  // Nothing in here spends from run.rng (§0 law 7) and nothing writes state.
+  // And nothing in here — not a countdown, not a gauge, not an estimate —
+  // says anything about when the next quake lands (§0 law 8).
+
+  // Ground colours: the rig portrait's bottom rows are rock, and rock takes
+  // the stratum's accent so the picture says which floor you are standing on.
+  const GROUND_CH = '▓▒░█▀';
+  const RIG_GROUND_ROW = 7;              // rigBase row 7 is the surface line
+
+  function drawRigPanel(y, run, meta, accent) {
+    y = panelEdge(SB2, SBW2, y, 'top', 'YOUR RIG');
+    const rig = composeRigSafe(meta && meta.upgrades) || placeholder('rig');
+    const h = Math.min(rig.length, 12);
+    const ox = SBC2 + Math.max(0, (SCW2 - blockWidth(rig)) >> 1);
+    const ground = mix(C.rock, accent || C.amber, 0.35);
+    for (let i = 0; i < h; i++) {
+      panelWalls(SB2, SBW2, y + i);
+      const ln = rig[i].slice(0, SCW2);
+      for (let j = 0; j < ln.length; j++) {
+        if (ln[j] === ' ') continue;
+        const rock = i >= RIG_GROUND_ROW && GROUND_CH.indexOf(ln[j]) >= 0;
+        put(ox + j, y + i, ln[j], rock ? ground : C.amber);
+      }
+    }
+    // published for fx.js and the suites: where the in-run rig actually landed
+    layout.runRig = { x: ox, y: y, w: blockWidth(rig), h: h };
+    return y + h;
+  }
+
+  function drawPanels(run, ui, phase, st, meta) {
+    if (!TWO_COL) { layout.runRig = null; return; }
+    const accent = st.accent || C.amber;
+    let y = 1;
+    y = drawRigPanel(y, run, meta, accent);
+    panelEdge(SB2, SBW2, y, 'bot');
   }
 
   function scanLines(run, ui, st) {
@@ -1157,6 +1243,10 @@
   }
 
   // ================= FOUNDRY =================
+  // The Foundry page's two columns, as a block that centres itself: the rig
+  // box, a gutter, and the upgrade list (44 columns holds the longest desc,
+  // 'Instability rises 12% slower (per level).', with air to spare).
+  const FOUNDRY_RIG_W = 28, FOUNDRY_GAP = 3, FOUNDRY_LIST_W = 46;
   // v1.1 §C.2: rig portrait left, upgrade list right. On purchase the engine
   // sets ui.flashPart = {id, until}; that part's overlay cells blink white.
   function drawRigPortrait(x0, y0, w, upgrades, flash) {
@@ -1196,13 +1286,17 @@
     drawArt(lines, 1, artColor('foundry', C.orange));
     ctext(Math.min(1 + lines.length + 1, 8), '◈ ' + (meta.cores || 0) + ' CORES', C.magenta);
 
-    // left column: the rig, upgrades bolted on
+    // Two columns — the rig, and what can be bolted to it — CENTRED as one
+    // block (M-WIDE). They used to start at col 1 because col 1 was as far
+    // left as 80 columns allowed; at 112 that would leave the forge art
+    // centred over a page pinned to the left edge.
     const py = 10;
-    box(1, py, 28, 14, C.amberDim, 'YOUR RIG', C.amber);
-    drawRigPortrait(2, py + 1, 26, meta.upgrades, activeFlash(ui));
+    const fx0 = Math.max(0, (COLS - (FOUNDRY_RIG_W + FOUNDRY_GAP + FOUNDRY_LIST_W)) >> 1);
+    box(fx0, py, FOUNDRY_RIG_W, 14, C.amberDim, 'YOUR RIG', C.amber);
+    drawRigPortrait(fx0 + 1, py + 1, FOUNDRY_RIG_W - 2, meta.upgrades, activeFlash(ui));
 
     // right column: upgrade list (2 rows each: stat line + dim desc)
-    const lx = 31;
+    const lx = fx0 + FOUNDRY_RIG_W + FOUNDRY_GAP;
     for (let i = 0; i < D.META_UPGRADES.length; i++) {
       const up = D.META_UPGRADES[i];
       const lvl = (meta.upgrades && meta.upgrades[up.id]) || 0;
@@ -1218,7 +1312,7 @@
       text(lx + 24, row, lvl + '/' + up.max, C.gray);
       text(lx + 28, row, maxed ? ' MAX' : U.padL(cost + '◈', 4),
         maxed ? C.amberDim : afford ? C.magenta : shade(C.red, 0.8));
-      text(lx + 3, row + 1, up.desc.slice(0, COLS - lx - 4), C.darkgray);
+      text(lx + 3, row + 1, up.desc.slice(0, FOUNDRY_LIST_W - 3), C.darkgray);
     }
 
     // Foreman surface (M-POLISH backlog): GRIT talks on the Foundry floor even
@@ -1243,7 +1337,9 @@
   const VG_X = (COLS - 40) >> 1;      // the 40-wide panel, centred
   const VG_ROW = 3;
   const VG_PROSE_W = 64;
-  const VG_CHOICE_X = 12;
+  // The choices hang off the panel's own left edge (M-WIDE): at 80 columns
+  // col 12 was that edge; at 112 a fixed 12 would strand them out in the dark.
+  const VG_CHOICE_X = VG_X;
   function drawVignette(state) {
     const run = state.run, ui = state.ui || {};
     const ev = (DC.Events && DC.Events.pending) ? DC.Events.pending(run) : null;
@@ -1283,7 +1379,7 @@
       text(VG_CHOICE_X, cy, key, C.green);
       text(VG_CHOICE_X + 4, cy, c.label, hot ? C.white : C.amber);
       if (c.hint) text(VG_CHOICE_X + 4, cy + 1, c.hint, C.darkgray);
-      rows.push({ col: VG_CHOICE_X, row: cy, w: COLS - 2 * VG_CHOICE_X, h: 2, index: i });
+      rows.push({ col: VG_CHOICE_X, row: cy, w: Math.max(1, COLS - 2 * VG_CHOICE_X), h: 2, index: i });
       cy += 3;
     }
     layout.choices = rows;
@@ -1299,13 +1395,16 @@
   // the entries themselves are gold, the colour the LOG already gives a
   // found log, so the two readings of the same line agree.
   const LOG_ROW0 = 5;                       // first entry row
-  const LOG_COL = 3;                        // left margin of the number column
+  // The page is 78 columns — a 70-column entry (the ceiling every authored
+  // line in this game answers to) plus its number column — and it CENTRES
+  // itself rather than starting at a fixed left margin, so the entries sit
+  // under the masthead at any width. A logbook that clips its own entries
+  // mid-word is worse than no logbook: the whole page exists to be read
+  // (SPEC3 §0 law 6).
+  const LOG_PAGE_W = 78;
+  const LOG_COL = Math.max(0, (COLS - LOG_PAGE_W) >> 1);  // number column
   const LOG_TEXT = LOG_COL + 5;             // where the entry itself starts
-  // Wide enough for the longest entry the corpus allows (70 columns, the same
-  // ceiling every authored line in this game answers to), with a margin left
-  // over. A logbook that clips its own entries mid-word is worse than no
-  // logbook: the whole page exists to be read (SPEC3 §0 law 6).
-  const LOG_W = COLS - LOG_TEXT - 2;
+  const LOG_W = LOG_PAGE_W - 5;
   function drawLogbook(state) {
     const meta = state.meta || {};
     const E = DC.Events;
@@ -1315,7 +1414,7 @@
 
     ctext(1, 'DEAD FOREMEN OF THE DEEP', C.amber);
     ctext(2, 'what they wrote down before the rock had them', C.gray);
-    text(LOG_COL, 3, '─'.repeat(COLS - 2 * LOG_COL + 1), mix(C.amber, C.bg, 0.42));
+    text(LOG_COL, 3, '─'.repeat(LOG_PAGE_W), mix(C.amber, C.bg, 0.42));
 
     for (let i = 0; i < logs.length && LOG_ROW0 + i < ROWS - 4; i++) {
       const row = LOG_ROW0 + i;
@@ -1389,8 +1488,11 @@
     }
   }
 
+  // The end-screen stats, as a centred two-column block (M-WIDE: L/V were the
+  // literals 26/46, which centred a 34-wide block on an 80-column screen).
+  const STATS_W = 34, STATS_VAL = 20;
   function statsBlock(row, res) {
-    const L = 26, V = 46;
+    const L = Math.max(0, (COLS - STATS_W) >> 1), V = L + STATS_VAL;
     text(L, row, 'STRATUM REACHED', C.gray);
     text(V, row, res.depth + '  (-' + (res.depth * D.DEPTH_M) + 'm)', C.white);
     text(L, row + 1, 'STRATA BREACHED', C.gray);
@@ -1421,7 +1523,9 @@
     const hadCat = (DC.Events && DC.Events.cat) ? DC.Events.cat(state.run) : null;
     if (hadCat) {
       const rubble = 1 + lines.length - 3;
-      put(4, Math.max(1, rubble), 'c', shade(C.white, 0.8));
+      // on the wreck's own left edge, wherever the centred art put it
+      const cx = Math.max(0, (COLS - artWidth(lines)) >> 1) + 3;
+      put(cx, Math.max(1, rubble), 'c', shade(C.white, 0.8));
       const cl = (DC.Barks && DC.Barks.CAT_EPITAPH) || null;
       if (cl && y + 5 + epi.length < 30) ctext(y + 5 + epi.length + 1, cl, C.gray);
     }
@@ -1848,7 +1952,7 @@
     try { return DC.FX.odometer(key, value, prog); } catch (e) { return plain; }
   }
   // ================= public API =================
-  const layout = { cards: [], buildRows: [], map: null, choices: [] };
+  const layout = { cards: [], buildRows: [], map: null, choices: [], runRig: null };
   surface.layout = layout;
 
   DC.Render = {
@@ -1862,6 +1966,17 @@
     STOCK_COUNT_W: STOCK_COUNT_W,
     itemLabel: itemLabel,
     stockCount: stockCount,
+    // M-WIDE: the panel geometry, derived from COLS rather than typed in.
+    // Exported so the suites can hold the columns to the screen's real width
+    // instead of re-deriving numbers that would then agree with themselves.
+    LAYOUT: {
+      cols: COLS, rows: ROWS,
+      sb: SB, sbw: SBW, sbc: SBC, scw: SCW,
+      sb2: SB2, sbw2: SBW2, sbc2: SBC2, scw2: SCW2,
+      twoCol: TWO_COL,
+      get runRig() { return layout.runRig; },
+    },
+    LOGBOOK_W: LOG_W,
     // The prose panels' text contract (LOG at SCW columns, Foreman bar at 41),
     // exported so test/barks_test.js can prove no authored line — sim message
     // or GRIT bark — is ever cut mid-word by either one.

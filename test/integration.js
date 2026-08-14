@@ -4279,6 +4279,240 @@ function eventsSection(seed) {
   }
 }
 
+// =========================================================================
+// SECTION 16 — M-WIDE: the game at COLS columns, every screen
+// The widening's whole risk is a screen that was laid out against 80 and
+// silently stayed there: still legal, still un-crashing, and pinned to the
+// left third of the window with the rest black. So this section renders
+// EVERY screen through the real frame path and holds each one to what it is
+// supposed to do with the width — centred screens must be centred, and the
+// run screen must actually reach the last column.
+//
+// It also owns the four panels' acceptance (rig portrait present with a
+// bought upgrade visibly bolted on, stock trends, loadout, chain bottleneck)
+// and the one thing that must NEVER appear anywhere: the quake's schedule
+// (SPEC3 §0 law 8).
+// =========================================================================
+function wideSection(seed) {
+  SECTION = 'wide seed=' + seed;
+  require('../js/barks.js');
+  require('../js/events.js');
+  require('../js/fx.js');
+  require('../js/render.js');
+  const M = DC.Meta;
+
+  const ctxStub = {
+    fillStyle: '', font: '', textBaseline: '', textAlign: '',
+    setTransform: function () {}, fillRect: function () {},
+    save: function () {}, restore: function () {}, scale: function () {},
+    fillText: function () {}, measureText: function () { return { width: 10 }; },
+  };
+  const canvasStub = {
+    style: {},
+    getContext: function () { return ctxStub; },
+    addEventListener: function () {},
+    getBoundingClientRect: function () {
+      return { left: 0, top: 0, width: D.COLS * 10, height: D.ROWS * 19 };
+    },
+  };
+  DC.Render.init(canvasStub);
+
+  // ---- the grid, as strings, plus where its ink actually sits -----------
+  function gridRows() {
+    const out = [];
+    for (let r = 0; r < D.ROWS; r++) {
+      let line = '';
+      for (let c = 0; c < D.COLS; c++) line += (DC.Render.cellAt(c, r) || { ch: ' ' }).ch;
+      out.push(line);
+    }
+    return out;
+  }
+  function ink(rows, from, to) {
+    let min = D.COLS, max = -1;
+    for (let r = from === undefined ? 0 : from; r <= (to === undefined ? D.ROWS - 1 : to); r++) {
+      const s = rows[r];
+      const a = s.search(/\S/);
+      if (a < 0) continue;
+      let b = s.length - 1;
+      while (b >= 0 && s[b] === ' ') b--;
+      if (a < min) min = a;
+      if (b > max) max = b;
+    }
+    return { min: min, max: max };
+  }
+  let now = 5e7;
+  function frame(state) {
+    now += 16;
+    DC.Render.frame(state, now);
+    const rows = gridRows();
+    assert(rows[1].indexOf('RENDER ERROR') < 0, SCREEN + ': frame threw — ' + rows[1].trim());
+    return rows;
+  }
+  let SCREEN = 'title';
+  // A screen that centres itself must LOOK centred: the ink's left margin and
+  // its right margin agree to within a couple of columns. This is the check
+  // that catches a page still composed against 80 columns.
+  function assertCentred(rows, from, to, slack) {
+    const b = ink(rows, from, to);
+    assert(b.max >= 0, SCREEN + ': drew nothing');
+    const left = b.min, right = D.COLS - 1 - b.max;
+    assert(Math.abs(left - right) <= (slack === undefined ? 2 : slack),
+      SCREEN + ': not centred at ' + D.COLS + ' columns (margins ' + left + '/' + right + ')');
+  }
+
+  // ---- a run with a history: bought upgrades, taken schematics ----------
+  const meta = M.newProfile();
+  meta.cores = 12; meta.bestDepth = 6; meta.wins = 1; meta.runs = 9; meta.totalCores = 40;
+  meta.upgrades = { m_stock: 2, m_hull: 1, m_scan: 1, m_salv: 1 };
+  meta.bestSplits = { 1: 150 };
+  const run = S.newRun(M.effects(meta), seed);
+  run.schematics = ['s_extract', 's_smelt', 's_salvage'];
+  S.msg(run, 'The rig bites into the topsoil ridge.', D.COLORS.amber);
+  for (let i = 0; i < 120; i++) S.tick(run);
+  const state = {
+    screen: 'run', meta: meta, run: run, today: '2026-08-14',
+    ui: { tool: null, facing: 1, cursor: { x: run.hub.x, y: run.hub.y } },
+  };
+
+  // ---- the run screen ---------------------------------------------------
+  SCREEN = 'run';
+  let rows = frame(state);
+  const bounds = ink(rows);
+  assertEq(bounds.max, D.COLS - 1,
+    'the run screen reaches the last column (that is the whole point)');
+  assertEq(bounds.min, 0, 'and still starts at the first');
+  // the map did not move, and did not grow
+  assertEq(D.MAP_W, 46, 'MAP_W is untouched by the widening');
+  assertEq(D.MAP_H, 26, 'MAP_H is untouched by the widening');
+  assert(rows[2].indexOf('┌─ STRATUM 1') === 0, 'the map box still starts at column 0');
+  assertEq(rows[2].indexOf('┐'), D.MAP_W + 1, 'and still ends where the map ends');
+  // the gutters between the columns are gutters
+  const L = DC.Render.LAYOUT;
+  assert(L && L.twoCol, 'render reports two panel columns at ' + D.COLS);
+  for (let r = 1; r < D.ROWS; r++) {
+    assertEq(rows[r][L.sb - 1], ' ', 'row ' + r + ': gutter left of column A is clear');
+    assertEq(rows[r][L.sb2 - 1], ' ', 'row ' + r + ': gutter between the columns is clear');
+  }
+  // both columns are closed boxes: a wall on the left, a wall on the last cell
+  // of the screen — column B is right-aligned to the grid by construction, so
+  // a panel that fell short of it would leave a ragged edge against the black.
+  let colB = 1;
+  while (colB + 1 < D.ROWS && '│├┌└'.indexOf(rows[colB + 1][L.sb2]) >= 0) colB++;
+  for (let r = 1; r < D.ROWS; r++) {
+    assert('│├┌└'.indexOf(rows[r][L.sb]) >= 0, 'row ' + r + ': column A has its left wall');
+    if (r > colB) continue;
+    assert('│┤┐┘'.indexOf(rows[r][D.COLS - 1]) >= 0,
+      'row ' + r + ": column B's right wall is the screen's last cell");
+  }
+
+  // ---- PANEL 1: the rig, on screen, with its parts on --------------------
+  const rig = L.runRig;
+  assert(rig && rig.h >= 12 && rig.w >= 24, 'the rig portrait has room in the run sidebar');
+  function portrait(rws) {
+    const out = [];
+    for (let i = 0; i < rig.h; i++) out.push(rws[rig.y + i].slice(rig.x, rig.x + rig.w));
+    return out;
+  }
+  const withParts = portrait(rows).join('\n');
+  const bare = DC.Art.composeRig({}).join('\n');
+  assert(withParts.indexOf('╔═╗') >= 0, 'the derrick is drawn, not a placeholder');
+  assert(withParts !== bare,
+    'the run-screen rig shows the Foundry parts bolted on, not the naked rig');
+  for (const id of ['m_stock', 'm_scan', 'm_salv']) {
+    const p = DC.Art.rigParts[id];
+    const want = p.lines[0].trim()[0];
+    assert(portrait(rows)[p.row].indexOf(want) >= 0,
+      'the bought upgrade ' + id + ' is visible on the in-run rig');
+  }
+  // and it is the CURRENT rig: buy something mid-session and the picture moves
+  meta.upgrades.m_damp = 1;
+  const damped = portrait(frame(state)).join('\n');
+  assert(damped.indexOf('(◎)') >= 0 && damped !== withParts,
+    'buying a part changes the picture the run is played beside (§0 law 5)');
+
+  // ---- SPEC3 §0 law 8: no quake schedule, anywhere -----------------------
+  // run.quakeAt is a tick count sitting in plain sight. Nothing on any screen
+  // may be a function of it. The test is blunt on purpose: move the schedule
+  // and no cell may change.
+  run.instability = 60;
+  run.quakeAt = run.t + 40;
+  const before = frame(state).join('\n');
+  run.quakeAt = run.t + 400;
+  const after = frame(state).join('\n');
+  assertEq(after, before, 'nothing on the run screen reads run.quakeAt (no quake timer, ever)');
+
+  // ---- every other screen, at this width --------------------------------
+  SCREEN = 'title';
+  state.screen = 'title';
+  assertCentred(frame(state), 1, 29);
+
+  SCREEN = 'foundry';
+  state.screen = 'foundry';
+  state.foundryBark = 'Bolted on. Try not to break this one.';
+  rows = frame(state);
+  assertCentred(rows, 10, 27, 3);
+  assert(rows[10].indexOf('┌─ YOUR RIG') > 10,
+    'the Foundry page centres its two columns instead of hugging the left edge');
+
+  SCREEN = 'descend anim';
+  state.screen = 'descend';
+  run.pendingOffers = ['s_drill', 's_coal', 's_veins'];
+  state.ui.descendAnim = 0;
+  assertCentred(frame(state), 1, 25);
+  SCREEN = 'descend cards';
+  state.ui.descendAnim = 9999;
+  rows = frame(state);
+  assertCentred(rows, 2, 24);
+  const cards = DC.Render.layout.cards;
+  assertEq(cards.length, 3, 'three cards published');
+  assert(cards[cards.length - 1].col + cards[cards.length - 1].w <= D.COLS,
+    'the last card fits on the screen');
+
+  SCREEN = 'help p1';
+  state.screen = 'help';
+  state.ui.helpPage = 0;
+  assertCentred(frame(state));
+  SCREEN = 'help p2';
+  state.ui.helpPage = 1;
+  assertCentred(frame(state));
+
+  SCREEN = 'gameover';
+  state.screen = 'gameover';
+  run.status = 'dead';
+  run.result = { depth: 4, breaches: 3, timeSec: 640, cores: 3, won: false };
+  rows = frame(state);
+  assertCentred(rows, 1, 20, 4);
+  SCREEN = 'victory';
+  state.screen = 'victory';
+  run.status = 'won';
+  run.result = { depth: 8, breaches: 8, timeSec: 1240, cores: 18, won: true };
+  assertCentred(frame(state), 1, 22, 4);
+  SCREEN = 'recap';
+  state.screen = 'recap';
+  assertCentred(frame(state), 1, D.ROWS - 3);
+
+  SCREEN = 'logbook';
+  state.screen = 'logbook';
+  rows = frame(state);
+  assertCentred(rows, 1, D.ROWS - 3, 3);
+  const longest = (DC.Events.LOGS || []).reduce((n, l) => Math.max(n, l.length), 0);
+  assert(longest > 0 && DC.Render.LOGBOOK_W >= longest,
+    'the logbook page is wide enough for its longest entry (' + longest + ')');
+
+  SCREEN = 'vignette';
+  state.screen = 'vignette';
+  run.status = 'active';                   // the end screens above ended it
+  for (let i = 0; i < 400 && !DC.Events.pending(run); i++) DC.Events.rollVignette(run);
+  assert(DC.Events.pending(run), 'a vignette was rolled to draw');
+  rows = frame(state);
+  assertCentred(rows, 1, D.ROWS - 3, 6);
+  const ch = DC.Render.layout.choices;
+  assert(ch.length >= 1 && ch[0].col >= 20,
+    'the vignette choices sit under the panel, not out in the dark');
+
+  return D.COLS + 'x' + D.ROWS + ', ' + 12 + ' screens';
+}
+
 // -------------------------------------------------------------------- main
 const SEED = process.env.DC_SEED ? (parseInt(process.env.DC_SEED, 10) | 0) : 1337;
 try {
@@ -4305,6 +4539,7 @@ try {
   const walls = coreLoreSection(SEED + 43);
   const wonders = wondersSection(SEED + 47);
   const events = eventsSection(SEED + 53);
+  const wide = wideSection(SEED + 59);
   // The webfont section is the one asynchronous check in the suite — a
   // document.fonts.ready handler cannot be driven synchronously — so the
   // PASS line waits on it rather than racing it.
@@ -4317,6 +4552,7 @@ try {
       ' | core gate 3 beats | ' + walls + ' walls' +
       ' | wonders ' + wonders +
       ' | events ' + events +
+      ' | wide ' + wide +
       ' | cadence 16/12/10 | overdrive x2 | damper ok | charge+bronze ok | mantle ok' +
       ' | engine+barks ok | ' + (Date.now() - t0) + 'ms');
     process.exit(0);
