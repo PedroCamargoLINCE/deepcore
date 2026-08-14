@@ -1,0 +1,96 @@
+Work in this repository. Create and switch to a branch named M-ONBOARD-2 off
+origin/master, and do all your work on it. You are the only session running.
+
+Read SPEC.md, SPEC2.md, and SPEC3.md section M-ONBOARD in full — especially
+Part 2, which is your whole assignment — plus js/barks.js, js/engine.js,
+js/art.js and js/render.js. Honor SPEC3's rules of engagement and §0's SEVEN
+laws.
+
+SCOPE: PART 2 ONLY — the first-run tutorial. Part 1 (the diagnostics that make
+failure states name their own cause) is already merged; build on it, do not
+redo it. Where Part 1 already explains something in the log, the tutorial does
+not need to repeat it.
+
+THIS IS A WRITING BRIEF WITH A MACHINE ATTACHED, NOT THE REVERSE. Roughly half
+your effort belongs in the authored lines. The tutorial is most players' first
+impression of the game and the director wants it to be the reason they tell
+someone about it. A correct tutorial that is not funny has failed this brief.
+
+THE BIT. GRIT teaches, loudly, and Law 3 (GRIT never explains) is suspended
+here BY the fiction rather than in spite of it: he has been handed the Company
+induction script and is contractually obliged to read it out, and he cannot get
+through a line without riffing on it. He hates this. That tension is the whole
+joke engine — the flat corporate line, then GRIT on the flat corporate line.
+
+  "Step one. 'Place the extractor upon the ore.' Upon it. Not near it. They put
+   that in writing because someone tried near."
+
+REGISTER — the whole range, deliberately mixed, per the director verbatim:
+"I WANT MY MAN FOREMAN TEACHING AND MAKING JOKES! ... AND CHILD JOKES! AND DAD
+JOKES! I DONT GIVE A FUCK IF PLAYERS NEED TO PARSE A JOKE!"
+
+  - dad jokes and groaners, delivered with total confidence
+  - the joke a nine-year-old makes about a drill going into a hole
+  - filthy adult ones
+  - puns he is visibly proud of and will not apologise for
+  He should be funny AND a bit embarrassing — a man twenty years down a hole
+  with nobody to talk to. Aim for ~60 AUTHORED LINES so a second playthrough is
+  not the same script.
+
+Guardrails are unchanged and are where the humour gets better, not weaker:
+profanity, innuendo, gallows humour and Company-hating are the point; slurs,
+hate, explicit anatomy and non-consent framing are out. test/barks_test.js
+enforces the voice lint and the line-overlap ceiling — every new line passes it.
+
+STRUCTURE
+- Trigger on a profile with zero completed runs. Skippable from the first
+  keypress, and never shown again once skipped or finished (persist in meta,
+  with a default that keeps older saves loading — add a test for that).
+- Teach by DOING, on the real generated map, not a scripted sandbox. Four
+  beats, each gated on the player actually performing it: place an extractor on
+  a vein · rotate its output · lay a belt to the rig · watch the first ore
+  arrive. Stratum 1 already guarantees an iron vein near the rig.
+- Instability does not climb until the first ore reaches the rig. Nobody loses
+  their first run to a quake while reading — least of all to a punchline.
+
+PRESENTATION — centre stage, not the foreman bar. The two-row bar at the bottom
+is for ambient barks; a tutorial delivered there is missable and cannot feel
+dynamic. Build a centred panel or a popup that appears NEAR what he is talking
+about, points at it, lands, and gets out of the way. M-HIRES's sub-cell block
+rasterizer (DC.Art.raster) can give the box a real tail/pointer without leaving
+the character grid. Honor §0 law 6: the box must never cover the thing it is
+pointing at, and must stay legible at every viewport scale M-HIRES supports.
+
+THE ONE THING THAT MUST SURVIVE THE COMEDY. However dumb the joke, the ACTION
+is unmissable on screen at the same time: the key drawn as an inverse keycap,
+and the target tile highlighted. This is not a limit on the humour — it is what
+LETS the humour be as stupid as it likes, because the player never has to parse
+a gag to find out what to press. A beat where the joke is the only instruction
+gets rewritten.
+
+DETERMINISM (§0 law 7). Tutorial line choice must not spend from run.rng —
+pick by seed hash or roll once in the game loop and store it on the run. The
+tutorial runs on a live run whose map and schematics depend on that stream.
+
+ACCEPTANCE
+- Each of the four beats assert-driven in test/integration.js: the beat advances
+  only when the player does the thing, and the keycap and highlight are on the
+  grid while the beat is live.
+- A save written before this brief still loads, and a profile that has finished
+  or skipped the tutorial never sees it again.
+- barks_test extended over the new pool: voice lint, overlap ceiling, and the
+  panel-wrap contract (no authored line is ever cut mid-word).
+- Gate: all five suites green (node test/headless.js, test/integration.js,
+  test/barks_test.js, test/rig_test.js, test/balance.js) and node tools/build.js
+  parses. test/balance.js must not regress — read its footer first.
+
+Checkpoint-commit AND PUSH your branch after every green milestone, with a
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> trailer. Ship the
+machinery first with a handful of lines, then write the rest — a session limit
+mid-brief should leave a working tutorial with twenty jokes, not a finished
+script with nowhere to put it.
+
+When done: push your branch to origin and STOP — do not merge, rebase or
+force-push; the orchestrator merges. Report: the four beats, how the speech box
+points and where it refuses to cover, your line count per category, and your
+final test output.
