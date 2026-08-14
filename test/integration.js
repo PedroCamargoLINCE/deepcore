@@ -116,7 +116,8 @@ function dirBetween(a, b) {
 // 'core' (M-CORELORE, stratum 8 only) and 'landmark' (M-WONDERS, every
 // stratum that fits one) join the v1.1 set from SPEC2 §B.
 const EVENT_TYPES = ['quake', 'magma', 'depleted', 'breachReady', 'death', 'won',
-                     'descend', 'core', 'landmark'];
+                     'descend', 'core', 'landmark',
+                     'diagnostic'];   // M-ONBOARD: a failure state named itself
 function mkDrainer(run) {
   const seen = {};              // type -> count
   const samples = {};           // type -> first event object
@@ -1589,6 +1590,47 @@ function engineBarksSection(seed) {
   assert(said, 'GRIT reacts to the wonder the sweep found');
   assertEq(said, want.find, 'with the bespoke line for ' + lrun.landmark.id);
   assert(lrun.landmark.found, 'and the sim marked it discovered exactly once');
+
+  // --- M-ONBOARD: the system explains, GRIT editorializes, in that order ---
+  // The brief's voice rule as an end-to-end contract, through the real engine:
+  // sim.js writes the plain sentence into the LOG, engine.js drains the
+  // 'diagnostic' event, and only then does GRIT get to be funny about it. If a
+  // player has to parse a joke to learn why their base is stopped, the brief
+  // failed — so the ORDER is the assertion, not the presence of a bark.
+  {
+    const drun = st.run;
+    drun.diag = {};                          // a clean slate for this one cause
+    drun._barks.lastAt = drun.totalT - B.COOLDOWN;   // let him speak if he wants
+    const before = drun.messages.length;
+    // a belt with cargo and nowhere to put it, laid clear of everything else
+    let spot = null;
+    for (let y = 1; y < D.MAP_H - 1 && !spot; y++)
+      for (let x = 1; x < D.MAP_W - 1 && !spot; x++)
+        if (DC.Sim.canPlace(drun, 'belt', x, y, 3).ok &&
+            DC.Sim.canPlace(drun, 'belt', x - 1, y, 3).ok) spot = { x: x, y: y };
+    assert(spot, 'found somewhere to lay a belt into bare ground');
+    drun.inv.ironPlate = (drun.inv.ironPlate || 0) + 8;
+    assert(DC.Sim.place(drun, 'belt', spot.x, spot.y, 3), 'belt laid');
+    drun.grid[spot.y][spot.x].belt.item = 'ironOre';
+    frames((D.DIAG.beltJamT + 6) * HZ);
+
+    const said = drun.messages.slice(before).map(m => m.text);
+    const plain = DC.Sim.diagLine('beltJam', {});
+    const sysAt = said.indexOf(plain);
+    assert(sysAt >= 0, 'the sim never named the belt jam in the LOG:\n    ' +
+      said.join('\n    '));
+    const pool = B.POOLS[B.DIAG_POOL.beltJam];
+    const gritAt = said.findIndex(t => pool.some(l => t.indexOf(l) >= 0));
+    if (gritAt >= 0) {
+      assert(gritAt > sysAt,
+        'GRIT got in front of the plain sentence — he is not allowed to be the ' +
+        'one carrying the information (SPEC3 law 3 + law 6)');
+      assert(said[gritAt].indexOf('GRIT') === 0,
+        "GRIT's editorial must be tagged as his, not read as the game speaking");
+    }
+    // and the plain sentence is the one with the fix in it
+    assert(/belt/i.test(plain), 'the plain sentence carries the fix');
+  }
 
   // --- render smoke over the whole drive ---
   assert(!drawn.some(s => s.indexOf('RENDER ERROR') >= 0),

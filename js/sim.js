@@ -40,6 +40,100 @@
     return s;
   }
 
+  // ---------------- M-ONBOARD: diagnostics (SPEC3 M-ONBOARD Part 1) ---------
+  // The director could not play his own game while all five suites were green:
+  // an extractor placed on a vein with no belt on its output mines one ore,
+  // sets status 'blocked', and sits there forever. Over 600 ticks it emitted
+  // ZERO log messages, and the red '!' render draws over it says nothing about
+  // which of three faults it means. The mechanics were sound; the teaching was
+  // absent — a §0 law 6 failure of the first order.
+  //
+  // So every failure state names its own cause, ONCE PER RUN PER CAUSE, in the
+  // SYSTEM's voice: what is wrong first, then what to do about it, plainly.
+  // GRIT may editorialize on top afterwards (engine.js drains the 'diagnostic'
+  // event and asks Barks.diag), but he never carries the information — law 3
+  // says he does not explain mechanics, and law 6 outranks the joke.
+  //
+  // Determinism (law 7): nothing here rolls. Thresholds are read off run.t, the
+  // wording is a pure function of state, and the only writes are run.messages
+  // and the event queue — so a run plays out identically whether or not anyone
+  // is reading the log, and the quake schedule never moves because a player
+  // left a belt disconnected.
+  //
+  // Where a missing item comes from, for the fix half of a starvation line.
+  const ITEM_SOURCE = {
+    ironOre: 'mine it from an iron vein', copperOre: 'mine it from a copper vein',
+    coal: 'mine it from a coal vein', crystal: 'mine it from a crystal vein',
+    ironPlate: 'a smelter makes it from ore',
+    copperPlate: 'a smelter makes it from ore',
+  };
+
+  // Every sentence the diagnostics can produce. Kept in one function so the
+  // suites can enumerate the lot (Sim.diagLines) and hold every one of them to
+  // the LOG panel's 3x29 budget — the strings are too long to survive the
+  // regex-scrape that covers the plain msg() literals elsewhere in this file.
+  function diagLine(cause, c) {
+    c = c || {};
+    switch (cause) {
+      case 'blocked':
+        return 'Output blocked: the ' + c.name +
+               ' is full. Lay a belt on its output side (R rotates).';
+      case 'nofuel':
+        return 'The ' + c.name + ' is out of coal. Mine a coal vein and belt the coal in.';
+      case 'depleted':
+        return 'That vein is mined out. The extractor on it has stopped for good' +
+               ' — X demolishes it.';
+      // One cause, two shapes: a line laid into bare rock and a line laid into
+      // something that will not take what it is carrying look identical on the
+      // map, and want opposite fixes.
+      case 'beltJam':
+        return c.name
+          ? 'Belt jam: the ' + c.name + ' will not take ' + c.item + '. Check what it takes.'
+          : 'Belt jam: this line ends on bare ground. A belt must feed a machine or the rig.';
+      case 'starved':
+        return 'The assembler has no ' + c.item + ' — ' +
+               (ITEM_SOURCE[c.id] || 'it has to come from somewhere') + '. Belt it in.';
+      // The rig's two wants are separate causes on purpose: they stall a run at
+      // different times and the fix is a different recipe, so hearing one must
+      // not spend the other's single mention.
+      case 'stallGear':
+        return 'The rig is waiting for drill gears. An assembler makes them from iron plate.';
+      case 'stallCharge':
+        return 'The rig is waiting for core charges. An assembler makes them from crystal.';
+    }
+    return null;
+  }
+
+  // Name a cause once per RUN — not per machine, and not per tick. A message
+  // that repeats is a message players learn to ignore. Returns true if it spoke.
+  function diag(run, cause, ctx) {
+    if (!run.diag) run.diag = {};      // runs built before this brief, and tests
+    if (run.diag[cause]) return false;
+    const text = diagLine(cause, ctx);
+    if (!text) return false;
+    run.diag[cause] = run.totalT + 1;  // stamp, always truthy (totalT can be 0)
+    msg(run, text, D.COLORS.amber);
+    pushEvent(run, 'diagnostic', { cause: cause });
+    return true;
+  }
+
+  // Every line diagLine can emit, with the worst case filled in for each
+  // substitution. test/barks_test.js wraps all of them into the LOG panel.
+  function diagLines() {
+    const names = D.BUILD_ORDER.map(k => D.BUILDINGS[k].name);
+    const items = D.ITEM_ORDER.map(k => D.ITEMS[k].name);
+    const out = ['depleted', 'stallGear', 'stallCharge'].map(c => diagLine(c, {}));
+    out.push(diagLine('beltJam', {}));
+    for (const name of names) {
+      out.push(diagLine('blocked', { name: name }));
+      out.push(diagLine('nofuel', { name: name }));
+      for (const item of items) out.push(diagLine('beltJam', { name: name, item: item }));
+    }
+    for (const id of D.ITEM_ORDER)
+      out.push(diagLine('starved', { id: id, item: D.ITEMS[id].name }));
+    return out;
+  }
+
   function setResult(run, won) {
     run.result = {
       depth: run.depth, breaches: run.breaches,
@@ -110,6 +204,10 @@
       magmaCap: 0,
       // v1.1 (SPEC2 §B): additive event/stat/foreman surface
       events: [],
+      // M-ONBOARD: causes already named this run. Per RUN, not per stratum —
+      // startStratum deliberately does not clear it, because the lesson does
+      // not need re-teaching one floor down.
+      diag: {},
       stats: { placed: {}, lastPlaceT: 0, lastFeedT: 0 },
       foreman: null,
       // M-CORELORE: how many Core Gate beats this run has passed (0..3), and
@@ -155,7 +253,7 @@
       0: { id: 0, type: 'hub', x: run.hub.x, y: run.hub.y, w: 3, h: 3, facing: 0,
            hp: Infinity, progress: 0, recipe: null, input: {}, fuel: 0,
            status: 'ok', repairAt: 0, blockedSince: 0, nofuelSince: 0,
-           out: [], job: null },
+           starveSince: 0, out: [], job: null },
     };
     run.nextId = 1;
     run.quakeAt = 0;
@@ -417,18 +515,23 @@
     return { x: m.x - 1, y: m.y + ((m.h - 1) >> 1) };
   }
 
-  function machineAccepts(run, m, item) {
+  // Does this machine take this KIND of item at all, buffer capacity aside?
+  // M-ONBOARD needs the two questions separated: a belt stopped against a
+  // merely-full buffer is back-pressure, which is ordinary, while a belt
+  // stopped against a machine that will never want its cargo is a mistake.
+  // Teaching the first as if it were the second would be worse than silence.
+  function machineWants(run, m, item) {
     if (m.type === 'hub') return true;
     if (m.type === 'smelter')
-      return (item === 'ironOre' || item === 'copperOre' || item === 'coal') &&
-             (m.input[item] || 0) < D.INPUT_CAP;
-    if (m.type === 'assembler') {
-      const r = D.RECIPES[m.recipe || 'gear'];
-      return !!r.in[item] && (m.input[item] || 0) < D.INPUT_CAP;
-    }
-    if (m.type === 'damper')
-      return item === 'coal' && (m.input.coal || 0) < D.INPUT_CAP;
+      return item === 'ironOre' || item === 'copperOre' || item === 'coal';
+    if (m.type === 'assembler') return !!D.RECIPES[m.recipe || 'gear'].in[item];
+    if (m.type === 'damper') return item === 'coal';
     return false;
+  }
+
+  function machineAccepts(run, m, item) {
+    if (m.type === 'hub') return true;
+    return machineWants(run, m, item) && (m.input[item] || 0) < D.INPUT_CAP;
   }
 
   function tryEject(run, m) {
@@ -458,7 +561,10 @@
       m.repairAt = 0;
     }
     tryEject(run, m);
-    let working = false, nofuel = false, depleted = false;
+    // `missing` (M-ONBOARD) is the input an assembler is short of, or null —
+    // the one fault the status word cannot express, because a starving
+    // assembler and a brand new one both read 'idle'.
+    let working = false, nofuel = false, depleted = false, missing = null;
     if (m.type === 'extractor') {
       const t = tileAt(run, m.x, m.y);
       if (!t || !t.ore || t.oreAmt <= 0) depleted = true;
@@ -509,7 +615,8 @@
       if (!m.job && m.out.length === 0) {
         const rec = D.RECIPES[m.recipe];
         let can = true;
-        for (const k in rec.in) if ((m.input[k] || 0) < rec.in[k]) { can = false; break; }
+        for (const k in rec.in)
+          if ((m.input[k] || 0) < rec.in[k]) { can = false; missing = k; break; }
         if (can) {
           for (const k in rec.in) m.input[k] -= rec.in[k];
           m.job = m.recipe;
@@ -544,10 +651,29 @@
     else m.blockedSince = 0;
     if (nofuel) { if (!m.nofuelSince) m.nofuelSince = run.t; }
     else m.nofuelSince = 0;
+    // M-ONBOARD: the same debounce shape for the starving assembler.
+    if (missing) { if (!m.starveSince) m.starveSince = run.t; }
+    else m.starveSince = 0;
     if (depleted && !wasDepleted) {
       pushEvent(run, 'depleted', { id: m.id, x: m.x, y: m.y,
         ore: (tileAt(run, m.x, m.y) || {}).ore || null });
+      // A mined-out vein is permanent, so it is named the moment it happens —
+      // there is no transient version of this fault to debounce against.
+      diag(run, 'depleted', {});
     }
+    diagnose(run, m, missing);
+  }
+
+  // M-ONBOARD: turn the debounce stamps stepMachine just wrote into one plain
+  // sentence apiece. Reads only run.t, so it is deterministic and free.
+  function diagnose(run, m, missing) {
+    const G = D.DIAG, name = D.BUILDINGS[m.type].name;
+    if (m.blockedSince && run.t - m.blockedSince >= G.blockedT * HZ)
+      diag(run, 'blocked', { name: name });
+    if (m.nofuelSince && run.t - m.nofuelSince >= G.nofuelT * HZ)
+      diag(run, 'nofuel', { name: name });
+    if (missing && m.starveSince && run.t - m.starveSince >= G.starveT * HZ)
+      diag(run, 'starved', { id: missing, item: D.ITEMS[missing].name });
   }
 
   // ---------------- belts (§5.2) ----------------
@@ -586,6 +712,51 @@
       }
       if (!moved) break;
     }
+    // M-ONBOARD: an item that never advances is the other silent failure — a
+    // line laid into bare rock looks exactly like a line that is merely busy.
+    //
+    // Nothing below here matters once the lesson has been given, and this is
+    // the one diagnostic that is not O(1): a fully backed-up network would
+    // re-walk itself from every cell, on every belt step, forever.
+    if (run.diag && run.diag.beltJam) return;
+    // `jamT` counts BELT STEPS (this function runs every D.BELT_PERIOD ticks),
+    // so the threshold converts to steps once, here. `moved` is the honest
+    // test: it is set on both ends of a handoff, so any cell where traffic is
+    // actually flowing re-arms itself.
+    const jamSteps = Math.max(1, Math.round(D.DIAG.beltJamT * HZ / D.BELT_PERIOD));
+    for (const e of belts) {
+      const b = e.b;
+      if (!b.item || b.moved) { b.jamT = 0; continue; }
+      if ((b.jamT = (b.jamT || 0) + 1) < jamSteps) continue;
+      b.jamT = jamSteps;                 // clamp: it is stuck, not getting stucker
+      if (diagBelt(run, e.x, e.y, b)) return;
+    }
+  }
+
+  // Why this belt's item is not moving. Walks forward to the HEAD of the jam,
+  // because a stuck belt queued behind another stuck belt is the symptom and
+  // not the fault — the player needs the far end of the line, which is exactly
+  // the tile they are not looking at.
+  function diagBelt(run, x, y, b) {
+    let cx = x, cy = y, cb = b;
+    for (let hop = 0; hop < D.MAP_W * D.MAP_H; hop++) {
+      const d = D.DIRS[cb.dir];
+      const t = tileAt(run, cx + d.dx, cy + d.dy);
+      if (!t) break;                                    // the line runs off the map
+      if (t.machine !== null) {
+        const tm = run.machines[t.machine];
+        if (!tm || tm.id === 0) return false;           // the rig swallows anything
+        // Wants it but is full: back-pressure, which is a tuning problem and
+        // not a mistake. The machine's own 'blocked' line covers that story.
+        if (machineWants(run, tm, cb.item)) return false;
+        return diag(run, 'beltJam', { name: D.BUILDINGS[tm.type].name,
+                                      item: D.ITEMS[cb.item].name });
+      }
+      if (!t.belt) break;                               // ends on bare ground
+      if (!t.belt.item) return false;                   // the line ahead is clear
+      cx += d.dx; cy += d.dy; cb = t.belt;
+    }
+    return diag(run, 'beltJam', {});
   }
 
   // ---------------- drill (§5.7) ----------------
@@ -606,6 +777,22 @@
       if (run.stats) run.stats.lastFeedT = run.totalT;
     }
     while (run._feed.length && run._feed[0].t < run.t - 10 * HZ) run._feed.shift();
+    diagDrill(run);
+  }
+
+  // M-ONBOARD: the rig says what it is waiting for. Only when it still needs
+  // the item AND none is in stock — a rig steadily chewing through a crate is
+  // not stalled, it is working. The opening minute is exempt: a stratum that
+  // has not produced its first gear yet is a base being built, not a base that
+  // has failed, and law 6 is about finding real signal, not more of it.
+  function diagDrill(run) {
+    if (run.t < D.DIAG.stallT * HZ) return;
+    if (run.gearsFed < run.breachReq.gear) {
+      if (!(run.inv.gear > 0)) diag(run, 'stallGear', {});
+      return;                       // gears gate the breach first: one lesson at a time
+    }
+    if (run.chargesFed < run.breachReq.charge && !(run.inv.charge > 0))
+      diag(run, 'stallCharge', {});
   }
   function feedRate(run) {
     const win = Math.min(10, Math.max(1, run.t / HZ));
@@ -870,7 +1057,7 @@
       id: id, type: type, x: x, y: y, w: B.w, h: B.h, facing: facing, hp: B.hp,
       progress: 0, recipe: type === 'assembler' ? 'gear' : null,
       input: {}, fuel: 0, status: 'idle', repairAt: 0,
-      blockedSince: 0, nofuelSince: 0, out: [], job: null,
+      blockedSince: 0, nofuelSince: 0, starveSince: 0, out: [], job: null,
     };
     for (let ty = y; ty < y + B.h; ty++)
       for (let tx = x; tx < x + B.w; tx++) run.grid[ty][tx].machine = id;
@@ -1088,6 +1275,18 @@
     return 'fuel: ' + m.fuel + (m.fuel === 1 ? ' smelt' : ' smelts') + tail;
   }
 
+  // M-ONBOARD: what the red '!' means. render.js draws that one glyph over
+  // three different faults (see the `bad` branch in drawMap), and the glyph
+  // alone cannot say which — so the SCAN panel carries the difference, because
+  // it is already where the player is pointing when they ask the question.
+  // Reason first, fix second, inside the 29 columns the panel clips at; the
+  // scan-panel lint in test/barks_test.js holds these to that budget.
+  const STATUS_HINT = {
+    blocked:  'full — belt its output side',
+    nofuel:   'out of coal — belt coal in',
+    depleted: 'vein empty — (X) to clear',
+  };
+
   function describeTile(run, x, y) {
     const t = tileAt(run, x, y);
     if (!t) return [];
@@ -1110,6 +1309,9 @@
       L.push({ text: bname + ' [' + m.status + ']',
                color: m.status === 'ok' ? D.COLORS.green
                     : m.status === 'idle' ? D.COLORS.gray : D.COLORS.red });
+      // The legend for the '!', immediately under the status word it explains.
+      if (STATUS_HINT[m.status])
+        L.push({ text: STATUS_HINT[m.status], color: D.COLORS.amber });
       if (m.hp === 1)
         L.push({ text: 'damaged — click to repair ' + run.mods.repairCost + D.ITEMS.ironPlate.glyph,
                  color: D.COLORS.red });
@@ -1183,5 +1385,9 @@
     landmarkJammed: lmJammed,
     // shared with render.js (STOCK column, CX-11); SCAN_W is the tooltip budget
     itemShort: itemShort, SCAN_W: SCAN_W,
+    // M-ONBOARD: the diagnostics. diagLines() is every sentence they can emit
+    // (worst case filled in) so the suites can hold the lot to the LOG panel;
+    // STATUS_HINT is the '!' legend the SCAN panel draws.
+    diagLine: diagLine, diagLines: diagLines, STATUS_HINT: STATUS_HINT,
   };
 })();

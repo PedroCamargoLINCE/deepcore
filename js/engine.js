@@ -203,6 +203,12 @@
       // saying out loud what the map is already showing.
       else if (ev.type === 'cat' && ev.data)
         bark(ev.data.act === 'flee' ? 'catFlee' : 'cat');
+      // M-ONBOARD: a failure state just named itself in the LOG, in the
+      // system's plain voice. GRIT gets the last word and never the useful
+      // one. Not routed through bark(): Barks.diag picks by seed hash rather
+      // than from run.rng, because these fire only when the player has made a
+      // mistake and law 7 forbids that moving the stream.
+      else if (ev.type === 'diagnostic' && ev.data) diagBark(run, ev.data.cause);
       else if (ev.type === 'landmark' && ev.data) {
         lmPending = { trigger: ev.data.act === 'find' ? 'landmarkFound' : 'landmarkUse',
                       id: ev.data.id };
@@ -219,6 +225,13 @@
     const st = DC.state, M = DC.Meta;
     if (!st || !M || typeof M.recordLog !== 'function') return;
     try { M.recordLog(st.meta, index); } catch (e) { /* meta stays optional */ }
+  }
+
+  // M-ONBOARD wiring — no-op unless js/barks.js exposes the editorial pool.
+  function diagBark(run, cause) {
+    const B = DC.Barks;
+    if (!B || !B.diag || !run || !cause) return;
+    try { B.diag(run, cause); } catch (e) { /* barks stay optional */ }
   }
 
   // Optional Core wiring — no-op unless js/barks.js exposes the second voice.
