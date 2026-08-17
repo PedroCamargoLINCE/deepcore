@@ -755,16 +755,29 @@
     const dur = core
       ? (D.CORE ? D.CORE.hold : 9) * HZ + line.length
       : 7 * HZ + Math.ceil(Math.max(0, line.length - 40) / 2);
+    // M-WIDE: the newest line used to be on screen TWICE — typing in the
+    // foreman bar and mirrored into the LOG at the same moment — which spent
+    // two panels saying one sentence. The mirror is now DEFERRED: a line goes
+    // into the LOG when it stops being the current line, either because
+    // another one supersedes it (here) or because its hold ran out (tick).
+    // The typewriter keeps the moment; the LOG keeps the history.
+    flushMirror(run, S);
     run.foreman = { text: line, t0: run.totalT, until: run.totalT + dur,
                     voice: core ? 'core' : 'grit' };
-    if (run.messages) { // mirror into the LOG, dim (SPEC2 §F)
-      run.messages.push({
-        text: (core ? '  ▸ ' : 'GRIT ▸ ') + line,
-        color: core ? D.COLORS.gold : D.COLORS.darkgray, t: run.t,
-      });
-      if (run.messages.length > 40) run.messages.shift();
-    }
+    S.mirror = {
+      text: (core ? '  ▸ ' : 'GRIT ▸ ') + line,
+      color: core ? D.COLORS.gold : D.COLORS.darkgray, t: run.t,
+    };
     return line;
+  }
+  // Hand the last spoken line to the LOG (SPEC2 §F's mirror, one beat later).
+  function flushMirror(run, S) {
+    if (!S.mirror) return;
+    const m = S.mirror;
+    S.mirror = null;
+    if (!run.messages) return;
+    run.messages.push(m);
+    if (run.messages.length > 40) run.messages.shift();
   }
 
   // ---------------- EGG-420 ----------------
@@ -881,7 +894,10 @@
   function tick(run) {
     if (!run || !run.rng) return;
     const S = stateOf(run);
-    // foreman expiry: hold until `until`, render fades 2s, then clear.
+    // foreman expiry: hold until `until`, render fades 2s, then clear. The
+    // deferred LOG mirror lands when the hold ends — from that moment the bar
+    // is only fading it, and the line belongs to history (M-WIDE).
+    if (!run.foreman || run.totalT > run.foreman.until) flushMirror(run, S);
     if (run.foreman && run.totalT > run.foreman.until + 2 * HZ) run.foreman = null;
     if (run.status !== 'active' && run.status !== 'breachReady') return;
 
