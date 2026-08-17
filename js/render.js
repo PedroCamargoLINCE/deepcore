@@ -1425,11 +1425,17 @@
       ['[F]', C.green], [' THE FOUNDRY   ', C.amber],
       ['[H]', C.green], [' MANUAL', C.amber],
     ];
-    // M-ONBOARD Part 2: the way back into the induction. Offered ONLY once it
-    // has been seen — before that it is noise, since the next run starts it
-    // anyway. Without this door the flag is one-way and the tutorial is
-    // reachable only by editing localStorage, which is not a door.
-    if (DC.Meta.tutorialSeen(state.meta)) {
+    // M-ONBOARD Part 2: the way back into the induction. The rule is exactly
+    // "offer the door whenever the induction will NOT come to you" — i.e. the
+    // complement of Tutorial.eligible, not `tutorialSeen`.
+    //
+    // Keying it to tutorialSeen looked equivalent and was not, because the two
+    // conditions disagree on EVERY SAVE THAT PREDATES THIS BRIEF: an old
+    // profile has no tutorialSeen field, so it loads false, but it has runs on
+    // it, so it is not eligible either. That is a locked room — the only way to
+    // set the flag is to see the induction, and the only way to see it was the
+    // flag. The director's own save (7 runs, field absent) was the proof.
+    if (DC.Tutorial && !DC.Tutorial.eligible(state.meta)) {
       segs.push(['   [I]', C.green], [' INDUCTION', C.amberDim]);
     }
     let tot = 0;

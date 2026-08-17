@@ -5191,6 +5191,27 @@ function tutorialSection(seed) {
     key('i');
     assertEq(DC.state.screen, 'title', '...and the key does nothing for them');
   }
+  // ---- THE SAVE THAT PREDATES THIS BRIEF --------------------------------
+  // The case that shipped broken: a profile with runs on it and no
+  // tutorialSeen field at all. It is not eligible (it has runs) and it has
+  // not "seen" anything (the field sanitizes to false), so keying the door to
+  // tutorialSeen left it with no route in at all — the flag could only be set
+  // by an induction the flag was blocking. Every existing player was in it.
+  {
+    const old = M.newProfile();
+    old.runs = 7; old.wins = 0; old.bestDepth = 1;
+    delete old.tutorialSeen;                 // exactly what sanitize() sees in a v3 save
+    assertEq(M.tutorialSeen(old), false, 'a pre-brief save has no tutorialSeen');
+    assertEq(T.eligible(old), false, '...and is not eligible: it has runs on it');
+    DC.state.meta = old;
+    DC.state.screen = 'title';
+    frames(1);
+    assert(gridRows().join('\n').indexOf('[I] INDUCTION') >= 0,
+      'a save that predates the induction is still offered [I] — no locked room');
+    key('i');
+    assert(DC.state.run && T.active(DC.state.run),
+      '...and it actually plays for them');
+  }
 
   return T.BEATS.length + ' beats, box ' + A.SPEECH.W + 'x' + A.SPEECH.H +
     ' on a ' + D.MAP_W + '-wide map, replayable from the title';

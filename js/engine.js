@@ -608,10 +608,13 @@
           if (st.foundryBark) st.foundryBark.line = null;   // fresh floor, no stale line
         }
         else if (lk === 'h') openHelp(st, 'title');
-        // [I] REPLAY INDUCTION — only offered once it has been seen, because a
-        // player who has not seen it is about to get it anyway and a fifth menu
-        // item they cannot use is a fifth thing to read (law 6).
-        else if (lk === 'i' && DC.Meta.tutorialSeen(st.meta)) newRun(st, { tutor: true });
+        // [I] REPLAY INDUCTION, offered whenever the induction will NOT arrive
+        // on its own — the complement of Tutorial.eligible. Not `tutorialSeen`:
+        // that leaves every pre-brief save in a locked room (see render.js).
+        // A player who IS eligible needs no door; their next run opens it.
+        else if (lk === 'i' && DC.Tutorial && !DC.Tutorial.eligible(st.meta)) {
+          newRun(st, { tutor: true });
+        }
         else handled = false;
         break;
       case 'run':
