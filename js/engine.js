@@ -153,6 +153,12 @@
       bark(collapse ? 'collapse' : 'quake');
     }
     drainEvents(run);
+    // M-ONBOARD Part 2: the induction's step machine. After the sim tick and
+    // after the events, so a beat that is gated on something the tick just did
+    // (the first ore reaching the rig) passes on the same frame the player sees
+    // it land. It is handed the live ui because R aims the NEXT placement —
+    // facing is a UI value, and beat two teaches it honestly.
+    tutorTick(st, run);
     // The wonder waits its turn, and yields to the one moment that outranks
     // it: once the rig is breach-ready the bar belongs to that: a tourist
     // observation about a rock must not step on "press D".
@@ -225,6 +231,34 @@
     const st = DC.state, M = DC.Meta;
     if (!st || !M || typeof M.recordLog !== 'function') return;
     try { M.recordLog(st.meta, index); } catch (e) { /* meta stays optional */ }
+  }
+
+  // M-ONBOARD Part 2 wiring — a hard no-op unless js/tutorial.js is loaded.
+  //
+  // The meta write happens the moment the induction ENDS, not at the end of the
+  // run: a first rig that dies on stratum 1 must not be taught to place an
+  // extractor a second time. `tutorSeen` keeps that write to one call even
+  // though this runs eight times a second.
+  let tutorSeen = false;
+  function tutorTick(st, run) {
+    const T = DC.Tutorial;
+    if (!T || !run || !run.tutorial) return;
+    try { T.tick(run, st.ui); } catch (e) { /* the tutorial never kills a run */ }
+    if (!tutorSeen && !T.active(run)) {
+      tutorSeen = true;
+      try { DC.Meta.seeTutorial(st.meta); } catch (e) { /* meta stays optional */ }
+    }
+  }
+
+  // The skip key, handled before every other run-screen binding so it works on
+  // the very first frame — including before the first sim tick, which is what
+  // "skippable from the first keypress" has to mean.
+  function tutorSkip(st) {
+    const T = DC.Tutorial;
+    if (!T || !st.run || !T.active(st.run)) return false;
+    let did = false;
+    try { did = T.skip(st.run); } catch (e) { return false; }
+    return did;
   }
 
   // M-ONBOARD wiring — no-op unless js/barks.js exposes the editorial pool.
@@ -313,6 +347,14 @@
       try { DC.Events.grantCat(st.run, true); } catch (e) { /* optional */ }
     }
     awarded = false; awardedCores = 0; breachFlashed = false; lmPending = null;
+    // M-ONBOARD Part 2: the first-run induction, on the real generated map.
+    // Never on the Daily — that run is ranked against everybody else's, and a
+    // tutorial that freezes instability while it plays would be a handicap
+    // handed to exactly the people who do not need one.
+    tutorSeen = false;
+    if (DC.Tutorial && !daily) {
+      try { DC.Tutorial.begin(st.run, st.meta); } catch (e) { /* optional */ }
+    }
     const ui = st.ui;
     ui.tool = null; ui.facing = 1; ui.hover = null;
     ui.dragging = false; ui.dragLast = null; ui.laying = false;
@@ -671,6 +713,11 @@
 
   function runKey(st, e, k, lk) {
     const ui = st.ui, run = st.run;
+    // M-ONBOARD Part 2: the way out, first in the chain and bound to a key
+    // nothing else on this screen uses. Every other binding still works while
+    // the induction is up — it teaches by DOING, so it must never eat the keys
+    // it is asking the player to press.
+    if (k === D.TUTORIAL.skipKey && tutorSkip(st)) return true;
     eggKeys(st, k);
     if (ui.paused) {
       if (k === 'Escape' || k === 'Enter' || k === ' ') ui.paused = false;

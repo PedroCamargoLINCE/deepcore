@@ -21,7 +21,13 @@
   // v2 profile loads with an empty book and no cat rather than failing — and
   // SAVE_KEY still does not move, because orphaning every existing profile to
   // add two optional fields is not a migration, it is a deletion.
-  const SAVE_V = 3;
+  // v4 (M-ONBOARD Part 2) adds `tutorialSeen`. Same story a third time: the
+  // field is optional and sanitize() defaults it to false, so a v1/v2/v3
+  // profile loads and plays exactly as it did. A returning player is not shown
+  // the induction on the strength of that default either — eligibility is
+  // `!tutorialSeen && runs === 0`, and any save old enough to lack the field
+  // has runs on it (see DC.Tutorial.eligible).
+  const SAVE_V = 4;
   const DAILY_HISTORY_MAX = 60;   // ~2 months of dailies, then the oldest drop
   const MAX_DEPTH_KEY = 999;      // the Mantle is endless; the record isn't
   // The logbook's ceiling. Deliberately NOT DC.Events.LOGS.length: meta.js
@@ -46,6 +52,9 @@
       // the one meta flag that is a companion rather than an upgrade.
       logbook: [],
       catFound: false,
+      // M-ONBOARD Part 2: the first-run induction has been seen through or
+      // waved away. Either way it never comes back.
+      tutorialSeen: false,
     };
   }
 
@@ -103,6 +112,8 @@
       f.logbook.sort(function (a, b) { return a - b; });
     }
     f.catFound = !!p.catFound;
+    // ---- M-ONBOARD field (absent in v1, v2 and v3 saves) ----
+    f.tutorialSeen = !!p.tutorialSeen;
     f.v = SAVE_V;
     return f;
   }
@@ -301,6 +312,18 @@
     return true;
   }
 
+  // ===================== M-ONBOARD: the induction, once =====================
+  // Not an upgrade and not a reward — a one-way door. It is set the moment the
+  // player skips or finishes, rather than at the end of the run, because a rig
+  // that dies on stratum 1 must not be taught to place an extractor twice.
+  function tutorialSeen(profile) { return !!(profile && profile.tutorialSeen); }
+  function seeTutorial(profile) {
+    if (!profile || profile.tutorialSeen) return false;
+    profile.tutorialSeen = true;
+    save(profile);
+    return true;
+  }
+
   // Whole-run version: engine hands over run.splits at award time. Saves once.
   function recordSplits(profile, splits) {
     if (!profile || !Array.isArray(splits)) return 0;
@@ -322,5 +345,7 @@
     // M-EVENTS
     LOGBOOK_MAX,
     logbook, recordLog, hasLog, catFound, findCat,
+    // M-ONBOARD
+    tutorialSeen, seeTutorial,
   };
 })();

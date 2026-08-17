@@ -389,6 +389,155 @@
     ],
   };
 
+  // ============ M-ONBOARD Part 2: the induction script =====================
+  // Law 3 says GRIT never explains. It is suspended here BY THE FICTION rather
+  // than in spite of it: he has been handed the Company induction script and is
+  // contractually obliged to read it out, and he cannot get through a line
+  // without riffing on it. He hates this. That tension is the whole joke
+  // engine — the flat corporate line, then GRIT on the flat corporate line —
+  // and it is why these do not sound like the pools above: everywhere else he
+  // is editorialising on a thing that happened, and here he is being MADE to
+  // teach, out loud, from somebody else's paper.
+  //
+  // These lines are NOT in POOLS, and that is deliberate. Everything in POOLS
+  // is measured against the foreman bar's 2 x 41 and the 70-column ceiling; the
+  // induction is delivered in a 40-cell box on the map with three rows of 36,
+  // so it is measured against THAT (test/barks_test.js's onboard-tutor block).
+  // A pool line and an induction line are different shapes of writing because
+  // they are drawn in different places.
+  //
+  // THE ACTION IS NEVER IN THE JOKE. Every beat draws its key as an inverse
+  // keycap and highlights its target tile at the same moment (see js/tutorial.js
+  // ACTIONS), so these can be as stupid as they like — the player never has to
+  // parse a gag to find out what to press. That is not a limit on the humour,
+  // it is the thing that buys the humour its freedom (SPEC3 M-ONBOARD).
+  const TUTOR = {
+    // Beat 1 — put the extractor's teeth on the vein. The register is the whole
+    // range on purpose (director, verbatim): dad jokes, the joke a nine-year-old
+    // makes about a drill going into a hole, filthy adult ones, and puns he is
+    // visibly proud of. He is funny AND a bit embarrassing, which is what twenty
+    // years down a hole with nobody to talk to does to a man.
+    place: [
+      "Step one. 'Place the extractor upon the ore.' Upon it. Not near it. Somebody tried near.",
+      "'Site the drill-head atop the deposit.' Atop. Big word from a firm that spells my name wrong.",
+      "'Position the unit over the mineral body.' Over the body. Whoever wrote that has buried a man.",
+      "'Ensure firm, sustained contact with the seam.' I did not write that. I have read it eleven times.",
+      "'Do not site the unit on bare ground.' Somebody did. His face is in the safety pamphlet now.",
+      "'The extractor requires a vein.' Requires! Like she's fussy. She's a mouth on legs. Feed her.",
+      "'Establish the primary extraction point.' That is corporate for start chewing. So: chew, kid.",
+      "What do you call a bit that won't bite? Un-bit-lievable. ...The shiny rock, kid. Any day now.",
+      "Big drill goes in the hole. That is the induction. I hold a certificate in this, you know.",
+      "Rule one of holes: the pointy end goes in the soft bit. Twenty years, and that is the manual.",
+      "The teeth want that seam and the seam has been waiting four billion years. Do not be shy.",
+      "The induction calls this mineral acquisition. Down here we call it biting a rock. Bite it.",
+      "I asked for a poem about honest labour. They sent two sentences and a diagram. Here we are.",
+    ],
+    // Beat 2 — R, and where the ore actually comes out. The fault that beat the
+    // director lives on this beat, so the box is at its filthiest about the one
+    // thing he most needs to look at.
+    rotate: [
+      "'Orient the discharge aperture.' The arse end, kid. R spins the arse end. I am quoting.",
+      "'Rotate PRIOR to placement.' Prior, underlined twice. Somebody learned that with their thumb.",
+      "'Verify egress alignment.' Egress. My gran called it the business end and she was never wrong.",
+      "'Confirm the vector of egress.' Vector! It is an ARROW. Spin it until it faces open floor.",
+      "'Ensure the discharge is unobstructed.' I am going to stay professional here. ...I cannot.",
+      "'Misaligned discharge is a leading cause of incident.' Incident. There's a word doing labour.",
+      "'The output side shall face a receiving conveyor.' Face. As though the machine were shy.",
+      "Why did the extractor lose its job? Terrible output. ...R. Press R. I'll see myself down.",
+      "Pointy bit goes in, gravel comes out the back. My nephew had this one inside of a second.",
+      "Section four: the yield must have somewhere to go. Thirty pages to say point it outward.",
+      "R swings the little arrow. The little arrow is where rock comes out. That is the entire beat.",
+      "The Company printed an appendix on which way is out. Appendix B. I have read it. Twice.",
+      "R, R, R until that arrow likes what it sees. Even I manage this one, and I am mostly lung.",
+    ],
+    // Beat 3 — the belt, from the arrow to the rig.
+    belt: [
+      "'Convey the yield to the rig.' Convey. Belt it across, kid — rollers walk so that we do not.",
+      "'Belts shall not terminate upon soil.' Soil has never once eaten ore. Voss proved it for us.",
+      "'The conveyance MAY corner.' It may! It is allowed! Turn a corner, with Company permission!",
+      "'Ensure continuity of the conveyance.' No gaps. A rock cannot jump. I asked. It cannot jump.",
+      "'A conveyance is inserted at the intake.' Twenty years, and that page still gets a whistle.",
+      "'Do not obstruct the belt path.' Obstruct. Stand on a moving one once and you'll learn it.",
+      "'Terminate at the receiving hopper.' She swallows whatever you send. Never been proud, her.",
+      "What did the belt say to the rig? I'll carry you. ...Right. I'll carry myself out. Lay it.",
+      "A moving floor, for gravel. Gravel gets a moving floor. I get a bad knee and forty stairs.",
+      "Section nine: a conveyance shall terminate at an intake. End it AT the rig. Into her. Yes.",
+      "Run the line from that arrow to the drill. Straight, bent, whatever. Rollers do not judge.",
+      "Belt her teeth to the rig and the ore walks itself. Best coworker I had. Never talked back.",
+      "Drag the line home. Every belt is one fewer thing I carry with this ruin of a spine, kid.",
+    ],
+    // Beat 4 — the ore lands. He stops being about the map here and starts
+    // pointing right: STOCK is ticking up and CHAIN is lighting, and knowing
+    // where to look is worth more than another sentence out of him.
+    ore: [
+      "'Observe the intake register.' Watch the numbers move. That is the job, in one glowing row.",
+      "'Material receipt confirms operational continuity.' It WORKS. That is what that sentence is.",
+      "'The CHAIN indicator names the limiting stage.' Whatever's slowest lights. Believe the light.",
+      "'Verify throughput at the panel.' Look right, kid. Those panels never lie. I sometimes do.",
+      "'Induction complete.' Signed, dated, and let the record show I read every word under duress.",
+      "STOCK, over on the right: iron ore, and an arrow climbing. Climbing is good. Always good.",
+      "Numbers live on the right. Watch them and you'll never wonder why the drill went quiet.",
+      "Why is the rig never peckish? Always got a bit between her teeth. ...Suit yourself, kid.",
+      "It ate a rock. On purpose. For money. Best job in the world, and I do mean that. Mostly.",
+      "She takes the whole load and never once complains. Only thing on this rig that doesn't.",
+      "There she goes. Ore in the rig. First delivery. I need a moment alone. Shut up.",
+      "First rock through the door. Somewhere an auditor just felt a small unfamiliar warmth.",
+      "Rock landed. Nobody applauded. That's mining. Do it four hundred more times, then go deeper.",
+    ],
+    // He is contractually required to restate. He restates with feeling.
+    nudge: [
+      "Script says restate the instruction. So: the same thing, louder, with more of my character.",
+      "Still with me? Good. They pay me by the shift and not by the sentence. Take all day, kid.",
+      "I am required to confirm you are conscious. Blink at the screen. Lovely. Signed. Now dig.",
+      "'If the operative hesitates, restate.' Restated. Also the rock will not place itself, love.",
+      "Twenty years and the pause is always exactly this long. Whenever you are ready, then.",
+      "The induction has a section on encouragement. One line, and it is threatening. Skipping it.",
+    ],
+    // The paperwork is discharged and he can go back to being himself.
+    outro: [
+      "Induction discharged. I read their script, you dug a hole, and they can bill us both.",
+      "Paperwork's done. From here it is only rock, and rock I can actually talk about properly.",
+      "Signed off. You know the four things. Everything below is those four again, but meaner.",
+      "Right — script in the bin. Back to being useless at you in my own words. Much better.",
+      "'Training complete', says the form. It does not say good luck. I checked. So: good luck.",
+    ],
+    // ...or the player put their hand up in the first ten seconds. He approves.
+    skip: [
+      "Skipped it. GOOD. I'd have skipped me as well. Manual's on H when pride stops working.",
+      "Straight past the induction. My kind of operative. Do not tell head office I said so.",
+      "Binned the script. I have wanted that script binned since the day they laminated it.",
+      "No induction? Bold. This rock grades on a curve, and the curve is mostly funerals.",
+    ],
+  };
+
+  // Which line, for this run, on this beat. Picked by a pure FNV-1a hash of
+  // (seed, beat, restatement) and NEVER from run.rng — law 7, and it bites here
+  // exactly as hard as it did for the diagnostics: the tutorial runs on a LIVE
+  // run whose map, schematic offers and quake schedule all come off that
+  // stream, so a line drawn because the player was slow on beat two would move
+  // the whole game out from under them. Locked by an rng snapshot in
+  // test/barks_test.js and again across the driven tutorial in integration.js.
+  function tutorPick(seed, beat, salt, n) {
+    let h = 0x811c9dc5;
+    const s = String(seed >>> 0) + '|tut|' + beat + '|' + (salt | 0);
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    return (h >>> 1) % n;
+  }
+
+  // `salt` walks the pool without repeating: beat two's third restatement is a
+  // different line from its first, and both are the same on every machine that
+  // ever plays this seed.
+  function tutorLine(run, beat, salt) {
+    const pool = TUTOR[beat];
+    if (!Array.isArray(pool) || !pool.length) return null;
+    const seed = (run && run.seed) || 0;
+    const i = (tutorPick(seed, beat, 0, pool.length) + (salt | 0)) % pool.length;
+    return pool[i];
+  }
+
   // ---------------- M-CORELORE: the second voice ----------------
   // The Core is not GRIT and must never sound like him. It is lowercase, it is
   // unhurried, it has no tag and no jokes at its own expense — it finds YOU
@@ -1148,6 +1297,8 @@
     core: coreSpeak, pause: pause, eggOpen: eggOpen, CORE: CORE,
     // M-ONBOARD: GRIT's editorial on a fault the sim already explained
     diag: diagSay, DIAG_POOL: DIAG_POOL,
+    // M-ONBOARD Part 2: the induction script (js/tutorial.js reads these)
+    TUTOR: TUTOR, tutor: tutorLine,
     // M-RECAP
     review: review, reviewTier: reviewTier, reviewCtx: reviewCtx,
     fillReview: fillReview, REVIEWS: REVIEWS,
