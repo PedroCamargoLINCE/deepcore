@@ -5121,6 +5121,21 @@ function tutorialSection(seed) {
   for (const b of T.BEATS)
     assert(beatsSeen.indexOf(b) >= 0, 'the drive rendered the ' + b + ' beat');
 
+  // ---- the pressure pause cannot be carried down a floor ----------------
+  // A frozen instability gauge taken into stratum 2 would be a whole run played
+  // without a quake. Breaching stratum 1 without ever delivering an ore is very
+  // nearly impossible, and "very nearly" is not a thing to leave load-bearing.
+  {
+    const r = S.newRun(defEffects(), seed + 1);
+    assert(T.begin(r, M.newProfile()), 'a fresh induction to carry downstairs');
+    assertEq(r.instHold, true, 'armed with the pressure pause on');
+    r.depth = 2;                            // scaffold: they got downstairs somehow
+    r.totalT++;
+    T.tick(r, { facing: 1 });
+    assert(!T.active(r), 'the induction is left behind on the floor it taught');
+    assert(!r.instHold, '...and the pressure pause goes with it');
+  }
+
   // ---- and it is skippable from the first keypress ----------------------
   {
     st.meta = M.newProfile();

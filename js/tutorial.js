@@ -153,6 +153,7 @@
     run.tutorial = {
       i: 0, salt: 0, nudges: 0,
       beatT: run.totalT, armT: run.totalT,
+      depth0: run.depth,
       vein: pickVein(run),
       rotated: false, facing0: null,
       hold: 0,          // run.totalT the finished box stops lingering
@@ -237,6 +238,13 @@
   function tick(run, ui) {
     const T = state(run);
     if (!T || T.over) return;
+
+    // A player who reaches the next floor with the induction still running has
+    // left it behind, and the pressure pause goes with them — a frozen
+    // instability gauge carried into stratum 2 would be a whole run played
+    // without a quake. Breaching stratum 1 without ever delivering an ore is
+    // very nearly impossible; "very nearly" is not a thing to leave load-bearing.
+    if (run.depth !== T.depth0) { T.over = true; release(run); return; }
 
     // The finished box lingers for a beat so the sign-off can be read, then
     // the induction is done and the screen belongs to the game again.
