@@ -13,6 +13,29 @@ when the player under-builds, because that is the intended lesson. Preserve the
 existing belt push-mechanics contract: multi-pass compression and backpressure
 behave as test/headless.js asserts.
 
+TWO CONTRACTS LANDED SINCE THIS BRIEF WAS WRITTEN AND BOTH SIT DIRECTLY UNDER
+YOUR HANDS. Read them before you touch handoff.
+
+1. FACING, NOT ADJACENCY — test/headless.js checkRigOutput. A belt hands its
+   item to the ONE tile it faces, and a machine does the same, which is why a
+   machine whose output points into the rig feeds it with no belt at all while
+   the same machine parked against the rig pointing the wrong way delivers
+   nothing. That asymmetry is deliberate and the director rejected the
+   adjacency variant explicitly ("i want to go to the rig if the output is
+   faced to the rig, not if it only is adjacent to it"). The reason is
+   pedagogical, so it outranks convenience: if machines fed from any side while
+   belts required facing, the game's own lesson about belts would be a lie.
+   Whatever splitters, filters or underground pairs you add obey the same rule,
+   and that test must still pass unmodified. If your design genuinely cannot
+   hold it, STOP and report rather than relaxing it.
+
+2. Sim.chain(run) reads machine rates to name the production bottleneck for the
+   CHAIN panel, and it is PURE — no mutation, no run.rng (law 7), pinned by
+   test/headless.js checkChain. Every new machine type you add needs a rate in
+   that model, or it becomes invisible to the panel that teaches the chain: a
+   splitter the player can see on the map but not in CHAIN is a hole in the
+   game's only live explanation of itself. Extend checkChain alongside it.
+
 Worth knowing: the scripted bot in test/balance.js currently CANNOT build the
 tier-2 chain, which is why high-Foundry runs stall at s5+ with 'no-breach' and
 'crystal-noroute'. If your work makes tier-2 logistics buildable by that bot,
@@ -34,9 +57,14 @@ Two decisions already made for you, so do not re-litigate them:
 - SPEC3 notes your underground belt pair partially obsoletes Ghost Belts from
   M-SCHEMS2 and says "pick ONE". The call is: KEEP underground belts. Ghost
   Belts will be cut from M-SCHEMS2, which has not been dispatched yet.
-- SPEC3 §0 now has SEVEN laws. Two matter here. Law 6: readability is the
+- SPEC3 §0 now has EIGHT laws. Three matter here. Law 6: readability is the
   objective — new building glyphs must be findable at a glance on the map, and
   a splitter or filter gate the player cannot identify mid-run is a failed
-  design however elegant the logic. Law 7: run.rng is the sim's stream and
-  nothing else may spend from it; if any of your logistics needs randomness,
-  derive a stream from the seed as js/events.js does, and pin it with a test.
+  design however elegant the logic. The map is still 46x26 in a 112-column
+  screen, so you are adding glyphs to a space that did NOT grow: check a new
+  one against the ones already on the map (▓ ▒ ░ · ≡ ♠ E S A D ▞ and the belt
+  arrows) before you pick it, and run node tools/glyphs.js. Law 7: run.rng is
+  the sim's stream and nothing else may spend from it; if any of your logistics
+  needs randomness, derive a stream from the seed as js/events.js does, and pin
+  it with a test. Law 8: no readout that lets a player optimise instead of
+  decide — a throughput number on a belt is fine, a countdown is not.
