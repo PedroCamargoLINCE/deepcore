@@ -112,6 +112,31 @@ infrastructure instead of this laptop, so the machine can sleep. Reattach with
 confused with `--remote-control`, which drives a session *on this laptop* from
 elsewhere — that one still needs the laptop awake.)
 
+**The whole invocation, so it is never re-derived:**
+
+```bash
+cd /home/pedro/Documents/games/deepcore
+
+claude --cloud "M-ONBOARD-2: GRIT teaches the tutorial" \
+  --model opus --effort xhigh \
+  --permission-mode bypassPermissions \
+  "$(cat docs/prompts/M-ONBOARD-2.cloud.txt)"
+```
+
+Three details that are easy to get wrong:
+
+- **`--cloud` takes a short DESCRIPTION, not the prompt.** The prompt is the
+  positional argument, last (`claude [options] [command] [prompt]`). Swap them
+  and you launch a session whose entire instruction is its own title.
+- `--permission-mode bypassPermissions` is what makes it walk-away. `acceptEdits`
+  lets edits through but still stops at Bash, so an unattended session stalls at
+  the first `node test/headless.js`. Bypassing is a different proposition in the
+  cloud than locally: the container is isolated and has no reach into this
+  machine.
+- **Push master before dispatching.** The session clones the remote, not this
+  working copy, so an unpushed merge means the worker builds on the wrong tree.
+  Check with `git log --oneline origin/master..master` — it should be empty.
+
 **Monitoring needs no flag.** A cloud session *is* a claude.ai/code session —
 that is why `--cloud` reattaches by "session ID or claude.ai/code URL" — so it
 appears in the web and phone apps on its own, watchable and interruptible from
