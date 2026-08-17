@@ -460,7 +460,7 @@
     // beat 4 — the ore lands, and the panels take over the teaching
     ore: [
       "'Observe the intake register.' Watch the numbers move. That is the job, in one glowing row.",
-      "There she goes. Ore in the rig. Twenty years, and it still does something to me. Shut up.",
+      "There she goes. Ore in the rig. First delivery. I need a moment alone. Shut up.",
       "'Material receipt confirms operational continuity.' It WORKS. That is what that sentence is.",
       "STOCK, over on the right: iron ore, and an arrow climbing. Climbing is good. Always good.",
       "'The CHAIN indicator names the limiting stage.' Whatever's slowest lights. Believe the light.",

@@ -94,6 +94,7 @@
     nudgeT: 22,      // seconds on one beat before he re-riffs the same lesson
     nudgeMax: 3,     // ...and how many times, before he lets the silence work
     holdT: 4,        // seconds the completed beat's box lingers before the next
+    armT: 30,        // seconds to wait for the sweep to reveal a vein, then give up
     skipKey: 'Tab',  // skippable from the first keypress, on a key play never uses
   };
 

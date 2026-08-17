@@ -1310,10 +1310,15 @@
   // where it was and takes the background instead. Used for the target tile and
   // for the two panel rows the last beat points at — a panel that has been
   // POINTED at is still readable, a panel with a box on it is not.
-  function tutorMark(col, row, hot) {
+  // `fill` puts a dot under a blank cell so a single marked MAP tile is visible
+  // even where there is nothing drawn on it. It is deliberately off for the
+  // panel rows: a run of marked cells across a label would turn the spaces
+  // inside 'iron ore' into dots, which is covering the words while claiming to
+  // point at them.
+  function tutorMark(col, row, hot, fill) {
     if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return;
     const on = hot ? C.white : C.amber;
-    if (chB[row][col] === ' ') { chB[row][col] = '·'; }
+    if (fill && chB[row][col] === ' ') chB[row][col] = '·';
     bgB[row][col] = on;
     fgB[row][col] = C.bg;
   }
@@ -1330,20 +1335,20 @@
 
     // 1. the target tile, before the box: it is never under the box, and the
     //    suites prove that rather than trusting this comment
-    tutorMark(L.target.col, L.target.row, hot);
-    if (L.from) tutorMark(L.from.col, L.from.row, !hot);   // the other end of the belt
+    tutorMark(L.target.col, L.target.row, hot, true);
+    if (L.from) tutorMark(L.from.col, L.from.row, !hot, true);  // the other end of the belt
 
     // 2. the panels, once the induction has stopped being about the map. CHAIN
     //    lights its own limiting stage and STOCK draws its own trend arrow —
     //    this only says LOOK THERE.
     if (L.panels) {
       const sr = layout.stock && layout.stock.ironOre;
-      if (sr) for (let i = 0; i < sr.w; i++) tutorMark(sr.col + i, sr.row, hot);
+      if (sr) for (let i = 0; i < sr.w; i++) tutorMark(sr.col + i, sr.row, hot, false);
       const rows = layout.chain || [];
       let pick = null;
       for (let i = 0; i < rows.length; i++) if (rows[i].flag) { pick = rows[i]; break; }
       if (!pick && rows.length) pick = rows[0];
-      if (pick) for (let i = 0; i < pick.w; i++) tutorMark(pick.col + i, pick.row, hot);
+      if (pick) for (let i = 0; i < pick.w; i++) tutorMark(pick.col + i, pick.row, hot, false);
     }
 
     // 3. the tail, drawn before the box so the box's own border wins the cell

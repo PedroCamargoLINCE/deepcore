@@ -4658,6 +4658,481 @@ function wideSection(seed) {
   return D.COLS + 'x' + D.ROWS + ', ' + 12 + ' screens';
 }
 
+// =========================================================================
+// SECTION — M-ONBOARD Part 2: the first-run induction
+// The four beats driven through the REAL engine on stub DOM/rAF: every one of
+// them advances only when the PLAYER does the thing, through the same keydown
+// handlers a person uses. Nothing in here places, rotates or belts anything
+// behind the tutorial's back.
+//
+// It also pins the two properties the box's whole design rests on — it never
+// covers the map cell it is pointing at, and it never touches either panel
+// column — at every beat, on a screen rendered at the real 112 columns.
+// =========================================================================
+function tutorialSection(seed) {
+  SECTION = 'onboard seed=' + seed;
+  require('../js/barks.js');
+  require('../js/tutorial.js');
+  require('../js/events.js');
+  require('../js/render.js');
+  require('../js/engine.js');
+  const T = DC.Tutorial, M = DC.Meta, R = DC.Render, A = DC.Art;
+  const LAY = R.LAYOUT, C = D.COLORS;
+  assert(T && typeof T.begin === 'function', 'js/tutorial.js is loaded');
+
+  // ---- the induction costs the stream nothing (§0 law 7) ----------------
+  // It runs on a LIVE run whose map, schematic offers and quake schedule all
+  // come off run.rng. A single draw — a line picked because the player was slow
+  // on beat two — would make the game somebody got depend on how fast they
+  // found the R key. Counted directly rather than inferred.
+  {
+    const a = S.newRun(defEffects(), seed);
+    assert(T.begin(a, M.newProfile()), 'the induction arms on a fresh profile');
+    const real = a.rng;
+    let draws = 0;
+    a.rng = function () { draws++; return real(); };
+    for (let i = 0; i < 200; i++) {
+      a.totalT++;
+      T.tick(a, { facing: i & 3 });
+      T.layout(a); T.line(a); T.action(a); T.warn(a); T.foot(a); T.title(a);
+    }
+    assertEq(draws, 0, 'the induction drew ' + draws + ' numbers from run.rng');
+  }
+
+  // ---- who sees it, and who never sees it again ------------------------
+  {
+    assert(T.eligible(M.newProfile()), 'a fresh profile is shown the induction');
+    const played = M.newProfile(); played.runs = 1;
+    assert(!T.eligible(played), 'a profile with a completed run is not');
+    const seen = M.newProfile(); seen.tutorialSeen = true;
+    assert(!T.eligible(seen), 'a profile that has already seen it is not');
+    // A SAVE WRITTEN BEFORE THIS BRIEF STILL LOADS. v1 profiles have no `v`,
+    // no bestSplits, no logbook and no tutorialSeen; sanitize fills them from
+    // newProfile, so the field defaults to false — and the run count on such a
+    // save is what keeps a returning player out of a first-run tutorial.
+    const v1 = { cores: 7, upgrades: { m_hull: 1 }, bestDepth: 5, wins: 0,
+                 runs: 12, totalCores: 30 };
+    const store = { deepcore: JSON.stringify(v1) };
+    Object.defineProperty(globalThis, 'localStorage', {
+      value: {
+        getItem: function (k) { return Object.prototype.hasOwnProperty.call(store, k) ? store[k] : null; },
+        setItem: function (k, v) { store[k] = String(v); },
+      }, configurable: true, writable: true,
+    });
+    store[D.SAVE_KEY] = JSON.stringify(v1);
+    const loaded = M.load();
+    assertEq(loaded.cores, 7, 'a pre-brief save still loads its cores');
+    assertEq(loaded.upgrades.m_hull, 1, '...and its bought upgrades');
+    assertEq(loaded.runs, 12, '...and its run count');
+    assertEq(loaded.tutorialSeen, false, '...and defaults tutorialSeen to false');
+    assertEq(loaded.v, M.SAVE_V, '...and is stamped at the current schema version');
+    assert(!T.eligible(loaded), 'a pre-brief save is never shown the induction');
+    // ...and the one-way door really is one-way, through the save
+    const fresh = M.newProfile();
+    assertEq(M.seeTutorial(fresh), true, 'seeTutorial closes the door');
+    assertEq(M.seeTutorial(fresh), false, '...once');
+    assert(M.tutorialSeen(M.load.call(null) && fresh), 'the flag is set on the profile');
+    delete globalThis.localStorage;
+  }
+
+  // ---- the real engine, the real keys ----------------------------------
+  const handlers = {};
+  const ctxStub = {
+    fillStyle: '', font: '', textBaseline: '', textAlign: '',
+    setTransform: function () {}, fillRect: function () {},
+    save: function () {}, restore: function () {}, scale: function () {},
+    fillText: function () {}, measureText: function () { return { width: 10 }; },
+  };
+  const canvasStub = {
+    style: {},
+    getContext: function () { return ctxStub; },
+    addEventListener: function (t, fn) { handlers[t] = fn; },
+    getBoundingClientRect: function () {
+      return { left: 0, top: 0, width: D.COLS * 10, height: D.ROWS * 19 };
+    },
+  };
+  global.window = { addEventListener: function (t, fn) { handlers[t] = fn; } };
+  global.document = { getElementById: function () { return canvasStub; } };
+  global.location = { search: '?seed=' + seed };
+  let rafCb = null;
+  global.requestAnimationFrame = function (fn) { rafCb = fn; };
+
+  DC.Engine.start();
+  const st = DC.state;
+  st.meta = M.newProfile();                 // a player who has never finished a run
+  let now = 0;
+  function frames(n) {
+    for (let i = 0; i < n; i++) {
+      now += 1000 / HZ;
+      const cb = rafCb;
+      assert(cb, 'rAF loop stays scheduled');
+      rafCb = null;
+      cb(now);
+    }
+  }
+  function key(k, shift) {
+    handlers.keydown({ key: k, shiftKey: !!shift, preventDefault: function () {} });
+  }
+  function gridRows() {
+    const out = [];
+    for (let r = 0; r < D.ROWS; r++) {
+      let line = '';
+      for (let c = 0; c < D.COLS; c++) line += (R.cellAt(c, r) || { ch: ' ' }).ch;
+      out.push(line);
+    }
+    return out;
+  }
+
+  // Two frames on the title first. The engine's fixed-step accumulator is
+  // module state and an earlier section left its rAF clock far in the future;
+  // the title branch zeroes the accumulator, so this is what stops every tick
+  // below being swallowed by a negative dt.
+  assertEq(st.screen, 'title', 'the engine boots to the title screen');
+  frames(2);
+
+  key('Enter');
+  const run = st.run;
+  assert(run && run.tutorial, 'starting a first run arms the induction');
+  assertEq(run.instHold, true, 'the pressure pause is on: instability is frozen');
+  frames(2);
+  assertEq(T.beat(run), 'place', 'the induction opens on the place beat');
+  const vein = run.tutorial.vein;
+  assert(vein, 'the induction picked a revealed iron vein to teach on');
+  assertEq(run.grid[vein.y][vein.x].ore, 'ironOre', 'and it really is an iron vein');
+
+  // ---------------------------------------------------------------------
+  // The contract the whole presentation rests on, checked at EVERY beat.
+  // ---------------------------------------------------------------------
+  const beatsSeen = [];
+  function checkBox(label, r) {
+    r = r || run;
+    const rows = gridRows();
+    assert(rows[1].indexOf('RENDER ERROR') < 0,
+      label + ': frame threw — ' + rows[1].trim());
+    const L = T.layout(r);
+    assert(L, label + ': the induction box has a layout');
+    beatsSeen.push(L.beat);
+
+    // 1. IT NEVER COVERS WHAT IT POINTS AT.
+    const inBox = function (col, row) {
+      return col >= L.col && col < L.col + L.w && row >= L.row && row < L.row + L.h;
+    };
+    assert(!inBox(L.target.col, L.target.row),
+      label + ': the box covers the very cell it is pointing at (' +
+      L.target.col + ',' + L.target.row + ')');
+    assert(!(L.target.col >= L.tailCol && L.target.col < L.tailCol + L.tailW &&
+             L.target.row === L.tailRow), label + ': the tail sits on the target');
+    if (L.from) assert(!inBox(L.from.col, L.from.row),
+      label + ': the box covers the belt beat’s starting arrow');
+
+    // 2. IT NEVER TOUCHES A PANEL COLUMN. M-WIDE put two columns of live UI
+    //    right of the map, and the box is centred ON THE MAP — derived from
+    //    D.MAP_X / D.MAP_W — precisely so it cannot reach them.
+    assert(L.col >= 0 && L.col + L.w <= D.MAP_X + D.MAP_W + 1,
+      label + ': the box (cols ' + L.col + '..' + (L.col + L.w - 1) +
+      ') left the map box');
+    assert(L.col + L.w - 1 < LAY.sb,
+      label + ': the box reaches column ' + (L.col + L.w - 1) +
+      ', panel column A starts at ' + LAY.sb);
+    assert(L.tailCol >= 0 && L.tailCol + L.tailW - 1 < LAY.sb,
+      label + ': the tail reaches into the panels');
+    // ...and the panels are still whole boxes, on every row, with the gutters
+    // between them still empty. This is the check with teeth: it would fail on
+    // any overdraw, not just an overdraw the layout admitted to.
+    for (let r = 1; r < D.ROWS; r++) {
+      assert('│├┌└'.indexOf(rows[r][LAY.sb]) >= 0,
+        label + ' row ' + r + ": panel column A's left wall is gone");
+      assert('│┤┐┘'.indexOf(rows[r][D.COLS - 1]) >= 0,
+        label + ' row ' + r + ": panel column B's right wall is gone");
+      assertEq(rows[r][LAY.sb - 1], ' ', label + ' row ' + r + ': gutter A dirtied');
+      assertEq(rows[r][LAY.sb2 - 1], ' ', label + ' row ' + r + ': gutter B dirtied');
+    }
+    // 3. IT IS ACTUALLY ON THE SCREEN, and it is inside the map box.
+    assertEq(rows[L.row][L.col], '┌', label + ': the box border is not drawn');
+    assertEq(rows[L.row + L.h - 1][L.col], '└', label + ': the box has no floor');
+    assert(rows[L.row].indexOf('INDUCTION') >= 0, label + ': the box is not titled');
+    assert(L.row > D.MAP_Y - 1 && L.row + L.h <= D.MAP_Y + D.MAP_H,
+      label + ': the box left the map viewport vertically');
+
+    // 4. THE ACTION SURVIVES THE COMEDY: the target tile is held under a
+    //    highlight, and the key is a REAL inverse cell — the letter taking the
+    //    box background and the cap taking the ink. Neither is ever off: the
+    //    highlight alternates between two bright backgrounds rather than
+    //    blinking, so there is no frame in which a player looking for it finds
+    //    nothing.
+    const tc = R.cellAt(L.target.col, L.target.row);
+    assert(tc && tc.bg && tc.fg === C.bg,
+      label + ': the target tile is not highlighted');
+    assert(tc.ch !== ' ', label + ': the highlight blanked the tile it marks');
+    const actRow = L.row + 2 + A.SPEECH.PROSE_ROWS;
+    let caps = 0;
+    for (let c = L.col + 1; c < L.col + L.w - 1; c++) {
+      const cell = R.cellAt(c, actRow);
+      if (cell && cell.bg && cell.fg === C.bg && cell.ch !== ' ') caps++;
+    }
+    if (L.beat !== 'ore' && L.beat !== 'outro')
+      assert(caps > 0, label + ': the action row has no inverse keycap');
+    // ...and GRIT is actually saying something in it
+    const prose = rows.slice(L.row + 1, L.row + 1 + A.SPEECH.PROSE_ROWS)
+      .map(function (s) { return s.slice(L.col + 1, L.col + L.w - 1).trim(); })
+      .join(' ').trim();
+    assert(prose.length > 20, label + ': the box is empty of GRIT');
+    return L;
+  }
+
+  frames(1);
+  const L1 = checkBox('beat 1 (place)');
+  assertEq(L1.target.x, vein.x, 'beat 1 points at the vein (x)');
+  assertEq(L1.target.y, vein.y, 'beat 1 points at the vein (y)');
+
+  // ---- BEAT 1: it does not pass until an extractor is really placed -----
+  frames(4 * HZ);
+  assertEq(T.beat(run), 'place', 'waiting does not advance a beat');
+  // walk the cursor there with the arrow keys and place with Enter, exactly as
+  // a keyboard-first player does
+  function walkTo(tx, ty) {
+    let guard = 0;
+    while ((st.ui.cursor.x !== tx || st.ui.cursor.y !== ty) && guard++ < 200) {
+      if (st.ui.cursor.x < tx) key('ArrowRight');
+      else if (st.ui.cursor.x > tx) key('ArrowLeft');
+      else if (st.ui.cursor.y < ty) key('ArrowDown');
+      else key('ArrowUp');
+    }
+    assert(guard < 200, 'the cursor reached ' + tx + ',' + ty);
+  }
+  // aim the extractor at a side that is open floor, so beat two is about the
+  // KEY and not about a rescue (the rescue path gets its own check below)
+  const openFacing = (function () {
+    for (let f = 0; f < 4; f++) {
+      const o = outputTile(vein.x, vein.y, 1, 1, f);
+      const t = (o.x >= 0 && o.y >= 0 && o.x < D.MAP_W && o.y < D.MAP_H)
+        ? run.grid[o.y][o.x] : null;
+      if (t && t.t === 'floor' && t.machine === null && !t.belt && !t.lm) return f;
+    }
+    return -1;
+  })();
+  assert(openFacing >= 0, 'the taught vein has at least one open output side');
+  key('2');
+  assertEq(st.ui.tool, 'extractor', "'2' selects the extractor");
+  while (st.ui.facing !== openFacing) key('r');
+  walkTo(vein.x, vein.y);
+  key('Enter');
+  frames(2);
+  const ex = T.firstExtractor(run);
+  assert(ex, 'the extractor went down on the vein');
+  assertEq(T.beat(run), 'rotate', 'placing the extractor advanced the beat');
+  const L2 = checkBox('beat 2 (rotate)');
+  assertEq(L2.target.x, T.outputTile(ex).x, 'beat 2 points at the output tile (x)');
+  assertEq(L2.target.y, T.outputTile(ex).y, 'beat 2 points at the output tile (y)');
+
+  // ---- BEAT 2: R, and the fault that beat the director ------------------
+  // An extractor whose teeth face solid rock mines one ore, blocks, and sits
+  // there being silently correct. The beat will not pass while that is true,
+  // and the box says so in words that name the fix.
+  {
+    const good = ex.facing;
+    let fouled = -1;
+    for (let f = 0; f < 4 && fouled < 0; f++) {
+      ex.facing = f;                       // scaffold: a facing the map refuses
+      if (T.outputFouled(run, ex)) fouled = f;
+    }
+    if (fouled >= 0) {
+      ex.facing = fouled;
+      run.tutorial.rotated = true;         // scaffold: R has already been pressed
+      assert(!T.layout(run) || T.beat(run) === 'rotate',
+        'a fouled output holds the rotate beat');
+      const w = T.warn(run);
+      assert(Array.isArray(w) && w.length, 'the box names the fouled output');
+      assert(w.some(function (s) { return s[0] === 'cap' && s[1] === 'X'; }),
+        '...and hands the player the demolish key to fix it');
+      frames(1);
+      checkBox('beat 2 (fouled output)');
+    }
+    ex.facing = good;
+    run.tutorial.rotated = false;
+    run.tutorial.facing0 = null;
+  }
+  frames(2 * HZ);
+  assertEq(T.beat(run), 'rotate', 'an open output alone does not pass beat 2');
+  key('r');
+  frames(2);
+  assertEq(T.beat(run), 'belt', 'pressing R advanced the beat');
+  const L3 = checkBox('beat 3 (belt)');
+  assert(L3.from, 'beat 3 marks the arrow the belt starts from');
+
+  // ---- BEAT 3: a belt that actually reaches the rig ---------------------
+  const hub = { x: run.hub.x + 1, y: run.hub.y + 1 };
+  assertEq(L3.target.x, hub.x, 'beat 3 points at the rig (x)');
+  assertEq(L3.target.y, hub.y, 'beat 3 points at the rig (y)');
+  // a belt that stops short must NOT pass: this is the "beautiful line that
+  // ends in dirt" case Part 1 already names in the LOG
+  const start = T.outputTile(ex);
+  // Route over ground a belt can occupy — including rock, which a player digs
+  // out with X on the way through. Both are excavated below before a single
+  // belt goes down, so the lay-mode walk that follows is one arrow key per
+  // tile with nothing in the way.
+  const path = (function bfs() {
+    const q = [[start.x, start.y]], prev = new Map();
+    const ck = function (x, y) { return x + ',' + y; };   // NOT `key` — that is the keydown helper
+    const okCell = function (x, y) {
+      if (x < 0 || y < 0 || x >= D.MAP_W || y >= D.MAP_H) return false;
+      const t = run.grid[y][x];
+      return !!t && t.revealed && (t.t === 'floor' || t.t === 'rock') && !t.lm &&
+             t.machine === null && !t.belt;
+    };
+    prev.set(ck(start.x, start.y), null);
+    while (q.length) {
+      const [x, y] = q.shift();
+      for (const d of D.DIRS) {
+        const nx = x + d.dx, ny = y + d.dy, k = ck(nx, ny);
+        if (prev.has(k)) continue;
+        const t = (nx >= 0 && ny >= 0 && nx < D.MAP_W && ny < D.MAP_H) ? run.grid[ny][nx] : null;
+        if (t && t.machine === 0) { prev.set(k, [x, y]); return rebuild(prev, [nx, ny]); }
+        if (!okCell(nx, ny)) continue;
+        prev.set(k, [x, y]);
+        q.push([nx, ny]);
+      }
+    }
+    return null;
+    function rebuild(p, at) {
+      const out = [];
+      let cur = at;
+      while (cur) { out.unshift(cur); cur = p.get(ck(cur[0], cur[1])); }
+      return out;
+    }
+  })();
+  assert(path && path.length >= 2, 'a belt route exists from the arrow to the rig');
+  assert(okStart(), 'the route starts on the extractor output');
+  function okStart() { return path[0][0] === start.x && path[0][1] === start.y; }
+
+  // clear anything the route has to dig through, with the demolish tool and the
+  // same keys a player uses, and let the excavation finish
+  key('x');
+  assertEq(st.ui.tool, 'demolish', "'x' selects demolish");
+  for (let i = 0; i < path.length - 1; i++) {
+    const t = run.grid[path[i][1]][path[i][0]];
+    if (t.t === 'floor' && !t.rubble) continue;
+    walkTo(path[i][0], path[i][1]);
+    key('Enter');
+  }
+  {
+    let dug = 0;
+    while (dug++ < 60 * HZ) {
+      let busy = false;
+      for (let i = 0; i < path.length - 1 && !busy; i++)
+        if (run.grid[path[i][1]][path[i][0]].digT > 0) busy = true;
+      if (!busy) break;
+      frames(1);
+    }
+    for (let i = 0; i < path.length - 1; i++)
+      assertEq(run.grid[path[i][1]][path[i][0]].t, 'floor',
+        'the route was dug out at ' + path[i][0] + ',' + path[i][1]);
+  }
+  assertEq(T.beat(run), 'belt', 'digging is not laying: the beat has not passed');
+
+  key('1');
+  assertEq(st.ui.tool, 'belt', "'1' selects the belt");
+  walkTo(start.x, start.y);
+  key('Enter');
+  assert(st.ui.laying, 'Enter armed lay-mode on the output tile');
+  const layStep = function (i) {
+    const px = path[i - 1][0], py = path[i - 1][1];
+    const nx = path[i][0], ny = path[i][1];
+    key(nx > px ? 'ArrowRight' : nx < px ? 'ArrowLeft' : ny > py ? 'ArrowDown' : 'ArrowUp');
+  };
+  // Lay the line but leave a gap before the rig. The last belt in the run aims
+  // at the empty tile ahead of it, which is exactly "a line that ends on bare
+  // ground" — Part 1's own diagnostic — and the beat must not accept it.
+  const shortEnd = path.length - 3;      // last index laid in the short phase
+  for (let i = 1; i <= shortEnd; i++) layStep(i);
+  frames(2);
+  if (shortEnd >= 1) {
+    assert(!T.reachesRig(run, start.x, start.y), 'the short line really is short');
+    assertEq(T.beat(run), 'belt', 'a line that stops short of the rig does not pass');
+  }
+  // ...and the rest, ending with the step ONTO her, which aims the final belt in
+  for (let i = Math.max(1, shortEnd + 1); i < path.length; i++) layStep(i);
+  key('Escape');
+  frames(2);
+  assert(T.reachesRig(run, start.x, start.y), 'the laid line really reaches the rig');
+  assertEq(T.beat(run), 'ore', 'connecting the rig advanced the beat');
+  const L4 = checkBox('beat 4 (ore)');
+  assert(L4.panels, 'the last beat points at the panels');
+
+  // ---- BEAT 4: the ore lands, and the panels take over ------------------
+  assertEq(run.instHold, true, 'instability is still frozen while ore is in flight');
+  assertEq(run.instability, 0, '...and has not moved a point all induction');
+  let guard = 0;
+  while (T.beat(run) === 'ore' && guard++ < 120 * HZ) frames(1);
+  assert(guard < 120 * HZ, 'the first ore reached the rig');
+  assert((run.stats.delivered | 0) > 0, 'the sim counted the delivery');
+  assertEq(T.beat(run), 'outro', 'the arriving ore closed the last beat');
+  assert(!run.instHold, 'the pressure pause lifts when the first ore lands');
+  const L5 = checkBox('sign-off');
+  assert(L5.panels, 'the sign-off still points at the panels');
+  // POINTING, not covering: the two rows it marks are still readable, still in
+  // their panels, still saying what they said.
+  {
+    const rows = gridRows();
+    const sr = LAY.stock.ironOre;
+    assert(sr, 'render published the STOCK iron-ore row');
+    const label = rows[sr.row].slice(sr.col, sr.col + sr.w);
+    assert(label.indexOf(R.itemLabel('ironOre')) >= 0,
+      'the pointed-at STOCK row still reads "' + R.itemLabel('ironOre') + '"');
+    const marked = R.cellAt(sr.col + 4, sr.row);
+    assert(marked && marked.bg && marked.fg === C.bg, 'the STOCK row is marked');
+    assert(LAY.chain.length >= 1, 'render published the CHAIN stages');
+    const cr = LAY.chain[0];
+    assert(rows[cr.row].slice(cr.col, cr.col + cr.w).trim().length > 0,
+      'the pointed-at CHAIN row still has its text');
+  }
+  // ---- the sign-off lingers, then the induction is gone for good --------
+  assert(T.active(run), 'the sign-off lingers to be read');
+  const inst0 = run.instability;
+  frames(D.TUTORIAL.holdT * HZ + 4);
+  assert(!T.active(run), 'and then the induction is over');
+  // ...and the floor has been tightening again the whole time it lingered
+  assert(run.instability > inst0, 'the floor tightens again once the ore has landed');
+  assertEq(T.layout(run), null, 'a finished induction draws nothing');
+  assertEq(st.meta.tutorialSeen, true, 'finishing it closes the door in meta');
+  frames(2);
+  assert(gridRows()[1].indexOf('RENDER ERROR') < 0, 'the run screen survives it');
+  // every beat really was visited
+  for (const b of T.BEATS)
+    assert(beatsSeen.indexOf(b) >= 0, 'the drive rendered the ' + b + ' beat');
+
+  // ---- and it is skippable from the first keypress ----------------------
+  {
+    st.meta = M.newProfile();
+    key('Escape');                          // clear the belt tool from the drive
+    DC.state.screen = 'title';
+    key('Enter');
+    const r2 = DC.state.run;
+    assert(r2.tutorial && T.active(r2), 'the second run arms it again (meta was fresh)');
+    assertEq(r2.instHold, true, 'and freezes instability again');
+    // the very first keypress, before a single sim tick has run
+    key(D.TUTORIAL.skipKey);
+    assert(r2.tutorial.skipped, 'TAB skips the induction from the first keypress');
+    assert(!r2.instHold, 'skipping lifts the pressure pause immediately');
+    frames(1);
+    const L = T.layout(r2);
+    assert(L && L.beat === 'skipped', 'GRIT gets one line about being skipped');
+    assert(!L.panels, '...and does not point at anything while he says it');
+    checkBox('skipped', r2);
+    frames(D.TUTORIAL.holdT * HZ + 4);
+    assert(!T.active(r2), 'and then it is gone');
+    assertEq(DC.state.meta.tutorialSeen, true, 'skipping closes the same door');
+    // a third run, same profile: never again
+    DC.state.screen = 'title';
+    key('Enter');
+    assert(!DC.state.run.tutorial, 'a profile that has seen it never sees it again');
+    assert(!DC.state.run.instHold, '...and its instability was never frozen');
+  }
+
+  return T.BEATS.length + ' beats, box ' + A.SPEECH.W + 'x' + A.SPEECH.H +
+    ' on a ' + D.MAP_W + '-wide map';
+}
+
 // -------------------------------------------------------------------- main
 const SEED = process.env.DC_SEED ? (parseInt(process.env.DC_SEED, 10) | 0) : 1337;
 try {
@@ -4685,6 +5160,9 @@ try {
   const wonders = wondersSection(SEED + 47);
   const events = eventsSection(SEED + 53);
   const wide = wideSection(SEED + 59);
+  // Last: it boots the real engine a second time and leaves DC.state pointed at
+  // its own run, so anything that ran after it would inherit a tutorial.
+  const onboard = tutorialSection(SEED + 61);
   // The webfont section is the one asynchronous check in the suite — a
   // document.fonts.ready handler cannot be driven synchronously — so the
   // PASS line waits on it rather than racing it.
@@ -4698,6 +5176,7 @@ try {
       ' | wonders ' + wonders +
       ' | events ' + events +
       ' | wide ' + wide +
+      ' | onboard ' + onboard +
       ' | cadence 16/12/10 | overdrive x2 | damper ok | charge+bronze ok | mantle ok' +
       ' | engine+barks ok | ' + (Date.now() - t0) + 'ms');
     process.exit(0);

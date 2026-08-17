@@ -141,14 +141,19 @@
     return ((meta.runs | 0) === 0);
   }
 
+  // Arming is LAZY about its vein, and measured rather than assumed: across 200
+  // seeds an iron vein is inside the opening scan radius at t=0 on 198 of them
+  // and on all 200 within five seconds, because the scan is still growing when
+  // the run starts. Refusing to arm on the two would have made the induction
+  // silently absent for one player in a hundred — so it arms anyway and picks
+  // the tile the moment the sweep hands one over, and gives up (quietly, and
+  // releasing the pressure pause) if a map really has none.
   function begin(run, meta) {
     if (!run || !eligible(meta)) return false;
-    const vein = pickVein(run);
-    if (!vein) return false;
     run.tutorial = {
       i: 0, salt: 0, nudges: 0,
-      beatT: run.totalT,
-      vein: vein,
+      beatT: run.totalT, armT: run.totalT,
+      vein: pickVein(run),
       rotated: false, facing0: null,
       hold: 0,          // run.totalT the finished box stops lingering
       over: false,      // the whole induction is behind us
@@ -238,6 +243,16 @@
     if (T.i >= BEATS.length) {
       if (T.hold && run.totalT >= T.hold) T.over = true;
       return;
+    }
+
+    // Still waiting for the sweep to hand over a vein to teach on.
+    if (!T.vein) {
+      T.vein = pickVein(run);
+      if (!T.vein) {
+        if (run.totalT - T.armT > CFG.armT * HZ) { T.over = true; release(run); }
+        return;
+      }
+      T.beatT = run.totalT;      // the beat starts when the player can see it
     }
 
     // Beat 2 watches the facing the player is aiming with. `facing0` is armed
@@ -372,6 +387,7 @@
     if (!active(run)) return null;
     const S = DC.Art && DC.Art.SPEECH;
     if (!S) return null;
+    if (!state(run).vein) return null;    // nothing to teach on yet: no box
     const tgt = target(run);
     if (!tgt) return null;
     const ex = beatId(run) === 'belt' ? firstExtractor(run) : null;

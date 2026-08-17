@@ -185,6 +185,16 @@ assert(allLines.length >= 120, '>= 120 lines total (got ' + allLines.length + ')
 for (const t of REVIEW_TIERS)
   for (const l of B.REVIEWS[t]) allLines.push(['review:' + t, l]);
 
+// M-ONBOARD Part 2: the induction script. It joins the DUPLICATE and GUARDRAIL
+// corpora here — a joke told twice is worse whichever panel the second telling
+// lands in, and the voice guardrails do not care where a line is drawn. It
+// deliberately does NOT join `allLines`: everything in there is measured
+// against the 70-column ceiling and the foreman bar's 2 x 41, and the induction
+// is never drawn in the bar. Its width and wrap are held to the speech box it
+// actually lives in, down in SECTION 'onboard-tutor'.
+const tutorLines = [];
+for (const k in B.TUTOR) for (const l of B.TUTOR[k]) tutorLines.push(['tutor:' + k, l]);
+
 // M-EVENTS: the Dead Foremen. These are NOT GRIT — they are quotes found in
 // the rock, and they join the corpus for the width and guardrail lints (they
 // are drawn into the same LOG panel every bark is) but deliberately NOT for
@@ -863,22 +873,25 @@ function contentWords(s) {
     .filter(w => w.length > 2 && !STOP.has(w));
 }
 {
+  // the induction is in here too: sixty new jokes are sixty new chances to have
+  // told one of the existing four hundred a second time
+  const dupLines = allLines.concat(tutorLines);
   const byText = new Map();
-  for (const [tag, l] of allLines) {
+  for (const [tag, l] of dupLines) {
     if (byText.has(l)) fail('exact duplicate line in ' + byText.get(l) +
       ' and ' + tag + ': ' + l);
     byText.set(l, tag);
   }
-  const sets = allLines.map(([, l]) => new Set(contentWords(l)));
+  const sets = dupLines.map(([, l]) => new Set(contentWords(l)));
   let worst = 0, worstPair = null;
-  for (let i = 0; i < allLines.length; i++) {
-    for (let j = i + 1; j < allLines.length; j++) {
+  for (let i = 0; i < dupLines.length; i++) {
+    for (let j = i + 1; j < dupLines.length; j++) {
       const a = sets[i], b = sets[j];
       if (!a.size || !b.size) continue;
       let inter = 0;
       for (const w of a) if (b.has(w)) inter++;
       const jac = inter / (a.size + b.size - inter);
-      if (jac > worst) { worst = jac; worstPair = [allLines[i], allLines[j]]; }
+      if (jac > worst) { worst = jac; worstPair = [dupLines[i], dupLines[j]]; }
     }
   }
   assert(worst < DUP_MAX, 'no near-duplicate punchlines (overlap ' +
@@ -916,7 +929,11 @@ SECTION = 'guardrails';
   // M-EVENTS' authored text answers to the same guardrails GRIT does — the
   // logbook, and every line of every vignette (which is why they are gathered
   // here rather than trusted for being "lore").
-  for (const [tag, l] of allLines.concat(logLines, eventLines())) {
+  // M-ONBOARD Part 2: the induction is where the register is widest by design
+  // (dad jokes, the joke a nine-year-old makes about a drill and a hole, filthy
+  // adult ones) and it answers to exactly the same line the rest of the corpus
+  // does. That line is where the humour is BETTER, not weaker.
+  for (const [tag, l] of allLines.concat(tutorLines, logLines, eventLines())) {
     for (const [re, why] of BANNED) {
       if (re && re.test(l)) fail('guardrail (' + why + ') in ' + tag + ': ' + l);
     }
@@ -1350,6 +1367,131 @@ let diagN = 0;
   }
 }
 
+// ============ M-ONBOARD Part 2: the induction script ======================
+// The tutorial pool is authored content and answers to every lint the rest of
+// the corpus does — but NOT to the foreman bar's geometry, because it is never
+// drawn there. It lives in a 40-cell box on the map, so its wrap contract is
+// that box: three rows of DC.Art.SPEECH.TEXT_W, no line truncated, no word
+// split. That is the same requirement the bar imposes, measured against the
+// panel the writing actually lands in.
+SECTION = 'onboard-tutor';
+let TUTOR_N = 0, TUTOR_WORST = 0;
+{
+  require('../js/tutorial.js');
+  require('../js/render.js');
+  const R = DC.Render, A = DC.Art, T = DC.Tutorial;
+  const S2 = A.SPEECH;
+  assert(S2 && S2.W > 0 && S2.TEXT_W > 0 && S2.PROSE_ROWS > 0,
+    'Art exports the speech-box geometry');
+  assert(B.TUTOR && typeof B.tutor === 'function', 'Barks exports the induction pool');
+
+  // Every beat has a pool, and the sign-offs do too. The sizes are the point of
+  // the brief: ~60 authored lines so a second playthrough is not the same
+  // script, and no beat so thin that one run exhausts it.
+  const BEAT_POOLS = ['place', 'rotate', 'belt', 'ore'];
+  for (const k of BEAT_POOLS) {
+    assert(Array.isArray(B.TUTOR[k]) && B.TUTOR[k].length >= 10,
+      'induction beat "' + k + '" has >= 10 lines (got ' +
+      ((B.TUTOR[k] || []).length) + ')');
+  }
+  for (const k of ['nudge', 'outro', 'skip']) {
+    assert(Array.isArray(B.TUTOR[k]) && B.TUTOR[k].length >= 4,
+      'induction pool "' + k + '" has >= 4 lines');
+  }
+  for (const k of T.BEATS)
+    assert(Array.isArray(B.TUTOR[k]), 'every beat js/tutorial.js runs has a pool: ' + k);
+  TUTOR_N = tutorLines.length;
+  assert(TUTOR_N >= 55, 'the induction is ~60 authored lines (got ' + TUTOR_N + ')');
+
+  // --- the panel-wrap contract: nothing is ever cut mid-word ---
+  for (const [tag, l] of tutorLines) {
+    assertEq(typeof l, 'string', tag + ' is a string');
+    const rows = R.wrapClamp(l, S2.TEXT_W, S2.PROSE_ROWS);
+    assert(rows.length <= S2.PROSE_ROWS, tag + ': "' + l + '" needs ' + rows.length +
+      ' rows, the box holds ' + S2.PROSE_ROWS);
+    for (const ln of rows) {
+      assert([...ln].length <= S2.TEXT_W, tag + ': row "' + ln + '" is ' +
+        [...ln].length + ' > ' + S2.TEXT_W + ' columns');
+      assert(ln.indexOf('…') < 0, tag + ': "' + l + '" would be truncated to "' + ln + '"');
+    }
+    const words = (s) => String(s).trim().split(/\s+/).filter(Boolean).join(' ');
+    assertEq(words(rows.join(' ')), words(l), tag + ': wrapping changed the words');
+    if (l.length > TUTOR_WORST) TUTOR_WORST = l.length;
+  }
+
+  // --- THE BIT. He is reading somebody else's paper and cannot leave it alone.
+  // Every beat pool has to carry the quoted-script half in a real share of its
+  // lines, because that quote is the setup and the riff is the punchline: a
+  // pool that stopped quoting would just be GRIT with a new subject.
+  for (const k of BEAT_POOLS) {
+    const quoting = B.TUTOR[k].filter(l => /'[^']{10,}'/.test(l)).length;
+    assert(quoting >= 4, 'induction beat "' + k + '" quotes the Company script in ' +
+      quoting + ' lines — the flat line IS the setup');
+  }
+
+  // --- determinism (§0 law 7). The induction runs on a live run whose map,
+  // schematic offers and quake schedule all come off run.rng. A line drawn
+  // because the player was SLOW would move all three.
+  {
+    const a = S.newRun(defEffects(), 20260817);
+    const b = S.newRun(defEffects(), 20260817);
+    for (const k in B.TUTOR) {
+      for (let salt = 0; salt < 5; salt++) {
+        const line = B.tutor(a, k, salt);
+        assert(typeof line === 'string' && line.length > 0,
+          'Barks.tutor(' + k + ', ' + salt + ') returns a line');
+        assertEq(B.tutor(b, k, salt), line, 'one seed and one beat pick one line');
+      }
+    }
+    assertEq(a.rng(), b.rng(), 'the induction advanced run.rng');
+    assertEq(B.tutor(a, 'nope', 0), null, 'an unknown beat is a silence, not a throw');
+    // ...and restating really does move on rather than repeating itself
+    const seen = new Set();
+    for (let salt = 0; salt < B.TUTOR.place.length; salt++) seen.add(B.tutor(a, 'place', salt));
+    assertEq(seen.size, B.TUTOR.place.length, 'restating walks the pool without repeats');
+    // different seeds do not all open on the same joke
+    const opens = new Set();
+    for (let s = 1; s <= 40; s++) opens.add(B.tutor(S.newRun(defEffects(), s * 7717), 'place', 0));
+    assert(opens.size >= 6, 'the opening line varies by seed (' + opens.size + ' of ' +
+      B.TUTOR.place.length + ')');
+  }
+
+  // --- the ACTION rows are never a joke and never empty ---
+  {
+    const run = S.newRun(defEffects(), 4242);
+    const meta = DC.Meta.newProfile();
+    assert(T.begin(run, meta), 'the induction arms on a fresh profile');
+    const caps = {};
+    for (let i = 0; i < T.BEATS.length; i++) {
+      run.tutorial.i = i;
+      const act = T.action(run);
+      assert(Array.isArray(act) && act.length, 'beat ' + T.BEATS[i] + ' has an action row');
+      let w = 0, hasCap = false;
+      for (const s of act) {
+        w += s[0] === 'cap' ? s[1].length + 2 : s[1].length;
+        if (s[0] === 'cap') { hasCap = true; caps[s[1]] = true; }
+      }
+      assert(w <= S2.TEXT_W, 'beat ' + T.BEATS[i] + ' action row is ' + w +
+        ' cols, the box holds ' + S2.TEXT_W);
+      // the last beat is a WATCH beat and has no key; the three that ask for a
+      // keypress must draw that key
+      if (T.BEATS[i] !== 'ore')
+        assert(hasCap, 'beat ' + T.BEATS[i] + ' draws its key as a keycap');
+      // the way out is on screen on every beat that is still asking for one
+      const foot = T.foot(run);
+      assert(foot.some(s => s[0] === 'cap' && s[1] === D.TUTORIAL.skipKey.toUpperCase()),
+        'beat ' + T.BEATS[i] + ' shows the skip key');
+    }
+    // the keycaps name keys engine.js really binds, not keys the writing wished
+    // for: the build digits come off D.BUILD_ORDER, so a reordering moves them
+    assert(caps[String(D.BUILD_ORDER.indexOf('extractor') + 1)],
+      'the place beat draws the extractor build key from D.BUILD_ORDER');
+    assert(caps[String(D.BUILD_ORDER.indexOf('belt') + 1)],
+      'the belt beat draws the belt build key from D.BUILD_ORDER');
+    assert(caps.R, 'the rotate beat draws R');
+  }
+}
+
 // ------------------------ CX-11: STOCK rows are unambiguous and never clipped
 // render.js exports the row contract (STOCK_NAME_W / itemLabel / stockCount).
 // The bug was 'copper ore' and 'copper plate' both drawing as 'copper o/p';
@@ -1501,7 +1643,8 @@ SECTION = 'prose-panels';
   ];
   for (const t of evLits.concat(evDyn)) checkWrap(t, LW, LR, 'LOG event message');
   PROSE_N = allLines.length * 2 + lits.length + dyn.length +
-            logLines.length + evLits.length + evDyn.length + diagLits.length;
+            logLines.length + evLits.length + evDyn.length + diagLits.length +
+            TUTOR_N;   // wrapped against the induction box, in 'onboard-tutor'
 }
 
 console.log('PASS barks | categories ' + CATALOG.length +
@@ -1522,6 +1665,8 @@ console.log('PASS barks | categories ' + CATALOG.length +
   ' | scan lines ' + scanLines + ' <= ' + S.SCAN_W +
   ' | diagnostics ' + diagN + ' lines, ' + Object.keys(S.STATUS_HINT).length +
   " legends for '!', GRIT costs no rng" +
+  ' | induction ' + TUTOR_N + ' lines, longest ' + TUTOR_WORST + ', box ' +
+  DC.Art.SPEECH.PROSE_ROWS + 'x' + DC.Art.SPEECH.TEXT_W + ', costs no rng' +
   ' | stock labels ' + D.ITEM_ORDER.length + ' unambiguous' +
   ' | prose ' + PROSE_N + ' lines wrap whole (LOG ' + DC.Render.LOG_MSG_ROWS +
   'x' + DC.Render.SCAN_COL_W + ', bar 2x' + DC.Render.FOREMAN_ROW_W + ')');
