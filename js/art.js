@@ -1003,6 +1003,68 @@
     damper:    icon3('#.#.#.', '.#.#.#'),     // a coil, absorbing
   };
 
+  // ============ M-ONBOARD Part 2: the induction box and its pointer ==========
+  // The tutorial is delivered CENTRE STAGE (director's call) — a box that lands
+  // near what GRIT is talking about, points at it, and gets out of the way.
+  // Everything about it is composed here, as rows of glyphs: art.js is where
+  // the game's pictures live, and a box drawn inline in render.js would be a
+  // picture nobody could test without a canvas.
+  //
+  // THE TAIL IS THE POINT. A caption floating over a map is a caption; a
+  // caption with a wedge running out of it into a specific tile is an arrow,
+  // and an arrow is the thing that survives a joke the player did not parse
+  // (§0 law 6). The wedge is rasterised through R.quadrants rather than typed
+  // as '▼', so it is three cells of real sub-cell geometry — the box has a
+  // TAIL, not a punctuation mark, and it never leaves the character grid
+  // (M-HIRES Phase 2's whole proposition).
+  A.SPEECH = {
+    W: (D.TUTORIAL && D.TUTORIAL.boxW) || 40,
+    PROSE_ROWS: (D.TUTORIAL && D.TUTORIAL.proseRows) || 3,
+    PAD: 1,                        // one column of air inside each wall
+    get TEXT_W() { return A.SPEECH.W - 2 - A.SPEECH.PAD * 2; },
+    // prose rows + a blank + the ACTION row + the skip footer, inside 2 walls
+    get H() { return A.SPEECH.PROSE_ROWS + 3 + 2; },
+  };
+
+  // A wedge three cells wide, narrowing to the two middle sub-columns on the
+  // side it points at. `dir` is 'down' (the box is above its target) or 'up'.
+  function speechWedge(dir) {
+    const bm = R.bitmap(3, 1, 2, 2);
+    const near = dir === 'up' ? 1 : 0;   // the sub-row against the box
+    for (let x = 0; x < 6; x++) R.set(bm, x, near, 1);
+    R.set(bm, 2, 1 - near, 1);
+    R.set(bm, 3, 1 - near, 1);
+    return R.quadrants(bm)[0];
+  }
+  A.speechTail = function (dir) { return speechWedge(dir === 'up' ? 'up' : 'down'); };
+  A.SPEECH_TAIL_W = 3;
+
+  // The box as rows of glyphs, ready to be blitted a row at a time. `title`
+  // rides the top border (that is where the induction announces itself and
+  // which of the four beats you are on); `prose` is the authored line already
+  // wrapped; `action` and `foot` are the two rows that must be legible even if
+  // the joke was not. Returns plain strings — the CALLER paints them, because
+  // the keycaps are inverse cells and inverse is not a character.
+  A.speechBox = function (title, prose, action, foot) {
+    const S = A.SPEECH, w = S.W, pad = ' '.repeat(S.PAD);
+    const inner = function (s) {
+      s = String(s === undefined || s === null ? '' : s);
+      return '│' + pad + seg(s + sp(S.TEXT_W), 0, S.TEXT_W) + pad + '│';
+    };
+    const bar = rep('─', w - 2);
+    const rows = ['┌' + bar + '┐'];
+    if (title) {
+      const t = (' ' + title + ' ').slice(0, Math.max(0, w - 4));
+      rows[0] = lay(rows[0], 2, t);
+    }
+    for (let i = 0; i < S.PROSE_ROWS; i++) rows.push(inner((prose || [])[i]));
+    rows.push(inner(''));
+    rows.push(inner(action));
+    rows.push(inner(foot));
+    rows.push('└' + bar + '┘');
+    return rows;
+  };
+
   // 2-char sidebar badges + thematic card colors (keys into DC.DATA.COLORS)
   A.schemBadges = {
     s_beltfree: '▶▶', s_extract: '▼▼', s_smelt: '▬▬', s_coal: '♠♠',

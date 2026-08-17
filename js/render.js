@@ -572,6 +572,10 @@
            phase ? gold : shade(gold, 0.55));
     }
 
+    // M-ONBOARD Part 2: the induction, over everything on the map and under
+    // the pause menu (a paused game is not being taught anything).
+    drawTutorial(run, phase);
+
     // pause menu overlay
     if (ui.paused) {
       const bw = 26, bh = 8, bx = (48 - bw) >> 1, by = 12;
@@ -981,6 +985,7 @@
   }
   function drawChainPanel(y, run, meta, phase) {
     const ch = chainSafe(run);
+    layout.chain = [];
     y = sideEdge(y, 'sep', 'CHAIN');
     if (!ch) return y;
     for (const s of ch.stages) {
@@ -991,6 +996,11 @@
       text(SBC + CHAIN_NAME_X, y, s.name, dead ? C.darkgray : C.gray);
       text(SBC + CHAIN_N_X, y, s.n + s.letter, dead ? C.darkgray : C.white);
       textR(SBC + CHAIN_RATE_R, y, fmtRate(s.rate), dead ? C.darkgray : C.white);
+      // Published for the induction's fourth beat (M-ONBOARD Part 2), which
+      // POINTS at this row rather than restating it: CHAIN already names the
+      // limiting stage in the warning colour, and a tutorial line that says
+      // what a panel is saying two feet to the right is a wasted line.
+      layout.chain.push({ row: y, col: SBC, w: CHAIN_FLAG_X, flag: s.flag || '' });
       if (s.flag) {
         // the warning colour, and only on the stage that is actually holding
         // the base back — a panel that shouts at three rows teaches nothing
@@ -1090,6 +1100,7 @@
   }
   function drawStockPanel(y, run, ch) {
     y = panelEdge(SB2, SBW2, y, 'sep', 'STOCK');
+    layout.stock = {};
     const inv = run.inv || {};
     const flow = (ch && ch.flow) || {};
     for (let i = 0; i < D.ITEM_ORDER.length; i++) {
@@ -1106,6 +1117,9 @@
       textR(SB2 + SBW2 - 4, y, stockCount(n), n ? C.white : C.darkgray);
       const tm = trendMark(flow[id] || 0);
       put(SB2 + SBW2 - 2, y, tm[0], tm[1]);
+      // ...and where this row landed, so the induction can point at the one
+      // that is about to tick up instead of describing it (M-ONBOARD Part 2).
+      layout.stock[id] = { row: y, col: x, w: 4 + STOCK_NAME_W };
       y++;
     }
     return y;
@@ -1253,6 +1267,112 @@
       text(7, 31 + i, rows[i].slice(0, left), fading ? C.amberDim : C.cyan);
       left -= rows[i].length + 1;
     }
+  }
+
+  // ============ M-ONBOARD Part 2: the induction box =========================
+  // GRIT, centre stage, on the map, pointing at the thing he is talking about.
+  //
+  // THE ONE THING THAT MUST SURVIVE THE COMEDY. However dumb the joke, the
+  // ACTION is on screen at the same moment: the key as an INVERSE KEYCAP (a
+  // real inverted cell, not brackets pretending to be one) and the target tile
+  // held under a highlight that never blinks OFF — it alternates between two
+  // bright backgrounds, so it is animated without there ever being a frame in
+  // which a player looking for it finds nothing. That is what lets the writing
+  // be as stupid as it likes: nobody ever has to parse a gag to find out what
+  // to press (SPEC3 M-ONBOARD).
+  //
+  // Geometry is js/tutorial.js's — derived from D.MAP_X / D.MAP_W and asserted
+  // there and in test/integration.js. Nothing about the box's position is
+  // decided here, which is the only way "it never covers its own target and
+  // never touches a panel column" can be a property rather than a hope.
+  function tutorSegs(col, row, segs, w, color) {
+    let x = col;
+    const end = col + w;
+    for (let i = 0; i < segs.length && x < end; i++) {
+      const s = segs[i];
+      if (s[0] === 'cap') {
+        const cap = ' ' + s[1] + ' ';
+        if (x + cap.length > end) break;
+        // an inverse keycap: the letter takes the box's background and the cap
+        // takes the ink, which is the same trick the field manual's keys use
+        text(x, row, cap, C.bg, C.white);
+        x += cap.length;
+      } else {
+        const t = String(s[1]).slice(0, end - x);
+        text(x, row, t, color);
+        x += t.length;
+      }
+    }
+    return x - col;
+  }
+
+  // Hold a cell up to the light without covering it: the glyph stays exactly
+  // where it was and takes the background instead. Used for the target tile and
+  // for the two panel rows the last beat points at — a panel that has been
+  // POINTED at is still readable, a panel with a box on it is not.
+  function tutorMark(col, row, hot) {
+    if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return;
+    const on = hot ? C.white : C.amber;
+    if (chB[row][col] === ' ') { chB[row][col] = '·'; }
+    bgB[row][col] = on;
+    fgB[row][col] = C.bg;
+  }
+
+  function drawTutorial(run, phase) {
+    const T = DC.Tutorial;
+    if (!T || typeof T.layout !== 'function') return;
+    let L = null;
+    try { L = T.layout(run); } catch (e) { return; }
+    if (!L) return;
+    const A = DC.Art, S = A && A.SPEECH;
+    if (!S) return;
+    const hot = !!phase;
+
+    // 1. the target tile, before the box: it is never under the box, and the
+    //    suites prove that rather than trusting this comment
+    tutorMark(L.target.col, L.target.row, hot);
+    if (L.from) tutorMark(L.from.col, L.from.row, !hot);   // the other end of the belt
+
+    // 2. the panels, once the induction has stopped being about the map. CHAIN
+    //    lights its own limiting stage and STOCK draws its own trend arrow —
+    //    this only says LOOK THERE.
+    if (L.panels) {
+      const sr = layout.stock && layout.stock.ironOre;
+      if (sr) for (let i = 0; i < sr.w; i++) tutorMark(sr.col + i, sr.row, hot);
+      const rows = layout.chain || [];
+      let pick = null;
+      for (let i = 0; i < rows.length; i++) if (rows[i].flag) { pick = rows[i]; break; }
+      if (!pick && rows.length) pick = rows[0];
+      if (pick) for (let i = 0; i < pick.w; i++) tutorMark(pick.col + i, pick.row, hot);
+    }
+
+    // 3. the tail, drawn before the box so the box's own border wins the cell
+    //    they share (they do not share one, but a future taller box might)
+    const tail = A.speechTail(L.dir);
+    text(L.tailCol, L.tailRow, tail, C.amber, C.bg);
+
+    // 4. the box. Opaque: the map under it is not information right now, and a
+    //    speech box you can see rock through is a speech box nobody can read.
+    const prose = wrapClamp(String(T.line(run) || ''), S.TEXT_W, S.PROSE_ROWS);
+    const frame = A.speechBox(T.title(run), [], '', '');
+    for (let i = 0; i < frame.length; i++) {
+      text(L.col, L.row + i, ' '.repeat(L.w), C.gray, C.bg);
+      text(L.col, L.row + i, frame[i], C.amber, C.bg);
+    }
+    // the title, in white over its own border
+    const ttl = (' ' + T.title(run) + ' ').slice(0, Math.max(0, L.w - 4));
+    text(L.col + 2, L.row, ttl, C.white, C.bg);
+
+    const tx = L.col + 1 + S.PAD;
+    for (let i = 0; i < prose.length; i++)
+      text(tx, L.row + 1 + i, prose[i], C.cyan, C.bg);
+
+    // the warn row, the action row and the way out — the three rows that are
+    // never a joke
+    const warn = T.warn(run);
+    if (warn && warn.length) tutorSegs(tx, L.row + 1 + S.PROSE_ROWS, warn, S.TEXT_W, C.red);
+    tutorSegs(tx, L.row + 2 + S.PROSE_ROWS, T.action(run) || [], S.TEXT_W, C.green);
+    tutorSegs(tx, L.row + 3 + S.PROSE_ROWS, T.foot(run) || [], S.TEXT_W, C.amberDim);
   }
 
   // ================= TITLE =================
@@ -2146,7 +2266,11 @@
     try { return DC.FX.odometer(key, value, prog); } catch (e) { return plain; }
   }
   // ================= public API =================
-  const layout = { cards: [], buildRows: [], map: null, choices: [], runRig: null };
+  const layout = { cards: [], buildRows: [], map: null, choices: [], runRig: null,
+                   // M-ONBOARD Part 2: where STOCK's rows and CHAIN's stages
+                   // landed, so the induction can point at them by position
+                   // rather than by re-deriving this file's arithmetic.
+                   stock: {}, chain: [] };
   surface.layout = layout;
 
   DC.Render = {
@@ -2169,6 +2293,10 @@
       sb2: SB2, sbw2: SBW2, sbc2: SBC2, scw2: SCW2,
       twoCol: TWO_COL,
       get runRig() { return layout.runRig; },
+      // M-ONBOARD Part 2: the two panel rows the induction's last beat points
+      // at, published so the suites can prove it POINTED and never COVERED.
+      get stock() { return layout.stock; },
+      get chain() { return layout.chain; },
     },
     LOGBOOK_W: LOG_W,
     // The prose panels' text contract (LOG at SCW columns, Foreman bar at 41),
