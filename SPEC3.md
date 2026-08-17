@@ -1087,6 +1087,125 @@ parses and reports its size delta.
 
 ---
 
+### M-HUMANBAL — Final Balance: the pass a bot cannot do (P0 — dispatch LAST)
+
+> Director, 2026-08-17, after playing: *"everything i tell you we will add to a
+> final balance updates wave, where we solve issues of balancing with human
+> gameplay."*
+
+**Why this wave exists.** `test/balance.js` runs a scripted bot that knows the
+rules by construction. It has never mis-aimed an extractor, never built in the
+wrong order, never spent its last plates on the wrong thing, and never had to
+guess what a panel meant. So a green sweep proves the game **winnable** and can
+never prove it **playable** — that gap is exactly how the director ended up
+unable to play his own game while all five suites passed (see M-ONBOARD). This
+brief is the counterweight: the findings that only appear when a human plays.
+
+**Dispatch LAST**, after every systems brief has landed. Balance tuned against a
+moving system is balance tuned twice, and these fixes want tuning *as a set* —
+several of them push the same numbers in the same direction and applying them
+one at a time will overshoot.
+
+**This section is a LEDGER. Append findings as they are found; do not fix them
+one at a time.** Each entry records the symptom in the director's words, the
+arithmetic underneath it, and candidate fixes — the *decision* is made when the
+wave is dispatched, with all findings on the table at once.
+
+#### Finding 1 — the plate death spiral: stratum 1 can soft-lock, silently
+
+> *"if i mistakenly use an extractor and dont make it to a smelter, and the ores
+> are not close to the rig, i may hit an unescapable ceiling where i dont have
+> plates to create a smelter, and thus i cant create belts nor extractors nor
+> nothing."*
+
+Real, and reachable by ordinary trial and error. The arithmetic:
+
+| | |
+|---|---|
+| start stock (naked) | **40 iron plate**, 8 gears, **no coal** |
+| costs | belt 1 · extractor 8 · smelter 10 · assembler 12 |
+| demolish refund | `Math.floor(cost × 0.5)` — extractor 8→**4**, smelter 10→**5** |
+| belts | refund **in full** (so belts are not the trap) |
+| bootstrap cost of the first plate | iron extractor 8 + **coal** extractor 8 + smelter 10 = **26** |
+
+Coal is not in start stock and a smelter burns one per three smelts, so the
+cheapest configuration that produces a single plate costs **26 of your 40**.
+Every build-and-undo cycle then burns half the capital you moved: **40 → 20 →
+10 → 5**. At 5 plates a smelter is out of reach permanently, nothing in the
+world makes plates, and *the run is over while the player keeps playing it*.
+Three rounds of honest experimentation is all it takes, and a first-timer's
+first three decisions are all experiments.
+
+The nastiest part is not the lock, it is the silence: M-ONBOARD Part 1 made
+every failure state name its own cause, and this state — the only genuinely
+unrecoverable one in the game — names nothing.
+
+Candidate fixes, cheapest first:
+
+1. **Name the state, whatever else is decided.** A dead run must say it is dead.
+   This is the one item that should ship even if every other candidate is
+   rejected, because an unrecoverable state the player cannot detect is worse
+   than an unrecoverable state.
+2. **A free-undo window.** Full refund on a machine demolished within ~10s of
+   placing it. This is the surgical option: it forgives *mistakes* while leaving
+   strategic rebuilds priced. Recommended.
+3. **Raise `D.DEMOLISH_REFUND`** (0.5 → 0.75). Simple, but it also cheapens
+   real mid-run restructuring, which is a decision the game currently charges
+   for on purpose.
+4. **A floor under the rig**: if plates < smelter cost, no smelter stands, and
+   nothing is producing, the Company issues an emergency requisition — in
+   fiction, with a GRIT line, so it reads as the world and not as a bailout.
+5. **Raise stratum 1's `START_STOCK`.** Bluntest, and it inflates every later
+   floor's opening too. Least favoured.
+
+Whatever is picked, the acceptance test is a constructed dead-end state, not a
+sweep: build a run down to the locked position and assert the player can still
+act. `test/balance.js`'s bot will never find this, by construction.
+
+#### Finding 2 — `←STARVED` is honest arithmetic and the wrong lesson on floor 1
+
+> *"it should not be necessary to have 2 smelters like what is proposed at the
+> moment. floor 1 should have a bit of wiggle room for errors."*
+
+The director is right, and the good news is that the game already agrees — it is
+the *panel* that is misleading him. Stratum 1 asks for **20 gears and hands you
+8**, so the real job is 12 gears:
+
+| chain | plate/s | gear/s | 12 gears in |
+|---|---|---|---|
+| 1 smelter → 1 assembler | 0.50 | 0.25 | **48s** |
+| 2 smelters → 1 assembler | 0.73 (assembler-capped) | 0.36 | 33s |
+
+Against SPEC §12's stratum-1 target (breach 90–150s plus ~40s of building),
+**one smelter clears it with room to spare.** But CHAIN marks the plate stage
+`←STARVED` in the warning colour the instant that base exists, because it
+faithfully reports that the assembler is not saturated. Technically correct;
+pedagogically backwards. It reads as *you have a problem* when the truth is
+*you are on pace*, and it pushes a new player into spending 10 more plates they
+may need for Finding 1's recovery.
+
+This is a §0 law 6 defect, not an arithmetic one: the number is right and the
+reader is misled. Directions worth considering:
+
+- Mark the limiting stage in a **neutral** colour and reserve the warning
+  colour for a stage that is limiting *and* off the pace the current floor
+  actually demands (the panel already projects the breach — compare against it).
+- Say what it costs, not just that it exists: `1S 0.50/s — breach 0:48` beside
+  `2S — 0:33` makes it a **choice** rather than an accusation.
+- Keep `STARVED` for a genuinely stalled stage (rate 0), which is the word's
+  plain meaning anyway; "not saturated" is a different condition and deserves a
+  different word.
+
+**Contracts:** `js/data.js` (values — this brief and M-POLISH are the only two
+that may change them), `js/sim.js` (refund/undo window), `js/render.js` (CHAIN's
+colour rule), `test/balance.js`, `test/headless.js` (constructed dead-end).
+**Acceptance:** the dead-end state is provably escapable or provably announced;
+SPEC §12's targets still hold after the tuning is applied *as a set*; no finding
+is fixed in a way that re-breaks an earlier one.
+**Size:** unknown until the ledger closes — it grows with every playtest.
+
+---
+
 ## §Z Dispatch plan
 
 **Order** (respects dependencies, front-loads feel):
@@ -1100,6 +1219,7 @@ parses and reports its size delta.
 | 4 | M-EVENTS (big; includes the cat) | the roguelike soul; benefits from anim layer existing |
 | 5 | M-MANTLE + M-SCHEMS2 (one session), M-TIER2 (parallel, strong session) | systems expansion |
 | 6 | M-WORMS, then M-ACHIEVE + M-RIGSKINS (one session), M-SOUND last | dessert |
+| 7 | **M-HUMANBAL, alone and last** | the only pass a bot cannot do; tuned as a SET, against systems that have stopped moving |
 
 **Session prompt template** (paste per dispatch, fill the blanks):
 

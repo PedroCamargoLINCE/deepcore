@@ -57,6 +57,16 @@ with `git add -A`).
 | 4.7 | ~~M-ONBOARD Part 2 (the tutorial)~~ ✅ **merged 2026-08-17** | — | — |
 | 5 | **M-TIER2 — IN FLIGHT** (alone, see below), dispatched 2026-08-17 | then M-MANTLE + M-SCHEMS2 | — |
 | 6 | M-WORMS | M-ACHIEVE + M-RIGSKINS | M-SOUND |
+| 7 | **M-HUMANBAL — alone, LAST** (SPEC3 §M-HUMANBAL) — the director's playtest ledger | — | — |
+
+**M-HUMANBAL is a running ledger, not a queued brief.** Every balance problem
+the director hits while actually playing gets appended to SPEC3's M-HUMANBAL
+section as it is reported — symptom in his words, the arithmetic underneath it,
+candidate fixes — and NOTHING is fixed at the time. They are dispatched together
+at the end, because several findings push the same numbers the same way and
+fixing them one at a time overshoots. When he reports a balance problem mid-wave,
+the correct response is to verify it against the code, write it into the ledger,
+and say so — not to patch it.
 
 **Why M-ONBOARD Part 1 jumped the queue.** The director found it by playing:
 he could not get an extractor working while all five suites were green. It is
