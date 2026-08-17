@@ -3,8 +3,9 @@ origin/master, and do all your work on it. You are the only session running.
 
 Read SPEC.md, SPEC2.md, and SPEC3.md section M-ONBOARD in full — especially
 Part 2, which is your whole assignment — plus js/barks.js, js/engine.js,
-js/art.js and js/render.js. Honor SPEC3's rules of engagement and §0's SEVEN
-laws.
+js/art.js and js/render.js. Honor SPEC3's rules of engagement and §0's EIGHT
+laws. Law 8 is the newest and it binds you too: the quake is a surprise
+permanently, so no tutorial beat may mention when one is coming.
 
 SCOPE: PART 2 ONLY — the first-run tutorial. Part 1 (the diagnostics that make
 failure states name their own cause) is already merged; build on it, do not
@@ -61,6 +62,24 @@ rasterizer (DC.Art.raster) can give the box a real tail/pointer without leaving
 the character grid. Honor §0 law 6: the box must never cover the thing it is
 pointing at, and must stay legible at every viewport scale M-HIRES supports.
 
+  READ THIS BEFORE YOU CENTRE ANYTHING. M-WIDE has landed since this brief was
+  written and the screen is 112 columns, not 80. "Centre stage" now means
+  CENTRED ON THE MAP, not on COLS. The map box is columns 0..MAP_W+1 and
+  everything right of MAP_W+3 is two panel columns of live UI — a box centred
+  with the usual (COLS - len) >> 1 would land squarely on top of the CHAIN and
+  STOCK panels. Centre on the map, derive from D.MAP_X / D.MAP_W, and never
+  type a margin.
+
+  THE PANELS ARE NOW YOUR CO-TEACHERS, so point at them instead of restating
+  them. CHAIN already names the limiting stage in the warning colour while it
+  is failing, STOCK already shows each item's trend arrow, and Part 1 already
+  makes every failure state name its own cause in the log. A beat that says
+  what a panel is saying two feet to the right is a wasted beat. The strongest
+  version of the "watch the first ore arrive" beat ends by pointing AT the
+  STOCK row ticking up and the CHAIN row lighting, because that teaches the
+  player where to look for the rest of the run. Do not cover either panel with
+  the box — they are the payoff of the beat.
+
 THE ONE THING THAT MUST SURVIVE THE COMEDY. However dumb the joke, the ACTION
 is unmissable on screen at the same time: the key drawn as an inverse keycap,
 and the target tile highlighted. This is not a limit on the humour — it is what
@@ -80,6 +99,9 @@ ACCEPTANCE
   or skipped the tutorial never sees it again.
 - barks_test extended over the new pool: voice lint, overlap ceiling, and the
   panel-wrap contract (no authored line is ever cut mid-word).
+- The box asserted never to overlap the map cell it points at, AND never to
+  overlap either panel column, at every beat. integration.js already renders
+  the run screen at 112 columns and knows where the panel walls are.
 - Gate: all five suites green (node test/headless.js, test/integration.js,
   test/barks_test.js, test/rig_test.js, test/balance.js) and node tools/build.js
   parses. test/balance.js must not regress — read its footer first.
