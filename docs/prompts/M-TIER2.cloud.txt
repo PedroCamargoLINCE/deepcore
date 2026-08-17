@@ -13,8 +13,8 @@ when the player under-builds, because that is the intended lesson. Preserve the
 existing belt push-mechanics contract: multi-pass compression and backpressure
 behave as test/headless.js asserts.
 
-TWO CONTRACTS LANDED SINCE THIS BRIEF WAS WRITTEN AND BOTH SIT DIRECTLY UNDER
-YOUR HANDS. Read them before you touch handoff.
+THREE CONTRACTS LANDED SINCE THIS BRIEF WAS WRITTEN AND ALL THREE SIT DIRECTLY
+UNDER YOUR HANDS. Read them before you touch handoff.
 
 1. FACING, NOT ADJACENCY — test/headless.js checkRigOutput. A belt hands its
    item to the ONE tile it faces, and a machine does the same, which is why a
@@ -35,6 +35,20 @@ YOUR HANDS. Read them before you touch handoff.
    that model, or it becomes invisible to the panel that teaches the chain: a
    splitter the player can see on the map but not in CHAIN is a hole in the
    game's only live explanation of itself. Extend checkChain alongside it.
+
+3. THE TUTORIAL NOW TEACHES BELTS, and it landed hours before you were
+   dispatched, so nothing else in this brief mentions it. js/tutorial.js runs a
+   four-beat first-run induction on the live map, and TWO of those beats are
+   yours: beat 3 gates on the player laying a belt from an extractor's output
+   arrow to the rig, and beat 4 gates on ore actually arriving, through
+   Sim.deliver(). A belt refactor that changes what counts as "laid" or what
+   counts as "delivered" will strand a new player on a beat with no way
+   forward, and it will do it silently, because the induction only runs on a
+   profile with zero completed runs and NO scripted test plays like a beginner.
+   Run the tutorial section of test/integration.js and keep it green; if you
+   change belt handoff at all, drive the four beats yourself before you call it
+   done. The first thing the game does with a new player is the last thing that
+   should break.
 
 Worth knowing: the scripted bot in test/balance.js currently CANNOT build the
 tier-2 chain, which is why high-Foundry runs stall at s5+ with 'no-breach' and
