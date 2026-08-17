@@ -148,8 +148,16 @@
   // silently absent for one player in a hundred — so it arms anyway and picks
   // the tile the moment the sweep hands one over, and gives up (quietly, and
   // releasing the pressure pause) if a map really has none.
-  function begin(run, meta) {
-    if (!run || !eligible(meta)) return false;
+  // `force` is the title screen's REPLAY INDUCTION door, and it bypasses
+  // eligibility only — everything after arms identically, so a replay is the
+  // real thing and not a preview of it. Two players need this and neither is
+  // served by the one-way flag on its own: the one who hit TAB in the first ten
+  // seconds and regretted it, and the one coming back after a month away. It is
+  // also the only way the director can watch his own tutorial, since his
+  // profile has runs on it — and a game whose tutorial can only be re-entered
+  // through devtools has a tutorial nobody on the team will ever re-read.
+  function begin(run, meta, force) {
+    if (!run || (!force && !eligible(meta))) return false;
     run.tutorial = {
       i: 0, salt: 0, nudges: 0,
       beatT: run.totalT, armT: run.totalT,

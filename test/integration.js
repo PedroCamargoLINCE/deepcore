@@ -5164,8 +5164,36 @@ function tutorialSection(seed) {
     assert(!DC.state.run.instHold, '...and its instability was never frozen');
   }
 
+  // ---- ...but there IS a way back in ------------------------------------
+  // The one-way flag is right for the run and wrong for the game: a player who
+  // hits TAB in the first ten seconds and regrets it, or comes back a month
+  // later, must not need devtools to hear the induction again.
+  {
+    assertEq(M.tutorialSeen(DC.state.meta), true, 'scaffold: this profile has seen it');
+    DC.state.screen = 'title';
+    frames(1);
+    assert(gridRows().join('\n').indexOf('[I] INDUCTION') >= 0,
+      'the title offers [I] INDUCTION once the induction has been seen');
+    key('i');
+    const r3 = DC.state.run;
+    assert(r3 && r3.tutorial && T.active(r3),
+      '[I] replays the induction on a profile that has already seen it');
+    assertEq(r3.instHold, true, 'a replay is the real thing: the pressure pause is on');
+    assertEq(T.beat(r3), 'place', '...and it opens on the first beat');
+  }
+  // ...and it is not offered to somebody about to be put in that room anyway.
+  {
+    DC.state.meta = M.newProfile();
+    DC.state.screen = 'title';
+    frames(1);
+    assert(gridRows().join('\n').indexOf('[I] INDUCTION') < 0,
+      'a fresh profile is not offered [I] — its next run starts the induction');
+    key('i');
+    assertEq(DC.state.screen, 'title', '...and the key does nothing for them');
+  }
+
   return T.BEATS.length + ' beats, box ' + A.SPEECH.W + 'x' + A.SPEECH.H +
-    ' on a ' + D.MAP_W + '-wide map';
+    ' on a ' + D.MAP_W + '-wide map, replayable from the title';
 }
 
 // -------------------------------------------------------------------- main

@@ -351,9 +351,12 @@
     // Never on the Daily — that run is ranked against everybody else's, and a
     // tutorial that freezes instability while it plays would be a handicap
     // handed to exactly the people who do not need one.
+    // opts.tutor is the title screen's [I] REPLAY INDUCTION: it forces the
+    // induction on a profile that has already seen it. Still never on the
+    // Daily, for the same reason — the pressure pause would be an advantage.
     tutorSeen = false;
     if (DC.Tutorial && !daily) {
-      try { DC.Tutorial.begin(st.run, st.meta); } catch (e) { /* optional */ }
+      try { DC.Tutorial.begin(st.run, st.meta, !!opts.tutor); } catch (e) { /* optional */ }
     }
     const ui = st.ui;
     ui.tool = null; ui.facing = 1; ui.hover = null;
@@ -605,6 +608,10 @@
           if (st.foundryBark) st.foundryBark.line = null;   // fresh floor, no stale line
         }
         else if (lk === 'h') openHelp(st, 'title');
+        // [I] REPLAY INDUCTION — only offered once it has been seen, because a
+        // player who has not seen it is about to get it anyway and a fifth menu
+        // item they cannot use is a fifth thing to read (law 6).
+        else if (lk === 'i' && DC.Meta.tutorialSeen(st.meta)) newRun(st, { tutor: true });
         else handled = false;
         break;
       case 'run':

@@ -1425,6 +1425,13 @@
       ['[F]', C.green], [' THE FOUNDRY   ', C.amber],
       ['[H]', C.green], [' MANUAL', C.amber],
     ];
+    // M-ONBOARD Part 2: the way back into the induction. Offered ONLY once it
+    // has been seen — before that it is noise, since the next run starts it
+    // anyway. Without this door the flag is one-way and the tutorial is
+    // reachable only by editing localStorage, which is not a door.
+    if (DC.Meta.tutorialSeen(state.meta)) {
+      segs.push(['   [I]', C.green], [' INDUCTION', C.amberDim]);
+    }
     let tot = 0;
     for (const s of segs) tot += s[0].length;
     let x = (COLS - tot) >> 1;
