@@ -52,11 +52,11 @@ with `git add -A`).
 | 2.5 | ~~M-HIRES (alone)~~ ✅ **merged 2026-08-12** | — | — |
 | 3 | ~~M-CORELORE + M-GRITPLUS~~ ✅ | ~~M-WONDERS~~ ✅ **merged 2026-08-12** | — |
 | 4 | ~~M-EVENTS (big)~~ ✅ **merged 2026-08-12** (rescued by patch — see cloud notes) | — | — |
-| 5 | **M-TIER2 first, ALONE** (see below) — runs AFTER M-ONBOARD-1 merges | then M-MANTLE + M-SCHEMS2 | — |
-| 6 | M-WORMS | M-ACHIEVE + M-RIGSKINS | M-SOUND |
 | 4.5 | ~~M-ONBOARD Part 1 (diagnostics)~~ ✅ **merged 2026-08-14** (rescued by patch) | — | — |
-| 4.6 | **M-WIDE** — ALONE, next. Changes COLS; everything after needs the new width | — | — |
-| later | M-ONBOARD Part 2 (the tutorial) — after the rest, as the director asked | — | — |
+| 4.6 | ~~M-WIDE (alone; changed COLS 80→112)~~ ✅ **merged 2026-08-17** | — | — |
+| 4.7 | ~~M-ONBOARD Part 2 (the tutorial)~~ ✅ **merged 2026-08-17** | — | — |
+| 5 | **M-TIER2 — IN FLIGHT** (alone, see below), dispatched 2026-08-17 | then M-MANTLE + M-SCHEMS2 | — |
+| 6 | M-WORMS | M-ACHIEVE + M-RIGSKINS | M-SOUND |
 
 **Why M-ONBOARD Part 1 jumped the queue.** The director found it by playing:
 he could not get an extractor working while all five suites were green. It is
@@ -88,7 +88,8 @@ wave, with nothing beside it. It slots after Wave 2 only because Wave 2 was
 already dispatched; on a clean board it would be worth doing first, since
 "the game fills my monitor" is the most visible single change left.
 
-Model/effort per worker: **Opus 5, effort `xhigh`**. Use `ultracode` only for
+Model/effort per worker: **Opus 5, effort `high`** (see the note below the
+prompts list — `xhigh` is now by exemption only). Use `ultracode` only for
 **M-POLISH** (find→verify→fix fans out well) and **M-EVENTS** (20 vignettes
 can be written in parallel then tone-edited). Everything else: one focused
 session — big fan-outs burn the session limit fastest, and three fleets have
@@ -102,7 +103,11 @@ Every prompt below is **complete — no blanks to fill**. Open a new session in
 `/home/pedro/Documents/games/deepcore`, paste one, and walk away. Sessions in
 the same wave run at the same time; wait for a wave to merge before the next.
 
-Model/effort for all of them: **Opus 5, effort `xhigh`**.
+Model/effort for all of them: **Opus 5, effort `high`** (director's call,
+2026-08-17). `xhigh` was the old default and is no longer used for routine
+briefs — raise it only for a brief the director has explicitly exempted, and say
+so when you dispatch. M-TIER2 was granted that exemption and ran at `xhigh`,
+because it rewrites the logistics layer every other system feeds through.
 
 ### Running a brief in a CLOUD session (laptop closed)
 
@@ -118,7 +123,7 @@ elsewhere — that one still needs the laptop awake.)
 cd /home/pedro/Documents/games/deepcore
 
 claude --cloud "M-ONBOARD-2: GRIT teaches the tutorial" \
-  --model opus --effort xhigh \
+  --model opus --effort high \
   --permission-mode bypassPermissions \
   "$(cat docs/prompts/M-ONBOARD-2.cloud.txt)"
 ```
