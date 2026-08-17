@@ -412,67 +412,79 @@
   // parse a gag to find out what to press. That is not a limit on the humour,
   // it is the thing that buys the humour its freedom (SPEC3 M-ONBOARD).
   const TUTOR = {
-    // beat 1 — put the extractor's teeth on the vein
+    // Beat 1 — put the extractor's teeth on the vein. The register is the whole
+    // range on purpose (director, verbatim): dad jokes, the joke a nine-year-old
+    // makes about a drill going into a hole, filthy adult ones, and puns he is
+    // visibly proud of. He is funny AND a bit embarrassing, which is what twenty
+    // years down a hole with nobody to talk to does to a man.
     place: [
       "Step one. 'Place the extractor upon the ore.' Upon it. Not near it. Somebody tried near.",
       "'Site the drill-head atop the deposit.' Atop. Big word from a firm that spells my name wrong.",
-      "Script says the operator shall marry teeth to seam. I read it out. I never said I liked it.",
       "'Position the unit over the mineral body.' Over the body. Whoever wrote that has buried a man.",
-      "Rule one of holes: put the pointy end in the soft bit. Twenty years, and that's the manual.",
-      "'Ensure firm contact with the seam.' Firm contact. I am reading it as printed. Under protest.",
-      "The induction calls this mineral acquisition. Down here we call it biting a rock. Bite it.",
-      "'The extractor requires a vein.' Requires! Like she's fussy. She's a mouth on legs. Feed her.",
-      "Page one: commence at the deposit. Commence, kid. Fanciest word for gnawing I ever heard.",
+      "'Ensure firm, sustained contact with the seam.' I did not write that. I have read it eleven times.",
       "'Do not site the unit on bare ground.' Somebody did. His face is in the safety pamphlet now.",
-      "I asked for a poem about honest labour. They sent two sentences and a diagram. Here we are.",
+      "'The extractor requires a vein.' Requires! Like she's fussy. She's a mouth on legs. Feed her.",
       "'Establish the primary extraction point.' That is corporate for start chewing. So: chew, kid.",
+      "What do you call a bit that won't bite? Un-bit-lievable. ...The shiny rock, kid. Any day now.",
+      "Big drill goes in the hole. That is the induction. I hold a certificate in this, you know.",
+      "Rule one of holes: the pointy end goes in the soft bit. Twenty years, and that is the manual.",
+      "The teeth want that seam and the seam has been waiting four billion years. Do not be shy.",
+      "The induction calls this mineral acquisition. Down here we call it biting a rock. Bite it.",
+      "I asked for a poem about honest labour. They sent two sentences and a diagram. Here we are.",
     ],
-    // beat 2 — R, and where the ore actually comes out
+    // Beat 2 — R, and where the ore actually comes out. The fault that beat the
+    // director lives on this beat, so the box is at its filthiest about the one
+    // thing he most needs to look at.
     rotate: [
       "'Orient the discharge aperture.' The arse end, kid. R spins the arse end. I am quoting.",
-      "Section four: the yield must have somewhere to go. Thirty pages to say point it outward.",
       "'Rotate PRIOR to placement.' Prior, underlined twice. Somebody learned that with their thumb.",
-      "R swings the little arrow. The little arrow is where rock comes out. That is the entire beat.",
       "'Verify egress alignment.' Egress. My gran called it the business end and she was never wrong.",
-      "Ore leaves by the arrow. It has to go SOMEWHERE, and it is certainly not going back in.",
-      "'The output side shall face a receiving conveyor.' Face. As though the machine were shy.",
-      "Tap R. Watch it swing. Yes, that is the whole trick. No, they do not pay me more for it.",
-      "'Misaligned discharge is a leading cause of incident.' Incident. There's a word doing labour.",
-      "The Company printed an appendix on which way is out. Appendix B. I have read it. Twice.",
       "'Confirm the vector of egress.' Vector! It is an ARROW. Spin it until it faces open floor.",
+      "'Ensure the discharge is unobstructed.' I am going to stay professional here. ...I cannot.",
+      "'Misaligned discharge is a leading cause of incident.' Incident. There's a word doing labour.",
+      "'The output side shall face a receiving conveyor.' Face. As though the machine were shy.",
+      "Why did the extractor lose its job? Terrible output. ...R. Press R. I'll see myself down.",
+      "Pointy bit goes in, gravel comes out the back. My nephew had this one inside of a second.",
+      "Section four: the yield must have somewhere to go. Thirty pages to say point it outward.",
+      "R swings the little arrow. The little arrow is where rock comes out. That is the entire beat.",
+      "The Company printed an appendix on which way is out. Appendix B. I have read it. Twice.",
       "R, R, R until that arrow likes what it sees. Even I manage this one, and I am mostly lung.",
     ],
-    // beat 3 — the belt, from the arrow to the rig
+    // Beat 3 — the belt, from the arrow to the rig.
     belt: [
       "'Convey the yield to the rig.' Convey. Belt it across, kid — rollers walk so that we do not.",
-      "Section nine: a conveyance shall terminate at an intake. End it AT the rig. Into her. Yes.",
       "'Belts shall not terminate upon soil.' Soil has never once eaten ore. Voss proved it for us.",
-      "Run the line from that arrow to the drill. Straight, bent, whatever. Rollers do not judge.",
       "'The conveyance MAY corner.' It may! It is allowed! Turn a corner, with Company permission!",
-      "'Do not obstruct the belt path.' Obstruct. Stand on a moving one once and you'll learn it.",
-      "Head office says material flow. It is a rubber road for gravel. I prefer my name for it.",
-      "'Each conveyance shall serve one intake.' One mouth per road. Same as the canteen queue.",
-      "'Terminate at the receiving hopper.' She swallows whatever you send. Never been proud, her.",
-      "Belt her teeth to the rig and the ore walks itself. Best coworker I had. Never talked back.",
       "'Ensure continuity of the conveyance.' No gaps. A rock cannot jump. I asked. It cannot jump.",
+      "'A conveyance is inserted at the intake.' Twenty years, and that page still gets a whistle.",
+      "'Do not obstruct the belt path.' Obstruct. Stand on a moving one once and you'll learn it.",
+      "'Terminate at the receiving hopper.' She swallows whatever you send. Never been proud, her.",
+      "What did the belt say to the rig? I'll carry you. ...Right. I'll carry myself out. Lay it.",
+      "A moving floor, for gravel. Gravel gets a moving floor. I get a bad knee and forty stairs.",
+      "Section nine: a conveyance shall terminate at an intake. End it AT the rig. Into her. Yes.",
+      "Run the line from that arrow to the drill. Straight, bent, whatever. Rollers do not judge.",
+      "Belt her teeth to the rig and the ore walks itself. Best coworker I had. Never talked back.",
       "Drag the line home. Every belt is one fewer thing I carry with this ruin of a spine, kid.",
     ],
-    // beat 4 — the ore lands, and the panels take over the teaching
+    // Beat 4 — the ore lands. He stops being about the map here and starts
+    // pointing right: STOCK is ticking up and CHAIN is lighting, and knowing
+    // where to look is worth more than another sentence out of him.
     ore: [
       "'Observe the intake register.' Watch the numbers move. That is the job, in one glowing row.",
-      "There she goes. Ore in the rig. First delivery. I need a moment alone. Shut up.",
       "'Material receipt confirms operational continuity.' It WORKS. That is what that sentence is.",
-      "STOCK, over on the right: iron ore, and an arrow climbing. Climbing is good. Always good.",
       "'The CHAIN indicator names the limiting stage.' Whatever's slowest lights. Believe the light.",
-      "First rock through the door. Somewhere an auditor just felt a small unfamiliar warmth.",
-      "That is the loop: rock in, numbers up, floor gone. Everything after this is the same, bigger.",
       "'Verify throughput at the panel.' Look right, kid. Those panels never lie. I sometimes do.",
-      "She ate it. She ATE the rock. Look at her go. I need to get out more and I never will.",
       "'Induction complete.' Signed, dated, and let the record show I read every word under duress.",
+      "STOCK, over on the right: iron ore, and an arrow climbing. Climbing is good. Always good.",
       "Numbers live on the right. Watch them and you'll never wonder why the drill went quiet.",
+      "Why is the rig never peckish? Always got a bit between her teeth. ...Suit yourself, kid.",
+      "It ate a rock. On purpose. For money. Best job in the world, and I do mean that. Mostly.",
+      "She takes the whole load and never once complains. Only thing on this rig that doesn't.",
+      "There she goes. Ore in the rig. First delivery. I need a moment alone. Shut up.",
+      "First rock through the door. Somewhere an auditor just felt a small unfamiliar warmth.",
       "Rock landed. Nobody applauded. That's mining. Do it four hundred more times, then go deeper.",
     ],
-    // he is required to restate. He restates with feeling.
+    // He is contractually required to restate. He restates with feeling.
     nudge: [
       "Script says restate the instruction. So: the same thing, louder, with more of my character.",
       "Still with me? Good. They pay me by the shift and not by the sentence. Take all day, kid.",
@@ -481,7 +493,7 @@
       "Twenty years and the pause is always exactly this long. Whenever you are ready, then.",
       "The induction has a section on encouragement. One line, and it is threatening. Skipping it.",
     ],
-    // the paperwork is discharged
+    // The paperwork is discharged and he can go back to being himself.
     outro: [
       "Induction discharged. I read their script, you dug a hole, and they can bill us both.",
       "Paperwork's done. From here it is only rock, and rock I can actually talk about properly.",

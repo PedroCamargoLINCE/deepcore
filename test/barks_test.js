@@ -1424,9 +1424,28 @@ let TUTOR_N = 0, TUTOR_WORST = 0;
   // lines, because that quote is the setup and the riff is the punchline: a
   // pool that stopped quoting would just be GRIT with a new subject.
   for (const k of BEAT_POOLS) {
-    const quoting = B.TUTOR[k].filter(l => /'[^']{10,}'/.test(l)).length;
+    // a real script quote: a capitalised sentence in single quotes, not an
+    // apostrophe pair that happened to fall the right distance apart
+    const quoting = B.TUTOR[k].filter(l => /'[A-Z][^']{8,}[.!?]'/.test(l)).length;
     assert(quoting >= 4, 'induction beat "' + k + '" quotes the Company script in ' +
       quoting + ' lines — the flat line IS the setup');
+    // ...and it is not ONLY that shape. A pool of thirteen script-riffs is one
+    // joke told thirteen times; the brief asked for the whole range, mixed
+    // deliberately, and the range is what makes a second playthrough different.
+    assert(B.TUTOR[k].length - quoting >= 4,
+      'induction beat "' + k + '" is ' + quoting + '/' + B.TUTOR[k].length +
+      ' script-riffs — the register has collapsed to one shape');
+  }
+  // The dad jokes and the groaners are load-bearing (director, verbatim: "AND
+  // CHILD JOKES! AND DAD JOKES!"). A setup-and-punchline joke has a shape a
+  // lint can see, so the one thing that can be pinned about the comedy is
+  // pinned: it may be rewritten, it may not be quietly sanded off.
+  {
+    const setups = BEAT_POOLS.reduce(function (n, k) {
+      return n + B.TUTOR[k].filter(l => /^(Why|What|How) /.test(l)).length;
+    }, 0);
+    assert(setups >= 3, 'the induction has ' + setups +
+      ' setup-and-punchline jokes in it; the brief asked for dad jokes');
   }
 
   // --- determinism (§0 law 7). The induction runs on a live run whose map,
