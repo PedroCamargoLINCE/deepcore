@@ -13,6 +13,16 @@
     return run.grid[y][x];
   }
   function add(inv, item, n) { inv[item] = (inv[item] || 0) + n; }
+  // Something arrived at the RIG — off a belt or straight out of a machine
+  // facing her. The two call sites used to be bare `add`s, and nothing anywhere
+  // could tell "the base produces" from "the base delivers", which is the exact
+  // difference the tutorial's fourth beat is about (M-ONBOARD Part 2). Counting
+  // it costs one integer and no roll, so the sim stays byte-identical for every
+  // run that never asks.
+  function deliver(run, item) {
+    add(run.inv, item, 1);
+    if (run.stats) run.stats.delivered = (run.stats.delivered || 0) + 1;
+  }
   function stratumOf(run) {
     return run.depth <= D.STRATA_COUNT ? D.STRATA[run.depth - 1] : D.mantleStratum(run.depth);
   }
@@ -208,7 +218,7 @@
       // startStratum deliberately does not clear it, because the lesson does
       // not need re-teaching one floor down.
       diag: {},
-      stats: { placed: {}, lastPlaceT: 0, lastFeedT: 0 },
+      stats: { placed: {}, lastPlaceT: 0, lastFeedT: 0, delivered: 0 },
       foreman: null,
       // M-CORELORE: how many Core Gate beats this run has passed (0..3), and
       // the fake ascend prompt barks.js may put on screen. M-GRITPLUS: the
@@ -480,7 +490,15 @@
     }
     if (run.t % D.BELT_PERIOD === 0) stepBelts(run);
     if (run.t % drillPeriod(run) === 0) stepDrill(run);
-    run.instability = U.clamp(run.instability + instRate(run) / HZ, 0, 100);
+    // M-ONBOARD Part 2: the pressure pause. While `instHold` is set the floor
+    // does not tighten at all — instability is what schedules quakes, so a
+    // frozen gauge means no quake can be scheduled, and nobody loses their
+    // first run to one while reading a punchline. js/tutorial.js sets the flag
+    // when the induction arms and clears it the instant the first ore reaches
+    // the rig; no other caller sets it, so every run in test/balance.js and
+    // every run a returning player starts is arithmetically untouched.
+    if (!run.instHold)
+      run.instability = U.clamp(run.instability + instRate(run) / HZ, 0, 100);
     stepLandmark(run);
     stepEgg(run);
     stepCoreGate(run);
@@ -544,7 +562,7 @@
       if (t.machine !== null) {
         const tm = run.machines[t.machine];
         if (!tm) return;
-        if (tm.id === 0) { add(run.inv, item, 1); m.out.shift(); continue; }
+        if (tm.id === 0) { deliver(run, item); m.out.shift(); continue; }
         if (machineAccepts(run, tm, item)) { add(tm.input, item, 1); m.out.shift(); continue; }
         return;
       }
@@ -698,7 +716,7 @@
           const m = run.machines[t.machine];
           if (!m) continue;
           if (m.id === 0) {
-            add(run.inv, b.item, 1);
+            deliver(run, b.item);
             b.item = null; b.moved = true; moved = true;
           } else if (machineAccepts(run, m, b.item)) {
             add(m.input, b.item, 1);
@@ -1555,6 +1573,10 @@
     landmarkJammed: lmJammed,
     // shared with render.js (STOCK column, CX-11); SCAN_W is the tooltip budget
     itemShort: itemShort, SCAN_W: SCAN_W,
+    // Where a machine puts what it made (SPEC §5.3). js/tutorial.js highlights
+    // this tile for the beat that teaches R, and render.js draws the same tile
+    // under the placement ghost — one formula, not three copies of it.
+    outputTile: outputTile,
     // M-ONBOARD: the diagnostics. diagLines() is every sentence they can emit
     // (worst case filled in) so the suites can hold the lot to the LOG panel;
     // STATUS_HINT is the '!' legend the SCAN panel draws.

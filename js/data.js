@@ -77,6 +77,26 @@
     stallT: 60,    // the rig short of a breach item with none in stock
   };
 
+  // ---------------- M-ONBOARD: the first-run tutorial (Part 2) ---------------
+  // Four beats, each gated on the player actually doing the thing. The numbers
+  // here are the SHAPE of the induction, not its content: the box's geometry
+  // (so the suites can hold every authored line to a box that never truncates
+  // it), and how long GRIT waits before he says the same thing differently.
+  //
+  // `boxW` is 40 against a 46-wide map on purpose — it centres ON THE MAP with
+  // three columns of map showing either side, so the box reads as a thing
+  // sitting on the floor rather than as a new screen. Everything right of the
+  // map is live UI (CHAIN, STOCK) and the tutorial's job is to point AT those,
+  // never to sit on them.
+  D.TUTORIAL = {
+    boxW: 40,        // speech box width in cells, walls included
+    proseRows: 3,    // rows of GRIT inside it (the authored line wraps to these)
+    nudgeT: 22,      // seconds on one beat before he re-riffs the same lesson
+    nudgeMax: 3,     // ...and how many times, before he lets the silence work
+    holdT: 4,        // seconds the completed beat's box lingers before the next
+    skipKey: 'Tab',  // skippable from the first keypress, on a key play never uses
+  };
+
   // ---------------- palette (semantic) ----------------
   D.COLORS = {
     bg:       '#0a0a08',
