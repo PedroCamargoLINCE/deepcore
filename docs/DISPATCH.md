@@ -762,9 +762,31 @@ output.
 3. Run **all five** suites + `node tools/build.js` on the merged tree — the
    sweep included, since a merge can change balance without touching `data.js`.
    Fix integration seams (that is orchestrator work, not worker work).
-4. Commit the merge, push master, republish the artifact so the shared link
+4. **Read the screen, do not just read the tests.** Every gate can be green
+   while the result is ugly, and §0 law 6 makes ugly a defect. `Render.cellAt`
+   plus a stub canvas dumps any screen as text in ~60 lines; render the ones the
+   brief touched and *look* at them. The suites cannot tell you that a box is
+   30% full or that two icons ended up the same shape.
+5. Commit the merge, push master, republish the artifact so the shared link
    tracks the latest build.
-5. Dispatch the next wave.
+6. **Re-read every queued prompt in `docs/prompts/` before dispatching it** if
+   the merge changed anything global. A worker cannot see a constraint that
+   landed after its brief was written, so the brief has to carry it — see the
+   next note.
+7. Dispatch the next wave.
+
+**Stale-brief hazard — the one that actually keeps biting.** A queued prompt is
+a snapshot of the tree at the moment it was written, and every merge ages it.
+M-WIDE took `COLS` from 80 to 112; the M-ONBOARD-2 prompt sitting in the queue
+still said "centre stage", which at 112 columns means GRIT's speech box lands on
+top of the CHAIN and STOCK panels, because the reflexive `(COLS - len) >> 1` is
+now the *screen's* centre and not the *map's*. Nothing in the brief was wrong
+when it was written and nothing in it was right when it was dispatched. The
+audit after any merge that moves a global — `COLS`, a law count, a renamed API,
+a panel that now owns screen space — is: grep the queue for the old value.
+**This is the same failure as the four silent M-HIRES/M-CORELORE seams, one step
+earlier in the pipeline:** two correct pieces of work, written against different
+trees, and no single worker in a position to notice.
 
 **Cross-brief gotcha:** M-POLISH fixed the manual's wrong constants (CX-02/03)
 by making the manual *compose* its numbers from `js/data.js` at load, and
