@@ -286,10 +286,14 @@ function drive(seed) {
   assertEq(B.fire(run, 'runStart') !== null, true, 'runStart fires at t=0');
   note();
   assert(run.foreman && run.foreman.text, 'foreman set by runStart');
-  const logTail = run.messages[run.messages.length - 1];
-  assert(logTail && logTail.text === 'GRIT ▸ ' + run.foreman.text,
-    'bark mirrored into the LOG');
-  step(7 * HZ);
+  // M-WIDE: the line is in the bar and NOWHERE ELSE while it is the current
+  // line — it used to be on screen twice at once, typing in the bar and
+  // mirrored into the LOG at the same moment.
+  const said = run.foreman.text;
+  const inLog = function (t) { return run.messages.some(m => m.text === 'GRIT ▸ ' + t); };
+  assert(!inLog(said), 'the line being typed in the bar is not also in the LOG');
+  step(12 * HZ);
+  assert(inLog(said), 'and it falls into the LOG once its hold is over');
 
   // firstBelt via a real placement (row-major scan for a legal tile)
   let placed = false;
@@ -604,9 +608,10 @@ let CORE_N = 0;
     assertEq(line, B.CORE.gate[0].core, 'gate beat 0 speaks its authored line');
     assert(run.foreman && run.foreman.text === line, 'the Core takes the foreman bar');
     assertEq(run.foreman.voice, 'core', 'the bar is marked as the Core speaking');
-    const tail = run.messages[run.messages.length - 1];
-    assertEq(tail.text.indexOf('GRIT'), -1, 'the Core is never tagged as GRIT in the LOG');
-    assertEq(tail.color, D.COLORS.gold, 'the Core mirrors into the LOG in gold');
+    // the mirror is deferred (M-WIDE): the gold line reaches the LOG when it
+    // stops being the line in the bar, not while it is still typing there
+    assert(!run.messages.some(m => m.text.indexOf(line) >= 0),
+      'the Core is not in the LOG while it is still speaking');
     assertEq(B.core(run, 'gate', 0), null, 'a gate beat fires at most once per run');
     assertEq(run.coreOffer, null, 'beat 0 puts no prompt on the screen');
 
@@ -617,6 +622,12 @@ let CORE_N = 0;
     assertEq(run.foreman.voice, 'grit', 'GRIT answers the Core');
     assertEq(run.foreman.text, B.CORE.gate[0].grit, 'and he answers with HIS paired line');
     assert(guard > 2, 'the deflection waits for the Core to finish (' + guard + ' ticks)');
+    // ...and GRIT taking the bar is exactly what hands the gold line to the
+    // LOG: superseded, therefore history (M-WIDE's deferred mirror).
+    const tail = run.messages.filter(m => m.text.indexOf(line) >= 0).pop();
+    assert(tail, 'the Core line reaches the LOG once it is superseded');
+    assertEq(tail.text.indexOf('GRIT'), -1, 'the Core is never tagged as GRIT in the LOG');
+    assertEq(tail.color, D.COLORS.gold, 'the Core mirrors into the LOG in gold');
 
     // beat 2 is the lie: it puts a prompt on the screen with a real expiry
     run.totalT += 100;

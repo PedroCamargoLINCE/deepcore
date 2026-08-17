@@ -4279,6 +4279,385 @@ function eventsSection(seed) {
   }
 }
 
+// =========================================================================
+// SECTION 16 — M-WIDE: the game at COLS columns, every screen
+// The widening's whole risk is a screen that was laid out against 80 and
+// silently stayed there: still legal, still un-crashing, and pinned to the
+// left third of the window with the rest black. So this section renders
+// EVERY screen through the real frame path and holds each one to what it is
+// supposed to do with the width — centred screens must be centred, and the
+// run screen must actually reach the last column.
+//
+// It also owns the four panels' acceptance (rig portrait present with a
+// bought upgrade visibly bolted on, stock trends, loadout, chain bottleneck)
+// and the one thing that must NEVER appear anywhere: the quake's schedule
+// (SPEC3 §0 law 8).
+// =========================================================================
+function wideSection(seed) {
+  SECTION = 'wide seed=' + seed;
+  require('../js/barks.js');
+  require('../js/events.js');
+  require('../js/fx.js');
+  require('../js/render.js');
+  const M = DC.Meta;
+
+  const ctxStub = {
+    fillStyle: '', font: '', textBaseline: '', textAlign: '',
+    setTransform: function () {}, fillRect: function () {},
+    save: function () {}, restore: function () {}, scale: function () {},
+    fillText: function () {}, measureText: function () { return { width: 10 }; },
+  };
+  const canvasStub = {
+    style: {},
+    getContext: function () { return ctxStub; },
+    addEventListener: function () {},
+    getBoundingClientRect: function () {
+      return { left: 0, top: 0, width: D.COLS * 10, height: D.ROWS * 19 };
+    },
+  };
+  DC.Render.init(canvasStub);
+
+  // ---- the grid, as strings, plus where its ink actually sits -----------
+  function gridRows() {
+    const out = [];
+    for (let r = 0; r < D.ROWS; r++) {
+      let line = '';
+      for (let c = 0; c < D.COLS; c++) line += (DC.Render.cellAt(c, r) || { ch: ' ' }).ch;
+      out.push(line);
+    }
+    return out;
+  }
+  function ink(rows, from, to) {
+    let min = D.COLS, max = -1;
+    for (let r = from === undefined ? 0 : from; r <= (to === undefined ? D.ROWS - 1 : to); r++) {
+      const s = rows[r];
+      const a = s.search(/\S/);
+      if (a < 0) continue;
+      let b = s.length - 1;
+      while (b >= 0 && s[b] === ' ') b--;
+      if (a < min) min = a;
+      if (b > max) max = b;
+    }
+    return { min: min, max: max };
+  }
+  let now = 5e7;
+  function frame(state) {
+    now += 16;
+    DC.Render.frame(state, now);
+    const rows = gridRows();
+    assert(rows[1].indexOf('RENDER ERROR') < 0, SCREEN + ': frame threw — ' + rows[1].trim());
+    return rows;
+  }
+  let SCREEN = 'title';
+  // A screen that centres itself must LOOK centred: the ink's left margin and
+  // its right margin agree to within a couple of columns. This is the check
+  // that catches a page still composed against 80 columns.
+  function assertCentred(rows, from, to, slack) {
+    const b = ink(rows, from, to);
+    assert(b.max >= 0, SCREEN + ': drew nothing');
+    const left = b.min, right = D.COLS - 1 - b.max;
+    assert(Math.abs(left - right) <= (slack === undefined ? 2 : slack),
+      SCREEN + ': not centred at ' + D.COLS + ' columns (margins ' + left + '/' + right + ')');
+  }
+
+  // ---- a run with a history: bought upgrades, taken schematics ----------
+  const meta = M.newProfile();
+  meta.cores = 12; meta.bestDepth = 6; meta.wins = 1; meta.runs = 9; meta.totalCores = 40;
+  meta.upgrades = { m_stock: 2, m_hull: 1, m_scan: 1, m_salv: 1 };
+  meta.bestSplits = { 1: 150 };
+  const run = S.newRun(M.effects(meta), seed);
+  run.schematics = ['s_extract', 's_smelt', 's_salvage'];
+  S.msg(run, 'The rig bites into the topsoil ridge.', D.COLORS.amber);
+  for (let i = 0; i < 160; i++) S.tick(run);
+  // the classic first base, placed through the public API: two iron
+  // extractors, one smelter, one assembler — the exact shape whose ratio
+  // problem the CHAIN panel exists to name.
+  let built = 0;
+  for (let y = 0; y < D.MAP_H && built < 2; y++) {
+    for (let x = 0; x < D.MAP_W && built < 2; x++) {
+      if (run.grid[y][x].ore !== 'ironOre' || !run.grid[y][x].revealed) continue;
+      if (S.canPlace(run, 'extractor', x, y, 1).ok && S.place(run, 'extractor', x, y, 1)) built++;
+    }
+  }
+  assertEq(built, 2, 'two extractors placed for the panel checks');
+  for (const type of ['smelter', 'assembler']) {
+    let ok = false;
+    for (let y = 0; y < D.MAP_H && !ok; y++) {
+      for (let x = 0; x < D.MAP_W && !ok; x++) {
+        if (S.canPlace(run, type, x, y, 1).ok) ok = S.place(run, type, x, y, 1);
+      }
+    }
+    assert(ok, 'a ' + type + ' site exists for the panel checks');
+  }
+  const state = {
+    screen: 'run', meta: meta, run: run, today: '2026-08-14',
+    ui: { tool: null, facing: 1, cursor: { x: run.hub.x, y: run.hub.y } },
+  };
+
+  // ---- the run screen ---------------------------------------------------
+  SCREEN = 'run';
+  let rows = frame(state);
+  const bounds = ink(rows);
+  assertEq(bounds.max, D.COLS - 1,
+    'the run screen reaches the last column (that is the whole point)');
+  assertEq(bounds.min, 0, 'and still starts at the first');
+  // the map did not move, and did not grow
+  assertEq(D.MAP_W, 46, 'MAP_W is untouched by the widening');
+  assertEq(D.MAP_H, 26, 'MAP_H is untouched by the widening');
+  assert(rows[2].indexOf('┌─ STRATUM 1') === 0, 'the map box still starts at column 0');
+  assertEq(rows[2].indexOf('┐'), D.MAP_W + 1, 'and still ends where the map ends');
+  // the gutters between the columns are gutters
+  const L = DC.Render.LAYOUT;
+  assert(L && L.twoCol, 'render reports two panel columns at ' + D.COLS);
+  for (let r = 1; r < D.ROWS; r++) {
+    assertEq(rows[r][L.sb - 1], ' ', 'row ' + r + ': gutter left of column A is clear');
+    assertEq(rows[r][L.sb2 - 1], ' ', 'row ' + r + ': gutter between the columns is clear');
+  }
+  // both columns are closed boxes: a wall on the left, a wall on the last cell
+  // of the screen — column B is right-aligned to the grid by construction, so
+  // a panel that fell short of it would leave a ragged edge against the black.
+  // Every panel row is a closed box on BOTH sides. This is the mid-word clip
+  // test with teeth: a label, rate or flag that outgrew its field would land
+  // on the wall and show up here as a missing one.
+  for (let r = 1; r < D.ROWS; r++) {
+    assert('│├┌└'.indexOf(rows[r][L.sb]) >= 0, 'row ' + r + ': column A has its left wall');
+    assert('│┤┐┘'.indexOf(rows[r][L.sb + L.sbw - 1]) >= 0,
+      'row ' + r + ': column A has its right wall (something overran its field?)');
+    assert('│├┌└'.indexOf(rows[r][L.sb2]) >= 0, 'row ' + r + ': column B has its left wall');
+    assert('│┤┐┘'.indexOf(rows[r][D.COLS - 1]) >= 0,
+      'row ' + r + ": column B's right wall is the screen's last cell");
+  }
+  // the SCAN panel's text budget is a contract shared with sim.js — the
+  // derived column width may not drift away from the number describeTile
+  // wraps its tooltips to
+  assertEq(L.scw, S.SCAN_W, 'the derived panel width still matches Sim.SCAN_W');
+
+  // ---- PANEL 1: the rig, on screen, with its parts on --------------------
+  const rig = L.runRig;
+  assert(rig && rig.h >= 12 && rig.w >= 24, 'the rig portrait has room in the run sidebar');
+  function portrait(rws) {
+    const out = [];
+    for (let i = 0; i < rig.h; i++) out.push(rws[rig.y + i].slice(rig.x, rig.x + rig.w));
+    return out;
+  }
+  const withParts = portrait(rows).join('\n');
+  const bare = DC.Art.composeRig({}).join('\n');
+  assert(withParts.indexOf('╔═╗') >= 0, 'the derrick is drawn, not a placeholder');
+  assert(withParts !== bare,
+    'the run-screen rig shows the Foundry parts bolted on, not the naked rig');
+  for (const id of ['m_stock', 'm_scan', 'm_salv']) {
+    const p = DC.Art.rigParts[id];
+    const want = p.lines[0].trim()[0];
+    assert(portrait(rows)[p.row].indexOf(want) >= 0,
+      'the bought upgrade ' + id + ' is visible on the in-run rig');
+  }
+  // and it is the CURRENT rig: buy something mid-session and the picture moves
+  meta.upgrades.m_damp = 1;
+  const damped = portrait(frame(state)).join('\n');
+  assert(damped.indexOf('(◎)') >= 0 && damped !== withParts,
+    'buying a part changes the picture the run is played beside (§0 law 5)');
+
+  // ---- PANEL 2: STOCK — eight rows, icons, and the arrow -----------------
+  rows = frame(state);
+  function panelRow(rws, needle) {
+    for (let r = 1; r < D.ROWS; r++) {
+      const s = rws[r].slice(L.sb2, L.sb2 + L.sbw2);
+      if (s.indexOf(needle) >= 0) return { row: r, text: s };
+    }
+    return null;
+  }
+  for (const id of D.ITEM_ORDER) {
+    const label = DC.Render.itemLabel(id);
+    const row = panelRow(rows, label);
+    assert(row, 'STOCK has a row for ' + id + ' (' + label + ') even at zero');
+    const icon = DC.Art.itemIcons[id];
+    assert(row.text.indexOf(icon) >= 0, 'STOCK draws the ' + id + ' icon');
+  }
+  // the icons are PICTURES, not one glyph three times: the three raw ores
+  // used to be '•', '•' and '•', told apart by colour alone
+  assert(DC.Art.itemIcons.ironOre !== DC.Art.itemIcons.ironPlate &&
+    DC.Art.itemIcons.gear !== DC.Art.itemIcons.crystal &&
+    DC.Art.itemIcons.coal !== DC.Art.itemIcons.ironOre,
+    'the item icons are distinguishable shapes');
+  assertEq(DC.Art.itemIcons.gear.length, DC.Art.ICON_W, 'an icon is ICON_W cells wide');
+  // the feature: two extractors against one smelter means ore up, plate down,
+  // and the player is told that without doing the arithmetic
+  const flow = S.chain(run).flow;
+  assert(flow.ironOre > 0 && flow.ironPlate < 0, 'the base really is ore-rich, plate-poor');
+  assert(panelRow(rows, DC.Render.itemLabel('ironOre')).text.indexOf('↑') > 0,
+    'STOCK shows iron ore trending UP');
+  assert(panelRow(rows, DC.Render.itemLabel('ironPlate')).text.indexOf('↓') > 0,
+    'STOCK shows iron plate trending DOWN');
+  // and the BUILD list got the same treatment
+  for (const t of D.BUILD_ORDER) {
+    const ic = DC.Art.buildIcons[t];
+    assert(ic && ic.length === DC.Art.ICON_W, t + ' has a build icon');
+    let seen = false;
+    for (let r = 1; r < D.ROWS; r++) {
+      if (rows[r].slice(L.sb, L.sb + L.sbw).indexOf(ic) >= 0) seen = true;
+    }
+    assert(seen, 'the BUILD list draws the ' + t + ' icon');
+  }
+
+  // ---- PANEL 3: LOADOUT — what you picked, still on screen ---------------
+  for (const id of run.schematics) {
+    const r2 = panelRow(rows, DC.Art.schemShort[id]);
+    assert(r2, 'LOADOUT lists ' + id + ' by name');
+    assert(r2.text.indexOf(DC.Art.schemBadges[id]) >= 0, 'with its badge');
+    assert(r2.text.indexOf(DC.Art.schemEffect[id]) >= 0, 'and what it actually does');
+  }
+  // a deep run collects more than the panel holds: the oldest picks stay
+  // (they are the forgotten ones) and the overflow is counted, never clipped
+  const many = run.schematics.slice();
+  run.schematics = D.SCHEMATICS.map(s => s.id);
+  const deep = frame(state);
+  assert(panelRow(deep, 'more'), 'LOADOUT counts the picks it cannot fit');
+  assert(panelRow(deep, DC.Art.schemShort[run.schematics[0]]),
+    'and keeps the earliest pick, which is the one you have forgotten');
+  run.schematics = many;
+  rows = frame(state);
+
+  // ---- PANEL 4: CHAIN — the ratio trap, made visible ---------------------
+  function colARow(rws, needle) {
+    for (let r = 1; r < D.ROWS; r++) {
+      const s = rws[r].slice(L.sb, L.sb + L.sbw);
+      if (s.indexOf(needle) >= 0) return { row: r, text: s };
+    }
+    return null;
+  }
+  assert(colARow(rows, 'CHAIN'), 'the CHAIN panel is on the run screen');
+  const model = S.chain(run);
+  const oreRow = colARow(rows, ' ore ');
+  const plateRow = colARow(rows, ' plate ');
+  const gearRow = colARow(rows, ' gear ');
+  assert(oreRow && plateRow && gearRow, 'CHAIN draws a row per stage');
+  assert(oreRow.row < plateRow.row && plateRow.row < gearRow.row,
+    'and draws them in the order the chain actually runs');
+  // how many machines, and the real rate — the two numbers a player cannot
+  // work out by looking at the map
+  assert(oreRow.text.indexOf('2E') >= 0, 'the ore row counts the extractors');
+  assert(plateRow.text.indexOf('1S') >= 0, 'the plate row counts the smelters');
+  assert(gearRow.text.indexOf('1A') >= 0, 'the gear row counts the assemblers');
+  assert(plateRow.text.indexOf('0.50/s') >= 0, 'and prints the smelter rate');
+  assert(gearRow.text.indexOf('0.36/s') >= 0, 'and the assembler rate');
+  // THE lesson: one smelter cannot feed one assembler, and the panel says so
+  // on the stage that is actually holding the base back — and only there
+  assert(plateRow.text.indexOf('←STARVED') >= 0,
+    'the limiting stage is marked in the warning colour: ' + plateRow.text);
+  assert(oreRow.text.indexOf('←') < 0 && gearRow.text.indexOf('←') < 0,
+    'and no other stage is');
+  {
+    const flagCol = L.sb + plateRow.text.indexOf('←');
+    assertEq(DC.Render.cellAt(flagCol, plateRow.row).fg, D.COLORS.red,
+      'the bottleneck marker is drawn in the warning colour');
+  }
+  // and the projection: a base is a clock
+  const proj = colARow(rows, 'BREACH');
+  assert(proj, 'CHAIN projects the breach');
+  assert(/BREACH ~\d+:\d\d/.test(proj.text) || proj.text.indexOf('BREACH  —') >= 0,
+    'the projection is a time (or an honest dash): ' + proj.text);
+  assert(model.breachSec > 0, 'the projection has something to project');
+  // a stage with no machines at all names ITSELF, once — not three warnings
+  {
+    const bare = S.newRun(M.effects(meta), seed + 1);
+    const bch = S.chain(bare);
+    assertEq(bch.stages[0].flag, 'NONE', 'an empty base names the first missing stage');
+    assertEq(bch.stages[1].flag, '', 'and does not shout the same thing three times');
+  }
+  // a smelter with no coal is its own diagnosis
+  {
+    for (const id in run.machines) {
+      const m = run.machines[id];
+      if (m.type === 'smelter') { m.status = 'nofuel'; }
+    }
+    const dry = S.chain(run);
+    assertEq(dry.stages[1].flag, 'NO COAL', 'a dry smelter is named as a dry smelter');
+  }
+  rows = frame(state);
+
+  // ---- SPEC3 §0 law 8: no quake schedule, anywhere -----------------------
+  // run.quakeAt is a tick count sitting in plain sight. Nothing on any screen
+  // may be a function of it. The test is blunt on purpose: move the schedule
+  // and no cell may change.
+  run.instability = 60;
+  run.quakeAt = run.t + 40;
+  const before = frame(state).join('\n');
+  run.quakeAt = run.t + 400;
+  const after = frame(state).join('\n');
+  assertEq(after, before, 'nothing on the run screen reads run.quakeAt (no quake timer, ever)');
+
+  // ---- every other screen, at this width --------------------------------
+  SCREEN = 'title';
+  state.screen = 'title';
+  assertCentred(frame(state), 1, 29);
+
+  SCREEN = 'foundry';
+  state.screen = 'foundry';
+  state.foundryBark = 'Bolted on. Try not to break this one.';
+  rows = frame(state);
+  assertCentred(rows, 10, 27, 3);
+  assert(rows[10].indexOf('┌─ YOUR RIG') > 10,
+    'the Foundry page centres its two columns instead of hugging the left edge');
+
+  SCREEN = 'descend anim';
+  state.screen = 'descend';
+  run.pendingOffers = ['s_drill', 's_coal', 's_veins'];
+  state.ui.descendAnim = 0;
+  assertCentred(frame(state), 1, 25);
+  SCREEN = 'descend cards';
+  state.ui.descendAnim = 9999;
+  rows = frame(state);
+  assertCentred(rows, 2, 24);
+  const cards = DC.Render.layout.cards;
+  assertEq(cards.length, 3, 'three cards published');
+  assert(cards[cards.length - 1].col + cards[cards.length - 1].w <= D.COLS,
+    'the last card fits on the screen');
+
+  SCREEN = 'help p1';
+  state.screen = 'help';
+  state.ui.helpPage = 0;
+  assertCentred(frame(state));
+  SCREEN = 'help p2';
+  state.ui.helpPage = 1;
+  assertCentred(frame(state));
+
+  SCREEN = 'gameover';
+  state.screen = 'gameover';
+  run.status = 'dead';
+  run.result = { depth: 4, breaches: 3, timeSec: 640, cores: 3, won: false };
+  rows = frame(state);
+  assertCentred(rows, 1, 20, 4);
+  SCREEN = 'victory';
+  state.screen = 'victory';
+  run.status = 'won';
+  run.result = { depth: 8, breaches: 8, timeSec: 1240, cores: 18, won: true };
+  assertCentred(frame(state), 1, 22, 4);
+  SCREEN = 'recap';
+  state.screen = 'recap';
+  assertCentred(frame(state), 1, D.ROWS - 3);
+
+  SCREEN = 'logbook';
+  state.screen = 'logbook';
+  rows = frame(state);
+  assertCentred(rows, 1, D.ROWS - 3, 3);
+  const longest = (DC.Events.LOGS || []).reduce((n, l) => Math.max(n, l.length), 0);
+  assert(longest > 0 && DC.Render.LOGBOOK_W >= longest,
+    'the logbook page is wide enough for its longest entry (' + longest + ')');
+
+  SCREEN = 'vignette';
+  state.screen = 'vignette';
+  run.status = 'active';                   // the end screens above ended it
+  for (let i = 0; i < 400 && !DC.Events.pending(run); i++) DC.Events.rollVignette(run);
+  assert(DC.Events.pending(run), 'a vignette was rolled to draw');
+  rows = frame(state);
+  assertCentred(rows, 1, D.ROWS - 3, 6);
+  const ch = DC.Render.layout.choices;
+  assert(ch.length >= 1 && ch[0].col >= 20,
+    'the vignette choices sit under the panel, not out in the dark');
+
+  return D.COLS + 'x' + D.ROWS + ', ' + 12 + ' screens';
+}
+
 // -------------------------------------------------------------------- main
 const SEED = process.env.DC_SEED ? (parseInt(process.env.DC_SEED, 10) | 0) : 1337;
 try {
@@ -4305,6 +4684,7 @@ try {
   const walls = coreLoreSection(SEED + 43);
   const wonders = wondersSection(SEED + 47);
   const events = eventsSection(SEED + 53);
+  const wide = wideSection(SEED + 59);
   // The webfont section is the one asynchronous check in the suite — a
   // document.fonts.ready handler cannot be driven synchronously — so the
   // PASS line waits on it rather than racing it.
@@ -4317,6 +4697,7 @@ try {
       ' | core gate 3 beats | ' + walls + ' walls' +
       ' | wonders ' + wonders +
       ' | events ' + events +
+      ' | wide ' + wide +
       ' | cadence 16/12/10 | overdrive x2 | damper ok | charge+bronze ok | mantle ok' +
       ' | engine+barks ok | ' + (Date.now() - t0) + 'ms');
     process.exit(0);

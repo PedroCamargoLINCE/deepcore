@@ -1614,6 +1614,84 @@ function checkRigOutput() {
   return 'rig output-facing feed ok';
 }
 
+// ======================================================================
+// M-WIDE — Sim.chain: the production chain as numbers
+// The CHAIN panel's whole job is to teach the ratio trap, so the model
+// behind it is pinned here against the data rather than against itself:
+// one smelter is 0.5 plate/s, one gear assembler wants 0.73 plate/s, and
+// therefore ONE SMELTER CANNOT FEED ONE ASSEMBLER. If that stops being
+// true in data.js, this test says so before a player has to find out.
+// ======================================================================
+function checkChain() {
+  const eff = DC.Meta.effects(DC.Meta.newProfile());
+  const r = S.newRun(eff, 4242);
+  const twin = S.newRun(eff, 4242);          // an untouched stream to compare to
+  for (let i = 0; i < 200; i++) { S.tick(r); S.tick(twin); }
+
+  // the arithmetic the panel exists to show, straight out of data.js
+  const smeltPerSec = D.TICK_HZ / D.RECIPES.smeltIron.ticks;
+  const gearPerSec = D.TICK_HZ / D.RECIPES.gear.ticks;
+  const platesWanted = gearPerSec * D.RECIPES.gear.in.ironPlate;
+  assert(platesWanted > smeltPerSec,
+    'the ratio trap is real: one assembler wants ' + platesWanted.toFixed(2) +
+    ' plate/s and one smelter makes ' + smeltPerSec.toFixed(2));
+
+  // build the classic first base: two iron extractors, one smelter, one
+  // assembler — placed through the public API, on tiles the map really has
+  let ext = 0;
+  for (let y = 0; y < D.MAP_H && ext < 2; y++) {
+    for (let x = 0; x < D.MAP_W && ext < 2; x++) {
+      const t = r.grid[y][x];
+      if (!t.revealed || t.ore !== 'ironOre') continue;
+      if (S.canPlace(r, 'extractor', x, y, 1).ok && S.place(r, 'extractor', x, y, 1)) ext++;
+    }
+  }
+  assertEq(ext, 2, 'two iron extractors placed for the chain model');
+  function place2x2(type) {
+    for (let y = 0; y < D.MAP_H; y++) {
+      for (let x = 0; x < D.MAP_W; x++) {
+        if (S.canPlace(r, type, x, y, 1).ok && S.place(r, type, x, y, 1)) return true;
+      }
+    }
+    return false;
+  }
+  assert(place2x2('smelter'), 'a smelter site exists');
+  assert(place2x2('assembler'), 'an assembler site exists');
+
+  const ch = S.chain(r);
+  assert(ch && ch.stages.length >= 3, 'Sim.chain returns the three stages');
+  const ore = ch.stages[0], plate = ch.stages[1], gear = ch.stages[2];
+  assertEq(ore.n, 2, 'chain counts both ore extractors');
+  assertEq(plate.n, 1, 'chain counts the smelter');
+  assertEq(gear.n, 1, 'chain counts the assembler');
+  assert(Math.abs(ore.rate - 2 * D.TICK_HZ / D.BUILDINGS.extractor.period) < 1e-9,
+    'ore rate is the extractors cadence (' + ore.rate + ')');
+  assert(Math.abs(plate.rate - smeltPerSec) < 1e-9, 'plate rate is one smelt cycle');
+  assert(Math.abs(gear.rate - gearPerSec) < 1e-9, 'gear rate is one craft cycle');
+
+  // the bottleneck: plates, every time, on this base
+  assert(plate.limiting === true, 'the smelter is named as the limiting stage');
+  assert(!ore.limiting && !gear.limiting, 'and it is named alone');
+  assertEq(plate.flag, 'STARVED', 'the limiting stage carries the warning word');
+  assert(Math.abs(ch.gearRate - plate.rate / ch.perGear) < 1e-9,
+    'effective gear throughput is the bottleneck, not the assembler');
+
+  // net flow: ore piles up, plates are eaten faster than they are made,
+  // coal only ever goes down
+  assert(ch.flow.ironOre > 0, 'iron ore trends up (extractors outrun the smelter)');
+  assert(ch.flow.ironPlate < 0, 'iron plate trends down (the assembler outruns the smelter)');
+  assert(ch.flow.coal < 0, 'coal only ever burns');
+
+  // and a projection that is a number of seconds, not a promise
+  assert(ch.breachSec > 0 && isFinite(ch.breachSec), 'the breach projects to a real time');
+  const noAsm = S.chain(r);
+  assertEq(noAsm.breachSec > 0, true, 'projection is stable across calls');
+
+  // it is a READ: no mutation, and not one draw from the sim's stream
+  assertEq(r.rng(), twin.rng(), 'Sim.chain never advances run.rng (SPEC3 law 7)');
+  return ch;
+}
+
 function main() {
   checkArt();
   const glyphN = checkGlyphInventory();
@@ -1623,7 +1701,8 @@ function main() {
   const catNote = checkCat();
   const lmSweep = checkLandmarkSweep();
   const diagN = checkDiagnostics();   // M-ONBOARD: the game explains itself
-  const rigFeed = checkRigOutput();
+  const rigFeed = checkRigOutput();   // facing, not adjacency, feeds the rig
+  const chainCh = checkChain();       // M-WIDE: the CHAIN panel's numbers
 
   const eff = DC.Meta.effects(DC.Meta.newProfile());
   assert(eff && typeof eff.instMult === 'number' && eff.offerCount === 3,
@@ -1686,7 +1765,11 @@ function main() {
     ' | landmarks ' + lmSweep.withLm + '/' + lmSweep.maps + ' maps, ' +
     lmSweep.cells + ' cells, ' + Object.keys(lmSweep.ids).length + ' kinds, ' +
     'veins+connectivity held' +
-    ' | diagnostics: ' + diagN + ' causes named, once each, rng untouched');
+    ' | diagnostics: ' + diagN + ' causes named, once each, rng untouched' +
+    ' | ' + rigFeed +
+    ' | chain: ' + chainCh.stages.map(s => s.n + s.letter + ' ' +
+      s.rate.toFixed(2) + '/s').join(' -> ') +
+    ' limited by ' + chainCh.stages.filter(s => s.limiting).map(s => s.name).join(','));
 }
 
 function sumOre() {

@@ -124,7 +124,38 @@ for (const id of schemIds) {
   const col = A.schemColors && A.schemColors[id];
   assert(typeof col === 'string' && Object.prototype.hasOwnProperty.call(D.COLORS, col),
     id + ' color ' + JSON.stringify(col) + ' is not a DC.DATA.COLORS key');
+  // M-WIDE: the LOADOUT panel's two fields. A name or an effect wider than
+  // its field would be sliced mid-word on the one panel that exists to
+  // remind you what you are running.
+  const sn = A.schemShort && A.schemShort[id];
+  assert(typeof sn === 'string' && sn.length > 0 && sn.length <= A.SCHEM_SHORT_W,
+    id + ' short name must fit ' + A.SCHEM_SHORT_W + ' columns (got ' + JSON.stringify(sn) + ')');
+  const se = A.schemEffect && A.schemEffect[id];
+  assert(typeof se === 'string' && se.length > 0 && se.length <= A.SCHEM_EFFECT_W,
+    id + ' effect must fit ' + A.SCHEM_EFFECT_W + ' columns (got ' + JSON.stringify(se) + ')');
 }
+
+// -------------------------------- M-WIDE: the 3-cell item / building icons
+for (const id of D.ITEM_ORDER) {
+  const ic = A.itemIcons && A.itemIcons[id];
+  assert(typeof ic === 'string' && ic.length === A.ICON_W,
+    'itemIcons.' + id + ' must be ' + A.ICON_W + ' cells (got ' + JSON.stringify(ic) + ')');
+}
+for (const t of D.BUILD_ORDER) {
+  const ic = A.buildIcons && A.buildIcons[t];
+  assert(typeof ic === 'string' && ic.length === A.ICON_W,
+    'buildIcons.' + t + ' must be ' + A.ICON_W + ' cells (got ' + JSON.stringify(ic) + ')');
+}
+// The point of drawing them at all is that they are different pictures: the
+// three raw ores were three identical dots before this.
+(function () {
+  const shapes = {};
+  for (const id of ['ironOre', 'coal', 'crystal', 'ironPlate', 'gear', 'charge']) {
+    const ic = A.itemIcons[id];
+    assert(!shapes[ic], 'itemIcons.' + id + ' repeats the shape of ' + shapes[ic]);
+    shapes[ic] = id;
+  }
+})();
 
 // --------------------------- no backslash / backtick in any art line at all
 (function () {

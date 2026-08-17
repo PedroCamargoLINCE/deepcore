@@ -965,12 +965,73 @@
     ],
   };
 
+  // ---------------- M-WIDE: 3-cell item & building icons ----------------
+  // The sidebar used to say what you were holding with one character: '•' for
+  // iron ore, '•' for copper ore, '•' for coal. Three items, three identical
+  // dots, told apart by colour alone — which is the one channel a glyph grid
+  // should never be asked to carry by itself (§0 law 6).
+  //
+  // These are pictograms rasterised through R.quadrants from a 6 x 2 sub-pixel
+  // bitmap: three cells wide, two sub-rows tall, so an ore heap, a flat ingot
+  // and a cut gem have genuinely different SHAPES at one row per item. The
+  // bitmaps are the readable source — you can see the picture in the dots —
+  // and the glyphs fall out of the same rasterizer the gauges use.
+  A.ICON_W = 3;
+  function icon3(top, bot) {
+    const bm = R.bitmap(3, 1, 2, 2);
+    const rows = [top, bot];
+    for (let y = 0; y < 2; y++) {
+      for (let x = 0; x < 6; x++) if (rows[y][x] === '#') R.set(bm, x, y, 1);
+    }
+    return R.quadrants(bm)[0];
+  }
+  A.itemIcons = {
+    ironOre:     icon3('.####.', '######'),   // a heap of broken rock
+    copperOre:   icon3('.####.', '######'),
+    coal:        icon3('.###..', '######'),   // a heap with one shoulder knocked off
+    crystal:     icon3('..##..', '.####.'),   // a cut gem, tapering up
+    ironPlate:   icon3('.####.', '.####.'),   // a flat bar
+    copperPlate: icon3('.####.', '.####.'),
+    gear:        icon3('#.##.#', '.####.'),   // a toothed wheel
+    charge:      icon3('#.##.#', '..##..'),   // a core, throwing sparks off both sides
+  };
+  A.buildIcons = {
+    belt:      icon3('.#.#.#', '#.#.#.'),     // a running diagonal: it moves
+    extractor: icon3('.####.', '..##..'),     // a bit, biting down
+    smelter:   icon3('######', '##..##'),     // a furnace with its mouth open
+    assembler: icon3('######', '#.##.#'),     // a press on two legs
+    damper:    icon3('#.#.#.', '.#.#.#'),     // a coil, absorbing
+  };
+
   // 2-char sidebar badges + thematic card colors (keys into DC.DATA.COLORS)
   A.schemBadges = {
     s_beltfree: '▶▶', s_extract: '▼▼', s_smelt: '▬▬', s_coal: '♠♠',
     s_plate: '▐▌', s_damp: '∩∩', s_repair: '+×', s_drill: '♦▼',
     s_salvage: '╘╛', s_survey: '()', s_charge: '‡‡', s_over: '»»',
     s_veins: '≡≡', s_gear: '¤¤',
+  };
+  // ---------------- M-WIDE: the LOADOUT panel's two short strings ----------
+  // run.schematics is tracked all run and shown for four seconds on the pick
+  // screen, after which the player has twenty minutes to forget they took
+  // Salvage Claws. The sidebar lists them permanently — which needs a name
+  // that fits a 13-column field and an effect that fits an 11-column one.
+  // The full name and the full sentence still exist on the card you choose
+  // from; these are the reminder, not the pitch.
+  A.SCHEM_SHORT_W = 13;
+  A.SCHEM_EFFECT_W = 11;
+  A.schemShort = {
+    s_beltfree: 'Frictionless', s_extract: 'Twin Drills',  s_smelt: 'Blast Furnace',
+    s_coal: 'Coal Scrubber',    s_plate: 'Hull Plating',   s_damp: 'Seismic Damp',
+    s_repair: 'Repair Swarm',   s_drill: 'Diamond Bit',    s_salvage: 'Salvage Claws',
+    s_survey: 'Deep Sonar',     s_charge: 'Resonance',     s_over: 'OD Coupling',
+    s_veins: 'Rich Veins',      s_gear: 'Bronze Gears',
+  };
+  A.schemEffect = {
+    s_beltfree: 'belts free',   s_extract: 'mine +35%',    s_smelt: 'smelt +30%',
+    s_coal: 'coal x2',          s_plate: '+20 hull',       s_damp: 'press -25%',
+    s_repair: 'self-repair',    s_drill: 'breach -15%',    s_salvage: 'salvage 60%',
+    s_survey: 'full reveal',    s_charge: 'charges x2',    s_over: 'OD cost 1/2',
+    s_veins: 'veins +50%',      s_gear: 'bronze gear',
   };
   A.schemColors = {
     s_beltfree: 'cyan', s_extract: 'amber', s_smelt: 'magma', s_coal: 'gray',

@@ -45,10 +45,44 @@
   // style.css's max-width/max-height letterbox it. Above ~2.25 a 16px font has
   // become 36px and the terminal reads as a toy — a 4K panel gets margins
   // rather than 55px text.
-  const MIN_SCALE = 1, MAX_SCALE = 2.25;
+  //
+  // M-WIDE moved the floor. At 80 columns the base grid was 800px wide and a
+  // scale floor of 1 meant "any window at least 800px wide gets crisply
+  // re-rendered text, anything narrower letterboxes". At 112 columns the same
+  // literal floor would silently raise that threshold to 1120px, and an
+  // ordinary windowed browser at 1000px would fall back to CSS-downscaling a
+  // canvas it could have rendered sharply. So the floor is DERIVED from the
+  // width it was chosen for: the renderer keeps shrinking the font until the
+  // grid is the same 800 physical pixels it always bottomed out at.
+  // Quantised to sixteenths so the floor stays a dyadic fraction: cw and ch
+  // are then both exact, and cw/ch is exactly CW/CH — the cell cannot drift
+  // out of shape by a rounding bit at the one scale every small window uses.
+  const FLOOR_PX = 800;
+  const MIN_SCALE = Math.min(1, Math.floor(FLOOR_PX / (COLS * CW) * 16) / 16);
+  const MAX_SCALE = 2.25;
   const UNREV_BG = '#050504';        // near-black for unrevealed tiles (SPEC §7)
-  const SB = 49, SBW = 31;           // sidebar box: cols 49..79
-  const SBC = 50, SCW = 29;          // sidebar content col + width
+  // ---- panel geometry, DERIVED (M-WIDE) --------------------------------
+  // These were the literals SB=49, SBW=31, SBC=50, SCW=29. They are computed
+  // from COLS and MAP_W now, so the next widening is free: put a bigger
+  // number in data.js and the columns fall out of it.
+  //
+  // The map box is MAP_W+2 wide at col 0, then one column of gutter, so the
+  // panels start at MAP_W+3. Everything right of that is UI. A panel column
+  // is 31 wide because that is what the SCAN panel's 29-column text contract
+  // (Sim.SCAN_W) plus its two walls needs — NOT because 31 is half of what is
+  // left. Spreading a column to 40 would not make one line of it easier to
+  // read (§0 law 6); a second column of panels would.
+  const SB = D.MAP_W + 3;            // 49 — first panel column
+  const RIGHT_W = COLS - SB;         // 63 at 112 cols, 31 at 80
+  const PANEL_W = 31;                // one panel column, walls included
+  const TWO_COL = RIGHT_W >= PANEL_W * 2;
+  const SBW = PANEL_W;
+  const SBC = SB + 1, SCW = SBW - 2;                 // content col + width (29)
+  // Second column: right-aligned to the last cell, so any slack between the
+  // two columns becomes gutter rather than a ragged right edge.
+  const SB2 = TWO_COL ? COLS - PANEL_W : -1;
+  const SBW2 = TWO_COL ? PANEL_W : 0;
+  const SBC2 = SB2 + 1, SCW2 = Math.max(0, SBW2 - 2);
   // Tallest one LOG message may grow to once word-wrapped into SCW columns.
   // 3 rows holds the longest mirrored GRIT bark (75 chars with its tag) whole;
   // anything longer ends in '…' on a word boundary. The panel has 9 rows.
@@ -413,6 +447,21 @@
     } catch (e) { /* ignore */ }
     return [];
   }
+  // M-WIDE: the production model behind the STOCK trends and the CHAIN panel.
+  // Cached per (run, tick) because three panels ask for it on every frame and
+  // it walks every machine; the cache is throwaway render state and can never
+  // feed back into the sim (SPEC3 rule 4).
+  let chainRun = null, chainT = -1, chainVal = null;
+  function chainSafe(run) {
+    if (!run) return null;
+    if (chainRun === run && chainT === run.t) return chainVal;
+    let v = null;
+    try {
+      if (DC.Sim && DC.Sim.chain) v = DC.Sim.chain(run);
+    } catch (e) { /* sim in flux */ }
+    chainRun = run; chainT = run.t; chainVal = v;
+    return v;
+  }
   function feedRateSafe(run) {
     try {
       if (DC.Sim && DC.Sim.feedRate) return DC.Sim.feedRate(run) || { gearPerSec: 0, chargePerSec: 0 };
@@ -487,7 +536,7 @@
     textR(COLS - 1, 0, 'ELAPSED ' + fmtTime(run.totalT / D.TICK_HZ), C.gray);
 
     // thin rule (row 1, under the map column only — sidebar starts here)
-    text(0, 1, '─'.repeat(SB), C.amberDim);
+    text(0, 1, '─'.repeat(SB - 1), C.amberDim);
 
     // map box rows 2..29, cols 0..47; interior = 46x26 at (MAP_X, MAP_Y)
     box(0, 2, 48, 28, accent, 'STRATUM ' + run.depth + ' ─ ' + st.name, C.white);
@@ -498,6 +547,7 @@
     }
     drawMap(run, ui, phase);
     drawSidebar(run, ui, phase, st, state.meta);
+    drawPanels(run, ui, phase, st, state.meta);
     drawHints(run, ui, phase);
     drawForeman(run);
 
@@ -704,30 +754,46 @@
   }
 
   // ---------------- sidebar ----------------
-  function sideEdge(row, kind, title, titleColor) {
+  // One panel column's furniture. `col`/`w` are passed so the same two
+  // primitives draw both columns (M-WIDE); sideEdge/sideWalls stay as the
+  // column-A shorthand every existing caller already reads as.
+  function panelEdge(col, w, row, kind, title, titleColor) {
     const l = kind === 'top' ? '┌' : kind === 'bot' ? '└' : '├';
     const r = kind === 'top' ? '┐' : kind === 'bot' ? '┘' : '┤';
-    text(SB, row, l + '─'.repeat(SBW - 2) + r, C.amberDim);
-    if (title) text(SB + 2, row, (' ' + title + ' ').slice(0, SBW - 4), titleColor || C.amber);
+    text(col, row, l + '─'.repeat(w - 2) + r, C.amberDim);
+    if (title) text(col + 2, row, (' ' + title + ' ').slice(0, w - 4), titleColor || C.amber);
     return row + 1;
   }
-  function sideWalls(row) { put(SB, row, '│', C.amberDim); put(SB + SBW - 1, row, '│', C.amberDim); }
+  function panelWalls(col, w, row) {
+    put(col, row, '│', C.amberDim);
+    put(col + w - 1, row, '│', C.amberDim);
+  }
+  function sideEdge(row, kind, title, titleColor) {
+    return panelEdge(SB, SBW, row, kind, title, titleColor);
+  }
+  function sideWalls(row) { panelWalls(SB, SBW, row); }
 
   function drawSidebar(run, ui, phase, st, meta) {
     const req = run.breachReq || { gear: 0, charge: 0 };
     const gGlyph = D.ITEMS.gear.glyph, cGlyph = D.ITEMS.charge.glyph;
     let y = 1;
 
-    // RIG — owned meta-upgrade glyph strip on the header row (v1.1 §C.2)
+    // RIG — the hull's two gauges. The owned-upgrade glyph strip that used to
+    // ride this header row (v1.1 §C.2) was a compact stand-in for a picture we
+    // could not afford at 80 columns; at 112 the second column draws the rig
+    // itself, parts and all, so the strip is only kept where that panel is not
+    // (M-WIDE: reward is a picture changing, not a row of runes).
     let edge = y;
     y = sideEdge(y, 'top', 'RIG');
-    const ups = (meta && meta.upgrades) || {};
-    let gx = SB + SBW - 3;
-    for (let i = D.META_UPGRADES.length - 1; i >= 0 && gx > SB + 7; i--) {
-      const id = D.META_UPGRADES[i].id;
-      if (!(ups[id] > 0)) continue;
-      const g = UP_GLYPHS[id] || ['·', 'gray'];
-      put(gx--, edge, g[0], resolveColor(g[1]) || C.amber);
+    if (!TWO_COL) {
+      const ups = (meta && meta.upgrades) || {};
+      let gx = SB + SBW - 3;
+      for (let i = D.META_UPGRADES.length - 1; i >= 0 && gx > SB + 7; i--) {
+        const id = D.META_UPGRADES[i].id;
+        if (!(ups[id] > 0)) continue;
+        const g = UP_GLYPHS[id] || ['·', 'gray'];
+        put(gx--, edge, g[0], resolveColor(g[1]) || C.amber);
+      }
     }
     sideWalls(y);
     text(SBC, y, 'INTEG', C.gray);
@@ -778,39 +844,36 @@
       run.overdrive ? (phase ? C.red : C.orange) : C.darkgray);
     y++;
 
-    // M-RECAP ghost split: this stratum's clock against your best-ever run at
-    // this depth. The delta is time IN HAND — it counts down as you dig, green
-    // while you are still under the record, red the moment you are not. Only
-    // drawn once a record exists, so a first run costs no sidebar rows.
-    const gs = ghostSplit(run, meta);
-    if (gs) {
-      sideWalls(y);
-      text(SBC, y, 'BEST ' + fmtTime(gs.best), C.darkgray);
-      textR(SB + SBW - 2, y, gs.mark + fmtDelta(gs.delta), gs.delta >= 0 ? C.green : C.red);
-      y++;
-    }
+    // CHAIN — the teacher (M-WIDE). It sits directly under DRILL because it
+    // explains the number DRILL prints: the feed rate is an outcome, and this
+    // is where the outcome is decided.
+    y = drawChainPanel(y, run, meta, phase);
 
-    // STOCK — 2 columns, always show ironPlate & gear
-    y = sideEdge(y, 'sep', 'STOCK');
     const inv = run.inv || {};
-    const shown = D.ITEM_ORDER.filter(id => (inv[id] || 0) > 0 || id === 'ironPlate' || id === 'gear');
-    const srows = Math.max(1, Math.ceil(shown.length / 2));
-    for (let i = 0; i < srows; i++) {
-      sideWalls(y + i);
-      for (let k = 0; k < 2; k++) {
-        const id = shown[i * 2 + k];
-        if (!id) continue;
-        const it = D.ITEMS[id], cx = SBC + k * 15;
-        put(cx, y + i, it.glyph, it.color);
-        // CX-11: STOCK_NAME_W columns (the old blank gutter) + a per-item
-        // short name, so 'copper ore' and 'copper plate' stop rendering as
-        // 'copper o/p'.
-        text(cx + 2, y + i, itemLabel(id).slice(0, STOCK_NAME_W), C.gray);
-        text(cx + 2 + STOCK_NAME_W, y + i,
-             U.padL(stockCount(inv[id] || 0), STOCK_COUNT_W), C.white);
+    // STOCK lives in the second column when there is one (M-WIDE: eight items,
+    // one per row, with icons and a trend). At 80 columns it stays here, two
+    // to a row, exactly as it was.
+    if (!TWO_COL) {
+      y = sideEdge(y, 'sep', 'STOCK');
+      const shown = D.ITEM_ORDER.filter(id => (inv[id] || 0) > 0 || id === 'ironPlate' || id === 'gear');
+      const srows = Math.max(1, Math.ceil(shown.length / 2));
+      for (let i = 0; i < srows; i++) {
+        sideWalls(y + i);
+        for (let k = 0; k < 2; k++) {
+          const id = shown[i * 2 + k];
+          if (!id) continue;
+          const it = D.ITEMS[id], cx = SBC + k * 15;
+          put(cx, y + i, it.glyph, it.color);
+          // CX-11: STOCK_NAME_W columns (the old blank gutter) + a per-item
+          // short name, so 'copper ore' and 'copper plate' stop rendering as
+          // 'copper o/p'.
+          text(cx + 2, y + i, itemLabel(id).slice(0, STOCK_NAME_W), C.gray);
+          text(cx + 2 + STOCK_NAME_W, y + i,
+               U.padL(stockCount(inv[id] || 0), STOCK_COUNT_W), C.white);
+        }
       }
+      y += srows;
     }
-    y += srows;
 
     // BUILD — one row per tool + demolish; facing arrow in the title
     edge = y;
@@ -827,27 +890,30 @@
       const afford = free || Object.keys(b.cost).every(k => (inv[k] || 0) >= b.cost[k]);
       const costS = free ? 'free'
         : Object.keys(b.cost).map(k => b.cost[k] + (D.ITEMS[k] ? D.ITEMS[k].glyph : '?')).join(' ');
+      // M-WIDE: the same 3-cell pictogram treatment as STOCK, so the thing you
+      // are about to place and the thing it will eat look like each other.
+      const bIcon = buildIcon(t);
       if (ui.tool === t) {
-        text(SBC, y, U.pad(b.key + ' ' + b.letter + ' ' + U.pad(b.name, 10), SCW - costS.length) + costS,
+        text(SBC, y, U.pad(b.key + ' ' + bIcon + ' ' + U.pad(b.name, 10), SCW - costS.length) + costS,
           C.bg, C.amber);
       } else {
         const bad = shade(C.red, 0.8);
         put(SBC, y, b.key, C.amber);
-        put(SBC + 2, y, b.letter, b.color);
-        text(SBC + 4, y, U.pad(b.name, 10), afford ? C.gray : bad);
+        text(SBC + 2, y, bIcon, b.color);
+        text(SBC + 6, y, U.pad(b.name, 10), afford ? C.gray : bad);
         textR(SB + SBW - 2, y, costS, afford ? (free ? C.green : C.amberDim) : bad);
       }
-      layout.buildRows.push({ row: y, tool: t });
+      layout.buildRows.push({ row: y, col: SB, w: SBW, tool: t });
       y++;
     }
     sideWalls(y);
-    if (ui.tool === 'demolish') text(SBC, y, U.pad('X × demolish', SCW), C.bg, C.amber);
+    if (ui.tool === 'demolish') text(SBC, y, U.pad('X  ×  demolish', SCW), C.bg, C.amber);
     else {
       put(SBC, y, 'X', C.amber);
-      put(SBC + 2, y, '×', C.red);
-      text(SBC + 4, y, 'demolish', C.gray);
+      put(SBC + 3, y, '×', C.red);
+      text(SBC + 6, y, 'demolish', C.gray);
     }
-    layout.buildRows.push({ row: y, tool: 'demolish' });
+    layout.buildRows.push({ row: y, col: SB, w: SBW, tool: 'demolish' });
     y++;
 
     // SCAN — tile tooltip / tool description / stratum flavor
@@ -888,6 +954,220 @@
       text(SBC, bottom - 1 - i, painted[i].text.slice(0, SCW), painted[i].color);
     }
     sideEdge(bottom, 'bot');
+  }
+
+  // ---- PANEL 4: CHAIN — the teacher --------------------------------------
+  // The director could not work out what a smelter was for, and had to ask.
+  // Page one of the manual explains the chain and he still had to ask, because
+  // the manual is behind H and the chain is a LIVE thing you need to see while
+  // it is failing. So: one row per stage, how many machines, the real rate,
+  // and the limiting stage named in the warning colour.
+  //
+  // The number that matters most is the one nobody works out on their own: a
+  // smelter makes 0.5 plate/s and a gear assembler eats 0.73, so one smelter
+  // cannot feed one assembler. With that base standing, this panel says
+  // 'plate 1S 0.50/s ←STARVED' — which is the whole lesson, in a row.
+  //
+  // And a projection, because a base is a clock: 'BREACH ~2:14'. Never a
+  // quake countdown — that one is forbidden (SPEC3 §0 law 8), and the two
+  // readouts are opposites: one is the plan, the other is the thing that
+  // happens to the plan.
+  const CHAIN_NAME_X = 2, CHAIN_N_X = 9, CHAIN_RATE_R = 18, CHAIN_FLAG_X = 20;
+  function fmtRate(r) {
+    if (!(r > 0)) return '—';
+    // two decimals below ten, so the three stages read as one column of
+    // numbers you can compare at a glance (0.50 against 0.36, not 1.0)
+    return (r >= 10 ? r.toFixed(0) : r.toFixed(2)) + '/s';
+  }
+  function drawChainPanel(y, run, meta, phase) {
+    const ch = chainSafe(run);
+    y = sideEdge(y, 'sep', 'CHAIN');
+    if (!ch) return y;
+    for (const s of ch.stages) {
+      sideWalls(y);
+      const it = D.ITEMS[s.item] || {};
+      const dead = s.n === 0;
+      put(SBC, y, it.glyph || '·', dead ? C.darkgray : it.color);
+      text(SBC + CHAIN_NAME_X, y, s.name, dead ? C.darkgray : C.gray);
+      text(SBC + CHAIN_N_X, y, s.n + s.letter, dead ? C.darkgray : C.white);
+      textR(SBC + CHAIN_RATE_R, y, fmtRate(s.rate), dead ? C.darkgray : C.white);
+      if (s.flag) {
+        // the warning colour, and only on the stage that is actually holding
+        // the base back — a panel that shouts at three rows teaches nothing
+        // steady, not blinking: a bottleneck is a state that lasts minutes,
+        // and the blink is reserved for the things that are about to hurt
+        text(SBC + CHAIN_FLAG_X, y, ('←' + s.flag).slice(0, SCW - CHAIN_FLAG_X),
+          s.flag === 'NONE' ? C.amberDim : C.red);
+      }
+      y++;
+    }
+    // the projection, and the ghost you are racing (M-RECAP's split, which
+    // asks the same question this row answers)
+    sideWalls(y);
+    const ready = run.status === 'breachReady';
+    if (ready) {
+      text(SBC, y, 'BREACH READY [D]', phase ? C.white : C.green);
+    } else if (ch.breachSec === null || !isFinite(ch.breachSec)) {
+      // nothing is making what the rig still wants; the stage flags above
+      // already say which link is missing, so this row does not repeat it
+      text(SBC, y, 'BREACH  —', C.red);
+    } else {
+      text(SBC, y, 'BREACH ~' + fmtTime(ch.breachSec), C.amber);
+    }
+    const gs = ghostSplit(run, meta);
+    if (gs) {
+      textR(SB + SBW - 2, y, 'BEST ' + gs.mark + fmtDelta(gs.delta),
+        gs.delta >= 0 ? C.green : C.red);
+    }
+    return y + 1;
+  }
+
+  // ================= THE SECOND PANEL COLUMN (M-WIDE) =================
+  // Four panels answering four different questions — what you are (RIG),
+  // what you have (STOCK), what you picked (LOADOUT), what it is all doing
+  // (CHAIN, which lives in column A next to the drill it explains). Four that
+  // breathe rather than nine that cram: every one of them is allowed to leave
+  // columns empty, because a short line in a wide gutter reads better than a
+  // packed one (§0 law 6).
+  //
+  // Nothing in here spends from run.rng (§0 law 7) and nothing writes state.
+  // And nothing in here — not a countdown, not a gauge, not an estimate —
+  // says anything about when the next quake lands (§0 law 8).
+
+  // Ground colours: the rig portrait's bottom rows are rock, and rock takes
+  // the stratum's accent so the picture says which floor you are standing on.
+  const GROUND_CH = '▓▒░█▀';
+  const RIG_GROUND_ROW = 7;              // rigBase row 7 is the surface line
+
+  function drawRigPanel(y, run, meta, accent) {
+    y = panelEdge(SB2, SBW2, y, 'top', 'YOUR RIG');
+    const rig = composeRigSafe(meta && meta.upgrades) || placeholder('rig');
+    const h = Math.min(rig.length, 12);
+    const ox = SBC2 + Math.max(0, (SCW2 - blockWidth(rig)) >> 1);
+    const ground = mix(C.rock, accent || C.amber, 0.35);
+    for (let i = 0; i < h; i++) {
+      panelWalls(SB2, SBW2, y + i);
+      const ln = rig[i].slice(0, SCW2);
+      for (let j = 0; j < ln.length; j++) {
+        if (ln[j] === ' ') continue;
+        const rock = i >= RIG_GROUND_ROW && GROUND_CH.indexOf(ln[j]) >= 0;
+        put(ox + j, y + i, ln[j], rock ? ground : C.amber);
+      }
+    }
+    // published for fx.js and the suites: where the in-run rig actually landed
+    layout.runRig = { x: ox, y: y, w: blockWidth(rig), h: h };
+    return y + h;
+  }
+
+  // ---- PANEL 2: STOCK — all eight items, one per row, with a trend --------
+  // The old panel crammed whatever was nonzero into two rows of two, so the
+  // list changed SHAPE as the run went on and nothing was ever in the same
+  // place twice. Eight fixed rows: an item at zero is information too, and a
+  // row you can find without reading is the whole point (§0 law 6).
+  //
+  // The feature is the arrow. A count is a fact about the past; '68 ↑' is the
+  // sentence "your extractors are outrunning your smelters", which is the
+  // decision the player is actually facing, without them doing the
+  // arithmetic. It reads Sim.chain's net flow — capacity in minus capacity
+  // out — so it is a statement about the base, not a sampled derivative that
+  // would flicker every time a belt hiccuped.
+  const TREND_EPS = 0.02;              // per second: below this it is flat
+  const SCHEM_NAME_W = 13;             // LOADOUT name field (art.js authors to it)
+  function trendMark(net) {
+    if (net > TREND_EPS) return ['↑', C.green];
+    if (net < -TREND_EPS) return ['↓', C.red];
+    return ['·', C.darkgray];
+  }
+  function itemIcon(id) {
+    const ic = DC.Art && DC.Art.itemIcons && DC.Art.itemIcons[id];
+    if (typeof ic === 'string' && ic.length) return ic;
+    return ' ' + ((D.ITEMS[id] || {}).glyph || '?') + ' ';
+  }
+  function buildIcon(t) {
+    const ic = DC.Art && DC.Art.buildIcons && DC.Art.buildIcons[t];
+    if (typeof ic === 'string' && ic.length) return ic;
+    return ' ' + ((D.BUILDINGS[t] || {}).letter || '?') + ' ';
+  }
+  function drawStockPanel(y, run, ch) {
+    y = panelEdge(SB2, SBW2, y, 'sep', 'STOCK');
+    const inv = run.inv || {};
+    const flow = (ch && ch.flow) || {};
+    for (let i = 0; i < D.ITEM_ORDER.length; i++) {
+      const id = D.ITEM_ORDER[i];
+      const it = D.ITEMS[id];
+      const n = inv[id] || 0;
+      const idle = n === 0 && !flow[id];
+      panelWalls(SB2, SBW2, y);
+      const x = SBC2 + 1;
+      text(x, y, itemIcon(id), idle ? shade(it.color, 0.45) : it.color);
+      text(x + 4, y, itemLabel(id).slice(0, STOCK_NAME_W), idle ? C.darkgray : C.gray);
+      // count and arrow ride the right edge: one column of numbers the eye
+      // can run down, rather than eight ragged ones
+      textR(SB2 + SBW2 - 4, y, stockCount(n), n ? C.white : C.darkgray);
+      const tm = trendMark(flow[id] || 0);
+      put(SB2 + SBW2 - 2, y, tm[0], tm[1]);
+      y++;
+    }
+    return y;
+  }
+
+  // ---- PANEL 3: LOADOUT — what you are actually running ------------------
+  // run.schematics is tracked for the whole run and displayed for the four
+  // seconds the pick screen is up. Twenty minutes later the player cannot
+  // tell you whether the belts are free, and plays as though they are not.
+  // One row each, permanently: badge in its own colour, short name, effect.
+  function schemShort(id) {
+    const A = DC.Art;
+    const s = A && A.schemShort && A.schemShort[id];
+    if (typeof s === 'string' && s.length) return s;
+    const def = D.SCHEMATICS.find(x => x.id === id);
+    return def ? def.name : String(id);
+  }
+  function schemEffect(id) {
+    const A = DC.Art;
+    const s = A && A.schemEffect && A.schemEffect[id];
+    return typeof s === 'string' ? s : '';
+  }
+  function drawLoadoutPanel(y, run) {
+    y = panelEdge(SB2, SBW2, y, 'sep', 'LOADOUT');
+    const rowsAvail = (ROWS - 1) - y;              // the bottom edge closes it
+    const scs = run.schematics || [];
+    const nameX = SBC2 + 4, effX = SBC2 + 4 + SCHEM_NAME_W + 1;
+    const effW = SB2 + SBW2 - 1 - effX;
+    if (!scs.length) {
+      for (let i = 0; i < rowsAvail; i++) panelWalls(SB2, SBW2, y + i);
+      if (rowsAvail > 0) text(SBC2 + 1, y, 'nothing picked yet', C.darkgray);
+      if (rowsAvail > 1) text(SBC2 + 1, y + 1, 'one per breach', C.darkgray);
+      return y + rowsAvail;
+    }
+    // Deep runs collect more than fit. The OLDEST are the ones that have
+    // faded, so they are the ones kept on screen — the newest was announced
+    // in the LOG a minute ago and is still in the player's head.
+    const drop = Math.max(0, scs.length - rowsAvail);
+    for (let i = 0; i < rowsAvail; i++) {
+      panelWalls(SB2, SBW2, y + i);
+      if (drop && i === rowsAvail - 1) {
+        text(SBC2 + 1, y + i, '+' + (drop + 1) + ' more', C.darkgray);
+        break;
+      }
+      const id = scs[i];
+      if (id === undefined) continue;
+      text(SBC2 + 1, y + i, schemBadge(id), schemColor(id));
+      text(nameX, y + i, schemShort(id).slice(0, SCHEM_NAME_W), C.gray);
+      text(effX, y + i, schemEffect(id).slice(0, effW), C.amberDim);
+    }
+    return y + rowsAvail;
+  }
+
+  function drawPanels(run, ui, phase, st, meta) {
+    if (!TWO_COL) { layout.runRig = null; return; }
+    const accent = st.accent || C.amber;
+    const ch = chainSafe(run);
+    let y = 1;
+    y = drawRigPanel(y, run, meta, accent);
+    y = drawStockPanel(y, run, ch);
+    y = drawLoadoutPanel(y, run);
+    panelEdge(SB2, SBW2, Math.min(y, ROWS - 1), 'bot');
   }
 
   function scanLines(run, ui, st) {
@@ -1157,6 +1437,10 @@
   }
 
   // ================= FOUNDRY =================
+  // The Foundry page's two columns, as a block that centres itself: the rig
+  // box, a gutter, and the upgrade list (44 columns holds the longest desc,
+  // 'Instability rises 12% slower (per level).', with air to spare).
+  const FOUNDRY_RIG_W = 28, FOUNDRY_GAP = 3, FOUNDRY_LIST_W = 46;
   // v1.1 §C.2: rig portrait left, upgrade list right. On purchase the engine
   // sets ui.flashPart = {id, until}; that part's overlay cells blink white.
   function drawRigPortrait(x0, y0, w, upgrades, flash) {
@@ -1196,13 +1480,17 @@
     drawArt(lines, 1, artColor('foundry', C.orange));
     ctext(Math.min(1 + lines.length + 1, 8), '◈ ' + (meta.cores || 0) + ' CORES', C.magenta);
 
-    // left column: the rig, upgrades bolted on
+    // Two columns — the rig, and what can be bolted to it — CENTRED as one
+    // block (M-WIDE). They used to start at col 1 because col 1 was as far
+    // left as 80 columns allowed; at 112 that would leave the forge art
+    // centred over a page pinned to the left edge.
     const py = 10;
-    box(1, py, 28, 14, C.amberDim, 'YOUR RIG', C.amber);
-    drawRigPortrait(2, py + 1, 26, meta.upgrades, activeFlash(ui));
+    const fx0 = Math.max(0, (COLS - (FOUNDRY_RIG_W + FOUNDRY_GAP + FOUNDRY_LIST_W)) >> 1);
+    box(fx0, py, FOUNDRY_RIG_W, 14, C.amberDim, 'YOUR RIG', C.amber);
+    drawRigPortrait(fx0 + 1, py + 1, FOUNDRY_RIG_W - 2, meta.upgrades, activeFlash(ui));
 
     // right column: upgrade list (2 rows each: stat line + dim desc)
-    const lx = 31;
+    const lx = fx0 + FOUNDRY_RIG_W + FOUNDRY_GAP;
     for (let i = 0; i < D.META_UPGRADES.length; i++) {
       const up = D.META_UPGRADES[i];
       const lvl = (meta.upgrades && meta.upgrades[up.id]) || 0;
@@ -1218,7 +1506,7 @@
       text(lx + 24, row, lvl + '/' + up.max, C.gray);
       text(lx + 28, row, maxed ? ' MAX' : U.padL(cost + '◈', 4),
         maxed ? C.amberDim : afford ? C.magenta : shade(C.red, 0.8));
-      text(lx + 3, row + 1, up.desc.slice(0, COLS - lx - 4), C.darkgray);
+      text(lx + 3, row + 1, up.desc.slice(0, FOUNDRY_LIST_W - 3), C.darkgray);
     }
 
     // Foreman surface (M-POLISH backlog): GRIT talks on the Foundry floor even
@@ -1243,7 +1531,9 @@
   const VG_X = (COLS - 40) >> 1;      // the 40-wide panel, centred
   const VG_ROW = 3;
   const VG_PROSE_W = 64;
-  const VG_CHOICE_X = 12;
+  // The choices hang off the panel's own left edge (M-WIDE): at 80 columns
+  // col 12 was that edge; at 112 a fixed 12 would strand them out in the dark.
+  const VG_CHOICE_X = VG_X;
   function drawVignette(state) {
     const run = state.run, ui = state.ui || {};
     const ev = (DC.Events && DC.Events.pending) ? DC.Events.pending(run) : null;
@@ -1283,7 +1573,7 @@
       text(VG_CHOICE_X, cy, key, C.green);
       text(VG_CHOICE_X + 4, cy, c.label, hot ? C.white : C.amber);
       if (c.hint) text(VG_CHOICE_X + 4, cy + 1, c.hint, C.darkgray);
-      rows.push({ col: VG_CHOICE_X, row: cy, w: COLS - 2 * VG_CHOICE_X, h: 2, index: i });
+      rows.push({ col: VG_CHOICE_X, row: cy, w: Math.max(1, COLS - 2 * VG_CHOICE_X), h: 2, index: i });
       cy += 3;
     }
     layout.choices = rows;
@@ -1299,13 +1589,16 @@
   // the entries themselves are gold, the colour the LOG already gives a
   // found log, so the two readings of the same line agree.
   const LOG_ROW0 = 5;                       // first entry row
-  const LOG_COL = 3;                        // left margin of the number column
+  // The page is 78 columns — a 70-column entry (the ceiling every authored
+  // line in this game answers to) plus its number column — and it CENTRES
+  // itself rather than starting at a fixed left margin, so the entries sit
+  // under the masthead at any width. A logbook that clips its own entries
+  // mid-word is worse than no logbook: the whole page exists to be read
+  // (SPEC3 §0 law 6).
+  const LOG_PAGE_W = 78;
+  const LOG_COL = Math.max(0, (COLS - LOG_PAGE_W) >> 1);  // number column
   const LOG_TEXT = LOG_COL + 5;             // where the entry itself starts
-  // Wide enough for the longest entry the corpus allows (70 columns, the same
-  // ceiling every authored line in this game answers to), with a margin left
-  // over. A logbook that clips its own entries mid-word is worse than no
-  // logbook: the whole page exists to be read (SPEC3 §0 law 6).
-  const LOG_W = COLS - LOG_TEXT - 2;
+  const LOG_W = LOG_PAGE_W - 5;
   function drawLogbook(state) {
     const meta = state.meta || {};
     const E = DC.Events;
@@ -1315,7 +1608,7 @@
 
     ctext(1, 'DEAD FOREMEN OF THE DEEP', C.amber);
     ctext(2, 'what they wrote down before the rock had them', C.gray);
-    text(LOG_COL, 3, '─'.repeat(COLS - 2 * LOG_COL + 1), mix(C.amber, C.bg, 0.42));
+    text(LOG_COL, 3, '─'.repeat(LOG_PAGE_W), mix(C.amber, C.bg, 0.42));
 
     for (let i = 0; i < logs.length && LOG_ROW0 + i < ROWS - 4; i++) {
       const row = LOG_ROW0 + i;
@@ -1389,8 +1682,11 @@
     }
   }
 
+  // The end-screen stats, as a centred two-column block (M-WIDE: L/V were the
+  // literals 26/46, which centred a 34-wide block on an 80-column screen).
+  const STATS_W = 34, STATS_VAL = 20;
   function statsBlock(row, res) {
-    const L = 26, V = 46;
+    const L = Math.max(0, (COLS - STATS_W) >> 1), V = L + STATS_VAL;
     text(L, row, 'STRATUM REACHED', C.gray);
     text(V, row, res.depth + '  (-' + (res.depth * D.DEPTH_M) + 'm)', C.white);
     text(L, row + 1, 'STRATA BREACHED', C.gray);
@@ -1421,7 +1717,9 @@
     const hadCat = (DC.Events && DC.Events.cat) ? DC.Events.cat(state.run) : null;
     if (hadCat) {
       const rubble = 1 + lines.length - 3;
-      put(4, Math.max(1, rubble), 'c', shade(C.white, 0.8));
+      // on the wreck's own left edge, wherever the centred art put it
+      const cx = Math.max(0, (COLS - artWidth(lines)) >> 1) + 3;
+      put(cx, Math.max(1, rubble), 'c', shade(C.white, 0.8));
       const cl = (DC.Barks && DC.Barks.CAT_EPITAPH) || null;
       if (cl && y + 5 + epi.length < 30) ctext(y + 5 + epi.length + 1, cl, C.gray);
     }
@@ -1848,7 +2146,7 @@
     try { return DC.FX.odometer(key, value, prog); } catch (e) { return plain; }
   }
   // ================= public API =================
-  const layout = { cards: [], buildRows: [], map: null, choices: [] };
+  const layout = { cards: [], buildRows: [], map: null, choices: [], runRig: null };
   surface.layout = layout;
 
   DC.Render = {
@@ -1862,6 +2160,17 @@
     STOCK_COUNT_W: STOCK_COUNT_W,
     itemLabel: itemLabel,
     stockCount: stockCount,
+    // M-WIDE: the panel geometry, derived from COLS rather than typed in.
+    // Exported so the suites can hold the columns to the screen's real width
+    // instead of re-deriving numbers that would then agree with themselves.
+    LAYOUT: {
+      cols: COLS, rows: ROWS,
+      sb: SB, sbw: SBW, sbc: SBC, scw: SCW,
+      sb2: SB2, sbw2: SBW2, sbc2: SBC2, scw2: SCW2,
+      twoCol: TWO_COL,
+      get runRig() { return layout.runRig; },
+    },
+    LOGBOOK_W: LOG_W,
     // The prose panels' text contract (LOG at SCW columns, Foreman bar at 41),
     // exported so test/barks_test.js can prove no authored line — sim message
     // or GRIT bark — is ever cut mid-word by either one.
