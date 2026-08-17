@@ -430,7 +430,17 @@
     const CB = CA + CAW + GUT;       // right column  x 37..70
     const CBW = W - CB - 1;
     const CAPF = 7;                  // keycaps right-align into this field
-    const NAMES = ['OPERATE', 'SURVIVE'];
+    // M-TIER2 adds the third page. Tier II is five structures with one shared
+    // rule, and the rule is the thing a player has to be told — page 1's BUILD
+    // block is a hotkey table with no room to say it, so the logistics layer
+    // gets a page that can show it happening.
+    const NAMES = ['OPERATE', 'SURVIVE', 'LOGISTICS'];
+    // Which page a structure is documented on: the opening four plus the
+    // damper are the game page 1 teaches; anything sealed behind a stratum
+    // belongs to page 3, and the split is READ off data.js so a retune of
+    // unlockDepth moves the entry rather than orphaning it.
+    const tierI = D.BUILD_ORDER.filter(function (k) { return !D.BUILDINGS[k].unlockDepth; });
+    const tierII = D.BUILD_ORDER.filter(function (k) { return !!D.BUILDINGS[k].unlockDepth; });
 
     // A page is a character grid with a colour tier (or a true game colour)
     // and an inverse flag per cell. Plain text and coloured spans are then two
@@ -519,6 +529,24 @@
       return x;
     }
 
+    // One BUILD row: the hotkey as a cap, the machine's own letter in its own
+    // colour, its name, and its cost right-aligned in the column. Pages 1 and
+    // 3 draw the same row so the two halves of the build list cannot drift
+    // into two different formats.
+    function buildRow(p, cx, y, type, w) {
+      const b = D.BUILDINGS[type];
+      p.cap(cx, y, b.key);                      // engine maps the key by index
+      p.put(cx + 5, y, b.letter, b.color);
+      p.put(cx + 7, y, b.name, 'body');
+      let x = cx + (w || CAW);                  // costs right-align to the edge
+      const keys = Object.keys(b.cost);
+      for (let j = keys.length - 1; j >= 0; j--) {
+        const it = IT[keys[j]];
+        x = p.putR(x, y, it.glyph, it.color);
+        x = p.putR(x - 1, y, String(b.cost[keys[j]]), 'bright') - 1;
+      }
+    }
+
     // ---- every figure on both pages, read out of the balance data ----
     const C = D.COLORS;
     const IT = D.ITEMS;
@@ -577,20 +605,16 @@
 
       // --- BUILD: hotkey, the machine's own letter in its own colour, cost
       p.head(CA, 3, CAW, 'BUILD');
-      for (let i = 0; i < D.BUILD_ORDER.length; i++) {
-        const b = D.BUILDINGS[D.BUILD_ORDER[i]];
-        const y = 5 + i;
-        p.cap(CA, y, String(i + 1));            // engine maps '1'..'n' by index
-        p.put(CA + 5, y, b.letter, b.color);
-        p.put(CA + 7, y, b.name, 'body');
-        let x = CA + CAW;                       // costs right-align to the edge
-        const keys = Object.keys(b.cost);
-        for (let j = keys.length - 1; j >= 0; j--) {
-          const it = IT[keys[j]];
-          x = p.putR(x, y, it.glyph, it.color);
-          x = p.putR(x - 1, y, String(b.cost[keys[j]]), 'bright') - 1;
-        }
+      for (let i = 0; i < tierI.length; i++) {
+        buildRow(p, CA, 5 + i, tierI[i]);
       }
+      // ...and the five that are sealed until stratum 3 have a page of their
+      // own. A hotkey table that stopped at 5 while the game had 10 tools
+      // would be the manual lying, which is the one thing it may not do.
+      const t2keys = D.BUILDINGS[tierII[0]].key + '-' +
+                     D.BUILDINGS[tierII[tierII.length - 1]].key;
+      rich(p, p.cap(CA, 5 + tierI.length, t2keys) + 1, 5 + tierI.length,
+        [['tier II  ', 'body'], ['→ ' + NAMES[2], 'head']]);
 
       // --- CARGO: the legend is the goods themselves, in their true colours
       p.head(CA, 11, CAW, 'CARGO');
@@ -765,7 +789,90 @@
       return p;
     }
 
-    const pages = [buildOperate(), buildSurvive()];
+    // ================= page 3 — LOGISTICS (M-TIER2) =================
+    // Five structures, one rule, and three worked lines. The rule is the whole
+    // page: a thing hands its cargo to the tile its arrow points at. Every
+    // figure here is composed from data.js (costs, the tunnel's span, the
+    // crusher's reach and yield, the stratum they unlock on), so a retune
+    // moves the page instead of leaving it lying.
+    function buildLogistics() {
+      const p = new Page(NAMES[2], W, H);
+      header(p, 2);
+      p.cols(3, 17);                            // TIER II | THE RULE / THE GATE
+
+      const TUN = D.BUILDINGS.tunnel, CRU = D.BUILDINGS.crusher;
+      const span = num(TUN.gap), reach = num(CRU.reach), yld = num(CRU.yield);
+      const seal = num(TUN.unlockDepth);
+      // one line under each entry, in the structure's own words
+      const notes = {
+        splitter: 'one line in, two out',
+        tunnel:   'runs under ' + span + ' tiles',
+        loader:   'a second output side',
+        crusher:  'rubble in ' + reach + ' → ' + yld + ' iron ore',
+        filter:   'one cargo passes · click it',
+      };
+      p.head(CA, 3, CAW, 'TIER II');
+      for (let i = 0; i < tierII.length; i++) {
+        const y = 5 + i * 2;
+        buildRow(p, CA, y, tierII[i]);
+        p.put(CA + 5, y + 1, notes[tierII[i]] || '', 'body');
+      }
+      rich(p, CA, 5 + tierII.length * 2, [
+        ['sealed until stratum ', 'body'], [seal, 'bright'],
+      ]);
+
+      // --- THE RULE: the one sentence tier II exists to conjugate
+      p.head(CB, 3, CBW, 'THE RULE');
+      p.put(CB, 5, 'a belt hands its cargo to the ONE', 'body');
+      p.put(CB, 6, 'tile its arrow points at. so does', 'body');
+      p.put(CB, 7, 'a machine. so does every one of', 'body');
+      p.put(CB, 8, 'these — a splitter simply has two', 'body');
+      p.put(CB, 9, 'arrows, and a tunnel throws one', 'body');
+      rich(p, CB, 10, [[span, 'bright'], [' tiles ahead of itself.', 'body']]);
+      rich(p, p.cap(CB, 12, 'R') + 1, 12, [['aims it before you place.', 'body']]);
+      p.put(CB, 13, 'nothing here takes from a', 'body');
+      p.put(CB, 14, 'neighbour for being a neighbour.', 'body');
+
+      // --- THE GATE: the only tier-II structure with an interface
+      p.head(CB, 16, CBW, 'THE GATE');
+      const gate = D.BUILDINGS.filter;
+      p.put(CB, 18, gate.letter, gate.color);
+      rich(p, CB + 2, 18, [['passes one cargo. ', 'body']]);
+      rich(p, p.cap(CB + 2, 19, 'ENTER') + 1, 19, [['on it cycles which.', 'body']]);
+      p.put(CB + 2, 20, 'everything else waits behind it', 'body');
+      p.put(CB + 2, 21, '— which is how a line sorts.', 'body');
+
+      // --- ROUTING: three lines that actually work, drawn as lines
+      p.head(CA, 23, W - CA - 1, 'ROUTING');
+      const belt3 = rep(D.BUILDINGS.belt.letter, 3);
+      const bc = D.BUILDINGS.belt.color;
+      const sp2 = D.BUILDINGS.splitter, tun = D.BUILDINGS.tunnel;
+      const smelt = D.BUILDINGS.smelter, ext = D.BUILDINGS.extractor;
+      let x = p.put(CA + 2, 25, ext.letter, ext.color) + 1;
+      x = p.put(x, 25, belt3, bc) + 1;
+      x = p.put(x, 25, sp2.letter, sp2.color) + 1;
+      x = p.put(x, 25, belt3, bc) + 1;
+      p.put(x, 25, smelt.letter, smelt.color);
+      p.put(CA + 8, 26, '▼', bc);
+      p.put(CA + 10, 26, belt3, bc);
+      p.put(CA + 14, 26, smelt.letter, smelt.color);
+      p.put(CA + 25, 25, 'one vein feeding two furnaces', 'body');
+      p.put(CA + 25, 26, '— the splitter alternates', 'body');
+      x = p.put(CA + 2, 28, ext.letter, ext.color) + 1;
+      x = p.put(x, 28, belt3, bc) + 1;
+      x = p.put(x, 28, tun.letter, tun.color);
+      x = p.put(x, 28, rep(D.TERRAIN.chasm.glyph, 4), D.TERRAIN.chasm.color);
+      x = p.put(x, 28, tun.letterOut, tun.color) + 1;
+      x = p.put(x, 28, belt3, bc) + 1;
+      p.put(x, 28, D.BUILDINGS.hub.letter, D.BUILDINGS.hub.color);
+      p.put(CA + 25, 28, 'a chasm is not a wall: two', 'body');
+      p.put(CA + 25, 29, 'tunnels, aimed the same way', 'body');
+
+      footer(p, H - 1);
+      return p;
+    }
+
+    const pages = [buildOperate(), buildSurvive(), buildLogistics()];
     // The pager's asset: id, plain text (what the tests lint) and the coloured
     // spans (what render paints) — two projections of one grid.
     A.helpPages = pages.map(function (p) {
@@ -963,6 +1070,35 @@
       '     ▀█▀  ',
       ' ▬▬ ▶ ¤¤  ',
     ],
+    // ---- M-TIER2 ----
+    s_conduit: [             // a line diving under a chasm and surfacing far off
+      ' ▶▶U      ',
+      '▓▓▓░░░░▓▓▓',
+      '▓▓░░░░░░▓▓',
+      '      ∩▶▶ ',
+      '          ',
+    ],
+    s_yoke: [                // one line in, three out
+      '     ▲    ',
+      '     │    ',
+      '▶▶▶▶▶Y▶▶▶▶',
+      '     │    ',
+      '     ▼    ',
+    ],
+    s_gate: [                // a gate passing one cargo, shunting the rest
+      '  ♦  ▶  ♦ ',
+      ' ═══F═══  ',
+      '    │     ',
+      '    ▼ ••  ',
+      '          ',
+    ],
+    s_grind: [               // jaws taking the wall apart
+      '▓▓▓▓  ▓▓▓▓',
+      '▓▓▓▓▄▄▓▓▓▓',
+      ' ██▀▀▀▀██ ',
+      ' ▀▀▄▄▄▄▀▀ ',
+      '  •• •• • ',
+    ],
   };
 
   // ---------------- M-WIDE: 3-cell item & building icons ----------------
@@ -1001,6 +1137,14 @@
     smelter:   icon3('######', '##..##'),     // a furnace with its mouth open
     assembler: icon3('######', '#.##.#'),     // a press on two legs
     damper:    icon3('#.#.#.', '.#.#.#'),     // a coil, absorbing
+    // M-TIER2. Same rule as the rest: the picture is the mechanic. One line
+    // going in and two coming out; an arch with cargo passing under it; a
+    // step sideways; two sets of teeth meeting; a funnel with one hole.
+    splitter:  icon3('#....#', '..##..'),
+    tunnel:    icon3('.####.', '#....#'),
+    loader:    icon3('###...', '...###'),
+    crusher:   icon3('##.##.', '.##.##'),
+    filter:    icon3('######', '..##..'),
   };
 
   // ============ M-ONBOARD Part 2: the induction box and its pointer ==========
@@ -1071,6 +1215,8 @@
     s_plate: '▐▌', s_damp: '∩∩', s_repair: '+×', s_drill: '♦▼',
     s_salvage: '╘╛', s_survey: '()', s_charge: '‡‡', s_over: '»»',
     s_veins: '≡≡', s_gear: '¤¤',
+    // M-TIER2: down-and-up, a fan, a gate with two sides, broken wall
+    s_conduit: '↓↑', s_yoke: '◀▶', s_gate: '╡╞', s_grind: '▓▓',
   };
   // ---------------- M-WIDE: the LOADOUT panel's two short strings ----------
   // run.schematics is tracked all run and shown for four seconds on the pick
@@ -1087,6 +1233,8 @@
     s_repair: 'Repair Swarm',   s_drill: 'Diamond Bit',    s_salvage: 'Salvage Claws',
     s_survey: 'Deep Sonar',     s_charge: 'Resonance',     s_over: 'OD Coupling',
     s_veins: 'Rich Veins',      s_gear: 'Bronze Gears',
+    s_conduit: 'Deep Conduits', s_yoke: 'Trident Yokes',
+    s_gate: 'Sorting Gates',    s_grind: 'Rock Grinders',
   };
   A.schemEffect = {
     s_beltfree: 'belts free',   s_extract: 'mine +35%',    s_smelt: 'smelt +30%',
@@ -1094,12 +1242,15 @@
     s_repair: 'self-repair',    s_drill: 'breach -15%',    s_salvage: 'salvage 60%',
     s_survey: 'full reveal',    s_charge: 'charges x2',    s_over: 'OD cost 1/2',
     s_veins: 'veins +50%',      s_gear: 'bronze gear',
+    s_conduit: 'reach x2',      s_yoke: 'three ways',
+    s_gate: 'shunt right',      s_grind: 'rock to ore',
   };
   A.schemColors = {
     s_beltfree: 'cyan', s_extract: 'amber', s_smelt: 'magma', s_coal: 'gray',
     s_plate: 'steel', s_damp: 'green', s_repair: 'green', s_drill: 'white',
     s_salvage: 'orange', s_survey: 'blue', s_charge: 'magenta', s_over: 'red',
     s_veins: 'magmaHot', s_gear: 'orange',
+    s_conduit: 'blue', s_yoke: 'cyan', s_gate: 'magenta', s_grind: 'steel',
   };
 
   // ---------------- helpers & color suggestions ----------------

@@ -98,7 +98,14 @@ for (let d = 1; d <= D.STRATA_COUNT; d++)
 assertEq(typeof B.STRATUM_LINES.mantle, 'string', 'bespoke line for the mantle');
 for (const s of D.SCHEMATICS)
   assertEq(typeof B.SCHEM_LINES[s.id], 'string', 'bespoke line for schematic ' + s.id);
-assertEq(D.SCHEMATICS.length, 14, 'all 14 schematics covered');
+assertEq(D.SCHEMATICS.length, 18, 'all 18 schematics covered (14 + M-TIER2 four)');
+// M-TIER2: a schematic gated to a stratum must name a real one, or it is a
+// card the deck can never deal.
+for (const s of D.SCHEMATICS) {
+  if (s.minDepth === undefined) continue;
+  assert(s.minDepth >= 1 && s.minDepth <= D.STRATA_COUNT,
+    'schematic ' + s.id + ' is gated to a stratum that exists');
+}
 for (const u of D.META_UPGRADES)
   assertEq(typeof B.META_LINES[u.id], 'string', 'bespoke line for meta upgrade ' + u.id);
 assertEq(D.META_UPGRADES.length, 9, 'all 9 meta upgrades covered');
@@ -1176,13 +1183,41 @@ let MANUAL_COLORS = 0;
     "engine turns the manual's pages on the arrow keys");
   assert(/st\.ui\.helpPage = n/.test(engSrc),
     'engine jumps straight to a page by its number');
-  // build tool names/order come straight from data.js
-  for (let i = 0; i < D.BUILD_ORDER.length; i++) {
-    const nm = D.BUILDINGS[D.BUILD_ORDER[i]].name;
-    assert(new RegExp('\\b' + nm + '\\b').test(joined),
-      'the manual lists build tool ' + (i + 1) + ' as ' + nm);
-    assert(new RegExp(' ' + (i + 1) + ' ').test(pages[0].text[5 + i]),
-      'hotkey ' + (i + 1) + ' caps the ' + nm + ' row');
+  // build tool names/order come straight from data.js. M-TIER2 split the list
+  // across two pages — the opening five on OPERATE, the five that are sealed
+  // until a stratum on LOGISTICS — so the assertion follows the SPLIT RULE
+  // (data.js `unlockDepth`) rather than a typed row number, and a structure
+  // that is documented on neither page still fails here.
+  {
+    const t1 = D.BUILD_ORDER.filter(k => !D.BUILDINGS[k].unlockDepth);
+    const t2 = D.BUILD_ORDER.filter(k => !!D.BUILDINGS[k].unlockDepth);
+    assert(t1.length && t2.length, 'the manual has both tiers to document');
+    for (let i = 0; i < D.BUILD_ORDER.length; i++) {
+      const nm = D.BUILDINGS[D.BUILD_ORDER[i]].name;
+      assert(new RegExp('\\b' + nm + '\\b').test(joined),
+        'the manual lists build tool ' + (i + 1) + ' as ' + nm);
+    }
+    for (let i = 0; i < t1.length; i++) {
+      const b = D.BUILDINGS[t1[i]];
+      assert(new RegExp(' ' + b.key + ' ').test(pages[0].text[5 + i]),
+        'hotkey ' + b.key + ' caps the ' + b.name + ' row on ' + pages[0].id);
+    }
+    const t2page = pages[2];
+    assert(t2page, 'the tier-II structures have a page');
+    for (let i = 0; i < t2.length; i++) {
+      const b = D.BUILDINGS[t2[i]];
+      const row = t2page.text[5 + i * 2];
+      assert(new RegExp(' ' + b.key + ' ').test(row),
+        'hotkey ' + b.key + ' caps the ' + b.name + ' row on ' + t2page.id);
+      assert(row.indexOf(b.name) >= 0, t2page.id + ' names the ' + b.name);
+      assert(row.indexOf(b.letter) >= 0,
+        t2page.id + " shows the " + b.name + "'s own map letter");
+    }
+    // the page exists to state ONE rule; if that sentence goes, the page is
+    // just a second hotkey table and the structures teach nothing
+    assert(/ONE\s*\n?/.test(t2page.text.join('\n')) &&
+           /arrow/.test(t2page.text.join('\n')),
+      'the LOGISTICS page still states the facing rule');
   }
   // and so do the goods in the CARGO legend
   for (const id of D.ITEM_ORDER) {
@@ -1289,7 +1324,7 @@ let diagN = 0;
     // Reason AND fix, always. A line that only names the fault leaves the
     // player exactly where the director was: told something is wrong, not
     // told what to do. Every one of these ends in an instruction.
-    assert(/belt|demolish|mine |assembler|takes/i.test(l),
+    assert(/belt|demolish|mine |assembler|takes|place /i.test(l),
       'diagnostic names a fault but no fix: ' + JSON.stringify(l));
   }
   assertEq(new Set(lines).size >= 20, true, 'the causes do not all say the same thing');

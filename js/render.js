@@ -504,6 +504,33 @@
     if (f === 2) return { x: x + ((w - 1) >> 1), y: y + h };
     return { x: x - 1, y: y + ((h - 1) >> 1) };
   }
+  // M-TIER2: every tile the structure about to be placed would hand cargo to,
+  // with the arrow to draw on each. A splitter fans left and right (three ways
+  // with Trident Yokes); a loader's other arrow points INTO the machine it
+  // will empty, drawn on the tile behind it so the ghost reads as a direction
+  // of travel rather than a lone output. Sim owns the geometry — this asks it
+  // about a hypothetical placement rather than keeping a second copy.
+  function ghostOuts(run, type, x, y, f) {
+    const b = D.BUILDINGS[type] || D.BUILDINGS.belt;
+    const probe = { type: type, x: x, y: y, w: b.w, h: b.h, facing: f,
+                    mode: 'out', pair: 0, out: [] };
+    const S = DC.Sim;
+    let tiles = null;
+    try { tiles = S && S.outputTiles ? S.outputTiles(run, probe) : null; } catch (e) { tiles = null; }
+    if (!tiles || !tiles.length) tiles = [outputTile(x, y, b.w, b.h, f)];
+    const out = tiles.map(function (t) {
+      let d = f;
+      for (let k = 0; k < 4; k++)
+        if (x + D.DIRS[k].dx === t.x && y + D.DIRS[k].dy === t.y) d = k;
+      return { x: t.x, y: t.y, d: d };
+    });
+    if (type === 'loader') {
+      const d = D.DIRS[f];
+      out.push({ x: x - d.dx, y: y - d.dy, d: f });
+    }
+    return out;
+  }
+
   function fallbackResult(run, won) {
     if (run && run.result) return run.result;
     return {
@@ -685,11 +712,20 @@
             else {
               const b = D.BUILDINGS[m.type] || D.BUILDINGS.belt;
               if (x === m.x && y === m.y) {
-                ch = b.letter;
-                const base = chromed[m.type] ? C.white : b.color;
+                // M-TIER2: two structures wear their own state. A tunnel's
+                // exit is the mirror of its entrance ('∩' against 'U'), so a
+                // mouth and a spout are never the same picture; a filter takes
+                // the COLOUR of the cargo it passes, which is the only way one
+                // cell can say 'this gate is set to crystal' at a glance.
+                ch = (m.type === 'tunnel' && m.mode === 'out' && b.letterOut)
+                  ? b.letterOut : b.letter;
+                const own = (m.type === 'filter' && D.ITEMS[m.filter])
+                  ? D.ITEMS[m.filter].color : b.color;
+                const base = chromed[m.type] ? C.white : own;
                 fg = m.hp === 1 ? (phase ? C.red : base) : base;
               } else { ch = '▓'; fg = shade(b.color, 0.55); }
-              const bad = m.status === 'nofuel' || m.status === 'blocked' || m.status === 'depleted';
+              const bad = m.status === 'nofuel' || m.status === 'blocked' ||
+                          m.status === 'depleted' || m.status === 'unpaired';
               if (bad && phase) {
                 // '!' over first non-anchor tile (the anchor itself for 1x1s)
                 const mkx = (b.w > 1 || b.h > 1) ? m.x + 1 : m.x;
@@ -744,8 +780,12 @@
           }
         }
         if (ui.tool !== 'belt') {
-          const o = outputTile(hov.x, hov.y, b.w, b.h, ui.facing || 0);
-          mapPut(o.x, o.y, D.ARROWS[ui.facing || 0], gcol, xo);
+          // M-TIER2: the ghost draws EVERY arrow the structure will have, not
+          // one. A splitter with a single arrow on screen and two in the sim
+          // is a lie about the only rule this layer has, and the player would
+          // find it out by jamming a line (§0 law 6).
+          for (const o of ghostOuts(run, ui.tool, hov.x, hov.y, ui.facing || 0))
+            mapPut(o.x, o.y, D.ARROWS[o.d], gcol, xo);
         }
       } else if (ui.tool === 'demolish') {
         mapPut(hov.x, hov.y, '×', C.red, xo);
@@ -879,46 +919,80 @@
       y += srows;
     }
 
-    // BUILD — one row per tool + demolish; facing arrow in the title
+    // BUILD — one row per tool + demolish; facing arrow in the title.
+    //
+    // M-TIER2 doubled the tool list and the panel did NOT grow, because there
+    // is nowhere for it to grow into: five more rows would have taken them off
+    // the LOG, which is where every diagnostic this game learned to write in
+    // M-ONBOARD lands. So once tier II unlocks the list goes two to a row and
+    // stays exactly six rows tall — the same height, the same icons, the same
+    // full names, with the cost moving to the header where the eye already is
+    // when it is choosing. A locked structure is not listed at all: the
+    // opening floors are the four-machine lesson, undiluted.
     edge = y;
     y = sideEdge(y, 'sep', 'BUILD ' + (D.ARROWS[ui.facing || 0] || D.ARROWS[1]));
+    const tools = D.BUILD_ORDER.filter(t => unlockedSafe(run, t));
+    const two = tools.length > 5;                      // two to a row from here
+    const HW = 14;                                     // one half, walls aside
     if (ui.laying) {                                   // v1.1 §D belt lay-mode armed
       const ar = D.ARROWS[ui.facing || 0] || '▸';
       textR(SB + SBW - 3, edge, 'LAYING ' + ar + ar + ar, phase ? C.white : C.cyan);
+    } else if (two && ui.tool && D.BUILDINGS[ui.tool]) {
+      textR(SB + SBW - 3, edge, costLabel(run, ui.tool), C.amber);
     }
     layout.buildRows = [];
-    for (const t of D.BUILD_ORDER) {
+    // One entry — a tool or the demolish pick — at (col, row), `w` wide.
+    function buildEntry(t, col, row, w) {
+      const sel = ui.tool === t;
+      const bad = shade(C.red, 0.8);
+      const nameW = w - 5;
+      if (t === 'demolish') {
+        if (sel) text(col, row, U.pad('X  ×  demolish', w), C.bg, C.amber);
+        else {
+          put(col, row, 'X', C.amber);
+          put(col + (two ? 2 : 3), row, '×', C.red);
+          text(col + (two ? 4 : 6), row, 'demolish', C.gray);
+        }
+        layout.buildRows.push({ row: row, col: col, w: w, tool: t });
+        return;
+      }
       const b = D.BUILDINGS[t];
-      sideWalls(y);
       const free = t === 'belt' && run.mods && run.mods.beltFree;
       const afford = free || Object.keys(b.cost).every(k => (inv[k] || 0) >= b.cost[k]);
-      const costS = free ? 'free'
-        : Object.keys(b.cost).map(k => b.cost[k] + (D.ITEMS[k] ? D.ITEMS[k].glyph : '?')).join(' ');
-      // M-WIDE: the same 3-cell pictogram treatment as STOCK, so the thing you
-      // are about to place and the thing it will eat look like each other.
       const bIcon = buildIcon(t);
-      if (ui.tool === t) {
-        text(SBC, y, U.pad(b.key + ' ' + bIcon + ' ' + U.pad(b.name, 10), SCW - costS.length) + costS,
-          C.bg, C.amber);
+      if (two) {
+        // key, pictogram, name — and nothing else, so the name never truncates
+        if (sel) text(col, row, U.pad(b.key + bIcon + ' ' + b.name, w), C.bg, C.amber);
+        else {
+          put(col, row, b.key, C.amber);
+          text(col + 1, row, bIcon, b.color);
+          text(col + 5, row, U.pad(b.name, nameW), afford ? C.gray : bad);
+        }
       } else {
-        const bad = shade(C.red, 0.8);
-        put(SBC, y, b.key, C.amber);
-        text(SBC + 2, y, bIcon, b.color);
-        text(SBC + 6, y, U.pad(b.name, 10), afford ? C.gray : bad);
-        textR(SB + SBW - 2, y, costS, afford ? (free ? C.green : C.amberDim) : bad);
+        const costS = costLabel(run, t);
+        if (sel) {
+          text(col, row, U.pad(b.key + ' ' + bIcon + ' ' + U.pad(b.name, 10),
+            w - costS.length) + costS, C.bg, C.amber);
+        } else {
+          put(col, row, b.key, C.amber);
+          text(col + 2, row, bIcon, b.color);
+          text(col + 6, row, U.pad(b.name, 10), afford ? C.gray : bad);
+          textR(col + w - 1, row, costS, afford ? (free ? C.green : C.amberDim) : bad);
+        }
       }
-      layout.buildRows.push({ row: y, col: SB, w: SBW, tool: t });
-      y++;
+      layout.buildRows.push({ row: row, col: col, w: w, tool: t });
     }
-    sideWalls(y);
-    if (ui.tool === 'demolish') text(SBC, y, U.pad('X  ×  demolish', SCW), C.bg, C.amber);
-    else {
-      put(SBC, y, 'X', C.amber);
-      put(SBC + 3, y, '×', C.red);
-      text(SBC + 6, y, 'demolish', C.gray);
+    const entries = tools.concat(['demolish']);
+    if (!two) {
+      for (const t of entries) { sideWalls(y); buildEntry(t, SBC, y, SCW); y++; }
+    } else {
+      for (let i = 0; i < entries.length; i += 2) {
+        sideWalls(y);
+        buildEntry(entries[i], SBC, y, HW);
+        if (entries[i + 1]) buildEntry(entries[i + 1], SBC + SCW - HW, y, HW);
+        y++;
+      }
     }
-    layout.buildRows.push({ row: y, col: SB, w: SBW, tool: 'demolish' });
-    y++;
 
     // SCAN — tile tooltip / tool description / stratum flavor
     y = sideEdge(y, 'sep', 'SCAN');
@@ -985,16 +1059,35 @@
   }
   function drawChainPanel(y, run, meta, phase) {
     const ch = chainSafe(run);
+    const edge = y;
     layout.chain = [];
     y = sideEdge(y, 'sep', 'CHAIN');
     if (!ch) return y;
+    // M-TIER2: the routing layer, on the header rather than in a row of its
+    // own — the panel is full and the LOG is what a sixth row would cost. The
+    // count is what you built; the rate is the belt's, and printing it beside
+    // the stage rates is the whole of SPEC §12 in two numbers: nothing you can
+    // build makes cargo faster than the line carries it, so a jam is always a
+    // machine you are short of. (Law 8: a throughput number is fine. It says
+    // nothing about when the floor comes down.)
+    const rt = ch.route;
+    if (rt && rt.n) {
+      textR(SB + SBW - 3, edge,
+        '▸' + rt.n + ' ' + fmtRate(rt.rate),
+        rt.lonely ? (phase ? C.red : C.amberDim) : C.cyan);
+    }
     for (const s of ch.stages) {
       sideWalls(y);
       const it = D.ITEMS[s.item] || {};
       const dead = s.n === 0;
       put(SBC, y, it.glyph || '·', dead ? C.darkgray : it.color);
       text(SBC + CHAIN_NAME_X, y, s.name, dead ? C.darkgray : C.gray);
-      text(SBC + CHAIN_N_X, y, s.n + s.letter, dead ? C.darkgray : C.white);
+      // `parts` when a stage is manned by two kinds of machine (M-TIER2's
+      // crusher stands in the ore stage beside the extractors): '2E1C'.
+      const nS = s.parts && s.parts.length > 1
+        ? s.parts.map(p => p.n + p.letter).join('')
+        : s.n + s.letter;
+      text(SBC + CHAIN_N_X, y, nS, dead ? C.darkgray : C.white);
       textR(SBC + CHAIN_RATE_R, y, fmtRate(s.rate), dead ? C.darkgray : C.white);
       // Published for the induction's fourth beat (M-ONBOARD Part 2), which
       // POINTS at this row rather than restating it: CHAIN already names the
@@ -1098,6 +1191,25 @@
     if (typeof ic === 'string' && ic.length) return ic;
     return ' ' + ((D.BUILDINGS[t] || {}).letter || '?') + ' ';
   }
+  // M-TIER2: what a structure costs, as the goods themselves. One string, so
+  // the spacious rows, the compact header and the SCAN panel all quote the
+  // same figure.
+  function costLabel(run, t) {
+    const b = D.BUILDINGS[t];
+    if (!b) return '';
+    if (t === 'belt' && run && run.mods && run.mods.beltFree) return 'free';
+    return Object.keys(b.cost)
+      .map(k => b.cost[k] + (D.ITEMS[k] ? D.ITEMS[k].glyph : '?')).join(' ');
+  }
+  // Sealed until its stratum (data.js `unlockDepth`). Sim owns the rule; this
+  // is the guarded read, so a render without a sim still draws a build list.
+  function unlockedSafe(run, t) {
+    try {
+      if (DC.Sim && DC.Sim.unlocked) return DC.Sim.unlocked(run, t);
+    } catch (e) { /* fall through */ }
+    const b = D.BUILDINGS[t];
+    return !b || !b.unlockDepth || ((run && run.depth) || 1) >= b.unlockDepth;
+  }
   function drawStockPanel(y, run, ch) {
     y = panelEdge(SB2, SBW2, y, 'sep', 'STOCK');
     layout.stock = {};
@@ -1197,7 +1309,11 @@
     }
     if (ui.tool && D.BUILDINGS[ui.tool]) {
       const b = D.BUILDINGS[ui.tool];
-      return [{ text: b.name.toUpperCase(), color: b.color }]
+      // M-TIER2: the cost rides here too. The compact BUILD grid trades the
+      // per-row cost column for a name that never truncates, and this is where
+      // the number went — the panel that is already describing the tool.
+      return [{ text: b.name.toUpperCase() + '  ' + costLabel(run, ui.tool),
+                color: b.color }]
         .concat(wrap(b.desc, SCW).map(t => ({ text: t, color: C.gray })));
     }
     return [{ text: st.tag, color: C.amberDim }];
@@ -1207,8 +1323,12 @@
   // rows 31-32 = the Foreman bar. Everything stays left of the sidebar (col 48).
   function drawHints(run, ui, phase) {
     const ready = run.status === 'breachReady';
+    // M-TIER2: the build keys are a RANGE read off the unlocked list, so the
+    // hint stops promising tools the floor has not handed over yet.
+    const keys = D.BUILD_ORDER.filter(t => unlockedSafe(run, t))
+      .map(t => D.BUILDINGS[t].key);
     const segs = [
-      ['1-5 BLD ', C.amberDim],
+      [keys[0] + '-' + keys[keys.length - 1] + ' BLD ', C.amberDim],
       ['X DEM ', C.amberDim],
       ['R ROT ', C.amberDim],
       ['C OD ', C.amberDim],
