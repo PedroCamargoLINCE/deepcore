@@ -4796,6 +4796,13 @@ function tutorialSection(seed) {
   assertEq(run.instHold, true, 'the pressure pause is on: instability is frozen');
   frames(2);
   assertEq(T.beat(run), 'place', 'the induction opens on the place beat');
+  // The vein is picked LAZILY: on a couple of seeds in a hundred the opening
+  // scan has not reached one yet at t=0, and the induction waits for the sweep
+  // rather than refusing to arm. Until it has one there is no box at all —
+  // pointing at a tile the player cannot see would be worse than silence.
+  if (!run.tutorial.vein) assertEq(T.layout(run), null, 'no vein yet, so no box');
+  let vwait = 0;
+  while (!run.tutorial.vein && vwait++ < 20 * HZ) frames(1);
   const vein = run.tutorial.vein;
   assert(vein, 'the induction picked a revealed iron vein to teach on');
   assertEq(run.grid[vein.y][vein.x].ore, 'ironOre', 'and it really is an iron vein');
@@ -4822,8 +4829,11 @@ function tutorialSection(seed) {
       L.target.col + ',' + L.target.row + ')');
     assert(!(L.target.col >= L.tailCol && L.target.col < L.tailCol + L.tailW &&
              L.target.row === L.tailRow), label + ': the tail sits on the target');
-    if (L.from) assert(!inBox(L.from.col, L.from.row),
-      label + ': the box covers the belt beat’s starting arrow');
+    // ...and the belt beat's OTHER end stays visible too, unless the layout
+    // says out loud that no edge could clear both (protecting the target is the
+    // rule that never bends).
+    if (L.from && !L.compromise) assert(!inBox(L.from.col, L.from.row),
+      label + ': the box covers the belt beat’s starting arrow without saying so');
 
     // 2. IT NEVER TOUCHES A PANEL COLUMN. M-WIDE put two columns of live UI
     //    right of the map, and the box is centred ON THE MAP — derived from
@@ -4930,27 +4940,37 @@ function tutorialSection(seed) {
   // there being silently correct. The beat will not pass while that is true,
   // and the box says so in words that name the fix.
   {
-    const good = ex.facing;
-    let fouled = -1;
-    for (let f = 0; f < 4 && fouled < 0; f++) {
-      ex.facing = f;                       // scaffold: a facing the map refuses
-      if (T.outputFouled(run, ex)) fouled = f;
-    }
-    if (fouled >= 0) {
-      ex.facing = fouled;
-      run.tutorial.rotated = true;         // scaffold: R has already been pressed
-      assert(!T.layout(run) || T.beat(run) === 'rotate',
-        'a fouled output holds the rotate beat');
-      const w = T.warn(run);
-      assert(Array.isArray(w) && w.length, 'the box names the fouled output');
-      assert(w.some(function (s) { return s[0] === 'cap' && s[1] === 'X'; }),
-        '...and hands the player the demolish key to fix it');
-      frames(1);
-      checkBox('beat 2 (fouled output)');
-    }
-    ex.facing = good;
+    assertEq(T.warn(run), null, 'an open output gets no scold');
+    const o = T.outputTile(ex);
+    const tile = run.grid[o.y][o.x];
+    const wasT = tile.t;
+    tile.t = 'rock';                       // scaffold: bury the output side
+    run.tutorial.rotated = true;           // scaffold: R has already been pressed
+    assert(T.outputFouled(run, ex), 'the scaffolded output really is buried');
+    frames(2);
+    assertEq(T.beat(run), 'rotate', 'a fouled output holds the rotate beat');
+    const w = T.warn(run);
+    assert(Array.isArray(w) && w.length, 'the box names the fouled output');
+    assert(w.some(function (s) { return s[0] === 'cap' && s[1] === 'X'; }),
+      '...and hands the player the demolish key to fix it');
+    assert(w.some(function (s) { return s[0] === 'cap' && s[1] === 'R'; }),
+      '...and the key that aims it somewhere else');
+    const ww = w.reduce(function (n, s) {
+      return n + (s[0] === 'cap' ? s[1].length + 2 : s[1].length);
+    }, 0);
+    assert(ww <= A.SPEECH.TEXT_W, 'the fouled-output row is ' + ww +
+      ' cols and the box holds ' + A.SPEECH.TEXT_W + ' — it would be cut');
+    // it is drawn, in the warning colour, above the action row
+    frames(1);
+    const wrows = gridRows();
+    const wl = T.layout(run);
+    assert(wrows[wl.row + 1 + A.SPEECH.PROSE_ROWS].indexOf('BURIED') >= 0,
+      'the fouled-output row is drawn where the box says it is');
+    checkBox('beat 2 (fouled output)');
+    tile.t = wasT;
     run.tutorial.rotated = false;
     run.tutorial.facing0 = null;
+    assertEq(T.warn(run), null, 'clearing the fault clears the scold');
   }
   frames(2 * HZ);
   assertEq(T.beat(run), 'rotate', 'an open output alone does not pass beat 2');

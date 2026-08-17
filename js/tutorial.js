@@ -328,8 +328,8 @@
     if (id !== 'rotate') return null;
     const m = firstExtractor(run);
     if (!m || !outputFouled(run, m)) return null;
-    return [['t', 'OUTPUT IS BURIED —'], ['t', ' '], ['cap', 'X'], ['t', ' SCRAP,'],
-            ['t', ' '], ['cap', 'R'], ['t', ', PLACE AGAIN']];
+    return [['t', 'OUTPUT BURIED:'], ['t', ' '], ['cap', 'X'], ['t', ' SCRAP,'],
+            ['t', ' '], ['cap', 'R'], ['t', ' RETRY']];
   }
 
   // The way out, on screen from the first frame and on every beat. A tutorial
@@ -358,21 +358,26 @@
   // this brief exists to point AT. Every number below derives from D.MAP_X /
   // D.MAP_W / D.MAP_H; there is not a margin typed anywhere in this file.
   //
-  // Vertically it takes the map edge FURTHEST from its target and hangs its
-  // tail off the side that faces it, aligned to the target's own column.
+  // Vertically it takes a map EDGE — top or bottom — and hangs its tail off the
+  // side facing its target, aligned to the target's own column.
   //
   // Sitting it two rows off the target reads better and was tried first; it is
-  // wrong, and playtesting it on the belt beat is what says so. The target of
-  // beats three and four is the RIG, near the middle of the map, and a 40x8 box
-  // two rows from the rig lands squarely on the ground the player is being
-  // asked to lay a belt across. A tutorial that covers the work it just set is
-  // worse than one that points from further away. So the box takes an edge, the
-  // whole half containing the target stays clear to build in, and the wedge
-  // plus the highlighted tile carry the pointing.
+  // wrong, and the belt beat is what says so. The target of beats three and
+  // four is the RIG, near the middle of the map, and a 40x8 box two rows from
+  // the rig lands squarely on the ground the player is being asked to lay a
+  // belt across. A tutorial that covers the work it just set is worse than one
+  // that points from further away. On an edge, the whole middle of the map
+  // stays clear to build in and the wedge plus the highlighted tile carry the
+  // pointing.
   //
-  // With a box H tall in a map MAP_H tall this is arithmetic and not a
-  // heuristic: the box cannot reach the half its target is in. The suites
-  // assert the non-overlap at every beat anyway.
+  // Which edge is CHOSEN rather than assumed, because the belt beat has two
+  // tiles that must stay visible — the arrow the ore leaves by and the rig it
+  // has to reach — and taking the edge opposite the rig can bury the arrow.
+  // (It did; a seed sweep found it.) So both candidate spans are tested against
+  // both tiles and the box takes one that clears them. If a map ever puts them
+  // so far apart that neither edge does, the TARGET wins and `compromise` says
+  // so out loud — the one rule that never bends is that the box does not cover
+  // the thing it is pointing at.
   function target(run) {
     const T = state(run);
     if (!T) return null;
@@ -387,16 +392,38 @@
     if (!active(run)) return null;
     const S = DC.Art && DC.Art.SPEECH;
     if (!S) return null;
-    if (!state(run).vein) return null;    // nothing to teach on yet: no box
+    // No vein yet means nothing to teach on and therefore no box — pointing at
+    // a tile the player cannot see is worse than silence. Being SKIPPED is the
+    // exception: that line is about the decision, not about the map, and it
+    // points at the rig, which is always there.
+    if (!state(run).vein && beatId(run) !== 'skipped') return null;
     const tgt = target(run);
     if (!tgt) return null;
     const ex = beatId(run) === 'belt' ? firstExtractor(run) : null;
     const from = ex ? outTile(ex) : null;
     const w = S.W, h = S.H;
     const col = D.MAP_X + ((D.MAP_W - w) >> 1);
-    const below = tgt.y < (D.MAP_H >> 1);     // target up top -> box on the floor
-    let mapRow = below ? D.MAP_H - h : 0;
-    if (mapRow < 0) mapRow = 0;
+    // The two candidate edges, each measured WITH its tail row, since a wedge
+    // sitting on the tile it points at is the same failure as a wall doing it.
+    const bot = Math.max(0, D.MAP_H - h);
+    const spans = {
+      top: [0, Math.min(D.MAP_H - 1, h)],       // box rows 0..h-1, tail at h
+      bot: [Math.max(0, bot - 1), D.MAP_H - 1], // tail at bot-1, box below it
+    };
+    const pts = from ? [tgt, from] : [tgt];
+    const clears = function (k) {
+      const s = spans[k];
+      return !pts.some(function (p) { return p.y >= s[0] && p.y <= s[1]; });
+    };
+    const wantBot = tgt.y < (D.MAP_H >> 1);   // target up top -> box on the floor
+    const first = wantBot ? 'bot' : 'top', second = wantBot ? 'top' : 'bot';
+    let pickEdge = first, compromise = false;
+    if (!clears(first)) {
+      if (clears(second)) pickEdge = second;
+      else compromise = true;                 // neither fits both; the target wins
+    }
+    const below = pickEdge === 'bot';
+    const mapRow = below ? bot : 0;
     const row = D.MAP_Y + mapRow;
     const tailRow = below ? row - 1 : row + h;
     const tw = (DC.Art.SPEECH_TAIL_W || 3);
@@ -419,6 +446,10 @@
       // the rest of the run is worth more than another sentence from GRIT.
       panels: beatId(run) === 'ore' || beatId(run) === 'outro',
       beat: beatId(run),
+      // true only when no edge could clear BOTH ends of the belt beat, so the
+      // starting arrow is under the box. Reported rather than hidden: the
+      // suites assert `from` is visible unless this says it could not be.
+      compromise: compromise,
     };
   }
 
