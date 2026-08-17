@@ -384,18 +384,27 @@
     { id: 's_over',     name: 'Overdrive Coupling',   desc: 'Overdrive instability penalty halved.' },
     { id: 's_veins',    name: 'Rich Veins',           desc: 'Ore veins in new strata are 50% richer.' },
     { id: 's_gear',     name: 'Bronze Gearworks',     desc: 'Unlock: 1 iron + 1 copper plate → 2 gears.' },
-    // M-TIER2: four picks that only mean anything once the tier-II structures
-    // exist, so they are gated to the stratum those unlock on. `minDepth` is
-    // read by offerSchematics against the floor you are ABOUT to land on — a
-    // card that does nothing on arrival is a wasted pick, and a pick is the
-    // only reward a breach pays.
-    { id: 's_conduit',  name: 'Deep Conduits',        minDepth: 3,
+    // M-TIER2: four picks that multiply a structure rather than the rig, so
+    // each is dealt only to a player who is RUNNING that structure. Two gates,
+    // and the second is the one that matters:
+    //
+    //   `minDepth` — the floor the card is used on must have unlocked its
+    //   structure at all (offerSchematics measures against the floor you are
+    //   about to land on, not the one you are leaving).
+    //   `needs`    — you have built one this run.
+    //
+    // A card that multiplies splitters is a dead pick to someone with no
+    // splitters, and a breach pays exactly one pick. It also keeps the deck
+    // the same 14 cards for a player who never touches tier II, which is why
+    // the balance sweep does not drift a single number for the runs that do
+    // not use this layer.
+    { id: 's_conduit',  name: 'Deep Conduits',        minDepth: 3, needs: 'tunnel',
       desc: 'Underground belts reach twice as far.' },
-    { id: 's_yoke',     name: 'Trident Yokes',        minDepth: 3,
+    { id: 's_yoke',     name: 'Trident Yokes',        minDepth: 3, needs: 'splitter',
       desc: 'Splitters feed a third line straight ahead.' },
-    { id: 's_gate',     name: 'Sorting Gates',        minDepth: 3,
+    { id: 's_gate',     name: 'Sorting Gates',        minDepth: 3, needs: 'filter',
       desc: 'Filters shunt what they do not pass to their right.' },
-    { id: 's_grind',    name: 'Rock Grinders',        minDepth: 3,
+    { id: 's_grind',    name: 'Rock Grinders',        minDepth: 3, needs: 'crusher',
       desc: 'Crushers chew rock as well as rubble.' },
   ];
 

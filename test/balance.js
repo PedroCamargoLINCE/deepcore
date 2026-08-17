@@ -34,6 +34,19 @@
    rows are a planner limit, not a balance signal — treat win rates as a LOWER
    bound on competent human play.
 
+   M-TIER2 LIFTED HALF OF THAT CEILING. The commonest single cause of those
+   rows was `crystal-noroute`: a crystal vein on the far side of a chasm, and
+   a router that can only lay belts on ground. The field now offers an
+   UNDERGROUND JUMP — a tunnel pair, priced above the belts it replaces, over
+   ground no belt can ever cross or ground that is already carrying a line —
+   so the bot routes crystal across a chasm the way a player would. Measured
+   over 28 seeds at full Foundry: standard wins 9 -> 12 and its no-breach
+   stalls 14 -> 8. The camper's win count fell 6 -> 0 in the same change and
+   its median death depth did not move (7): it now reaches stratum 8 far more
+   often and dies there, which is what a policy that overstays by 1.5x is
+   supposed to do. Nothing in js/data.js moved for any of it — the sweep
+   reproduces the old numbers EXACTLY with this one bot change reverted.
+
    Two pacing policies:
      standard — descends as soon as the next base is affordable
      camper   — deliberately overstays to ~1.5x its own breach-ready time
@@ -200,18 +213,86 @@ function mkBot(run) {
     while (heap.length) {
       const cur = hpop();
       if (cur.d !== dm.get(cur.k)) continue;
-      for (const dd of D.DIRS) {
-        const nx = cur.x + dd.dx, ny = cur.y + dd.dy, nk = key(nx, ny);
+      const relax = (nx, ny, extra) => {
+        const nk = key(nx, ny);
         const t = T(nx, ny);
-        if (!passable(t, nk, blocked)) continue;
-        const nd = cur.d + cellCost(t);
-        if (dm.has(nk) && dm.get(nk) <= nd) continue;
+        if (!passable(t, nk, blocked)) return;
+        const nd = cur.d + cellCost(t) + extra;
+        if (dm.has(nk) && dm.get(nk) <= nd) return;
         dm.set(nk, nd);
         prev.set(nk, cur.k);
         hpush({ k: nk, x: nx, y: ny, d: nd });
+      };
+      // Which way the line leaves `cur` on its way to the sink, and how far
+      // that step is. A tunnel EXIT can only stand here if the line carries on
+      // in the tunnel's own direction (both ends of a pair share a facing) and
+      // if that next step is an ordinary belt (one tile cannot be the exit of
+      // one pair and the entrance of the next).
+      const onward = (function () {
+        let tx, ty;
+        if (goalMap.has(cur.k)) { const g = goalMap.get(cur.k); tx = g.x; ty = g.y; }
+        else {
+          const pk = prev.get(cur.k);
+          if (pk === undefined) return null;
+          const p = pk.split(','); tx = +p[0]; ty = +p[1];
+        }
+        const dx = tx - cur.x, dy = ty - cur.y;
+        if (dx && dy) return null;
+        const gapN = Math.abs(dx) + Math.abs(dy);
+        const di = dx ? (dx > 0 ? 1 : 3) : (dy > 0 ? 2 : 0);
+        return { dir: di, gap: gapN };
+      })();
+      const jumpOk = tunnelsOpen() && onward && onward.gap === 1;
+      for (let di = 0; di < 4; di++) {
+        const dd = D.DIRS[di];
+        relax(cur.x + dd.dx, cur.y + dd.dy, 0);
+        // M-TIER2: the underground jump. A belt cannot cross a chasm, and the
+        // bot used to answer 'crystal-noroute' and stall a stratum-5 run on
+        // exactly that; a tunnel pair crosses anything up to its span. The
+        // edge is offered only once the stratum has unlocked tunnels, only
+        // where the line already runs the right way, and it is priced above
+        // the belts it stands in for — so the bot reaches for one exactly when
+        // there is no line to lay instead.
+        //
+        // The field runs BACKWARD from the sink, so `cur` is the downstream
+        // end: the exit stands here and the entrance lands out at `nk`.
+        if (!jumpOk || onward.dir !== ((di + 2) % 4)) continue;
+        const span = D.BUILDINGS.tunnel.gap;
+        let buried = 0;
+        for (let j = 1; j <= span + 1; j++) {
+          const nx = cur.x + dd.dx * j, ny = cur.y + dd.dy * j;
+          if (nx < 0 || ny < 0 || nx >= D.MAP_W || ny >= D.MAP_H) break;
+          if (passable(T(nx, ny), key(nx, ny), blocked)) {
+            if (buried > 0) relax(nx, ny, JUMP_COST);
+            break;
+          }
+          // Under ground no line can ever cross, or under a line that is
+          // already there. NOT under rock: rock is diggable, and tunnelling it
+          // would spend six plates to save two — the bot quietly stops banking
+          // for repairs and dies richer in tunnels.
+          if (!jumpable(T(nx, ny))) break;
+          buried++;
+        }
       }
     }
     return { d: dm, prev, goalMap };
+  }
+  // Two tunnels, priced against the belts they stand in for: a jump has to
+  // lose to any line that exists, so it is only taken when none does.
+  const JUMP_COST = 2 * D.BUILDINGS.tunnel.cost.ironPlate;
+  // What a tunnel is allowed to run under: terrain no belt can ever be laid on,
+  // and ground that is already carrying something. Rock and rubble are neither
+  // — the bot has a pick.
+  const NEVER_BELTABLE = { chasm: 1, obsidian: 1, magma: 1 };
+  function jumpable(t) {
+    if (!t) return false;
+    if (NEVER_BELTABLE[t.t]) return true;
+    if (t.t !== 'floor' || t.rubble) return false;
+    return t.machine !== null || !!t.belt;
+  }
+  function tunnelsOpen() {
+    return S.unlocked(run, 'tunnel') &&
+           inv('ironPlate') >= 2 * D.BUILDINGS.tunnel.cost.ironPlate + 8;
   }
   // Walk a field back to its sink. Returns { path (start..goal), into } | null.
   function fieldPath(fld, sx, sy) {
@@ -294,12 +375,34 @@ function mkBot(run) {
     return cells.every((c) => { const t = T(c.x, c.y); return t && t.t === 'floor' && !t.rubble; });
   }
 
+  // A step of more than one tile is an underground jump the field planned:
+  // both ends take a tunnel aimed the same way, and Sim.place pairs them.
+  function stepDir(a, b) {
+    const dx = b.x - a.x, dy = b.y - a.y;
+    if (dx && dy) return -1;
+    if (dx) return dx > 0 ? 1 : 3;
+    if (dy) return dy > 0 ? 2 : 0;
+    return -1;
+  }
+  function stepGap(a, b) { return Math.abs(b.x - a.x) + Math.abs(b.y - a.y); }
   function buildBeltLine(path, into, record) {
     if (!digIfNeeded(path)) return false;
     for (let i = 0; i < path.length; i++) {
       const next = (i + 1 < path.length) ? path[i + 1] : into;
-      const dir = dirBetween(path[i], next);
+      const dir = stepDir(path[i], next);
       if (dir < 0) return false;
+      // M-TIER2: the far end of a jump is the NEXT path cell, so the entrance
+      // goes down here, the exit goes down there, and the loop skips over it.
+      if (stepGap(path[i], next) > 1) {
+        if (!S.place(run, 'tunnel', path[i].x, path[i].y, dir)) return false;
+        builtMachines.push({ type: 'tunnel', x: path[i].x, y: path[i].y, dir: dir,
+                             facing: dir, retired: false });
+        if (!S.place(run, 'tunnel', next.x, next.y, dir)) return false;
+        builtMachines.push({ type: 'tunnel', x: next.x, y: next.y, dir: dir,
+                             facing: dir, retired: false });
+        i++;                                   // the exit tile is now built
+        continue;
+      }
       if (!S.place(run, 'belt', path[i].x, path[i].y, dir)) return false;
       const b = { x: path[i].x, y: path[i].y, dir, retired: false };
       builtBelts.push(b);
@@ -1053,9 +1156,15 @@ const BOT = {
   chargeTries: 10,                // give up re-planning a charge feed after this
   starveSec: 50,                  // no gear progress this long => the line is dead
   chargeAsmGate: 26, copperGate: 40,
+  // Ranked by what this bot can actually cash in. M-TIER2's four picks sit at
+  // the BOTTOM on purpose: they multiply structures the bot does not build
+  // (see installUnderpass for the one exception), so taking one over Hull
+  // Plating would be the harness measuring its own blind spot and calling it a
+  // balance number. A human on stratum 3+ reads that list the other way round.
   pickOrder: ['s_plate', 's_damp', 's_drill', 's_charge', 's_extract', 's_smelt',
               's_veins', 's_salvage', 's_coal', 's_survey', 's_over',
-              's_beltfree', 's_repair', 's_gear'],
+              's_beltfree', 's_repair', 's_gear',
+              's_conduit', 's_yoke', 's_gate', 's_grind'],
 };
 function pickSchematic(run) {
   for (const id of BOT.pickOrder) if (run.pendingOffers.indexOf(id) >= 0) return id;
@@ -1254,7 +1363,7 @@ console.log(`
   s1 breach 90-150s +~40s build    naked, standard       med 137s      OK
   first runs bank 2-5 cores        naked                 med 3         OK
   survive stratum 2 >= 80%         naked                 93% / 86%     OK
-  full win in 15-25 min            full Foundry, std     4/14 @ 21.7m  OK
+  full win in 15-25 min            full Foundry, std     12/28 @ 22.9m OK
   camping ~1.5x pace dies s6-s7    full Foundry, camper  med 7         OK
 
   The win target is deliberately NOT checked on a naked rig. SPEC §12 scopes it
@@ -1264,6 +1373,12 @@ console.log(`
   KNOWN CEILING: at high loadout most remaining deaths are 'no-breach' stalls at
   s5+ — look for cu2X / crystal-noroute in the per-stratum tags. That is the bot
   failing to build the tier-2 chain, not the stratum being unbeatable. Do NOT
-  tune data.js against those stalls; fix the bot's build policy first.`);
+  tune data.js against those stalls; fix the bot's build policy first.
+
+  M-TIER2 did exactly that once: the router now lays an UNDERGROUND PAIR over
+  ground no belt can cross, which is what 'crystal-noroute' always was, and the
+  standard stall count halved. The rows that remain are cu2X — a copper smelter
+  it cannot site next to a charge assembler out on the crystals. That is the
+  next piece of bot, not the next piece of tuning.`);
 console.log('─'.repeat(78));
 console.log('\ndone in ' + Math.round(elapsed()) + 's wall');

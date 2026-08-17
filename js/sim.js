@@ -1666,12 +1666,18 @@
   }
 
   // ---------------- descent (§5.9) ----------------
-  // M-TIER2: a schematic may be gated to the floor its structures unlock on.
-  // `depth` is the stratum the card will be USED on, which on a descent is the
-  // one below the one being left.
+  // M-TIER2: a schematic may be gated — to the floor its structures unlock on
+  // (`minDepth`, measured against the stratum the card will be USED on, which
+  // on a descent is the one below the one being left) and to having built one
+  // (`needs`). An ungated card is dealt exactly as it always was, and a deck
+  // with no gated card in it is byte-identical to the old deck: same members,
+  // same order, same number of draws out of run.rng. That is deliberate — a
+  // player who never touches tier II must get the run they would have got.
   function schematicPool(run, depth) {
+    const built = (run.stats && run.stats.placed) || {};
     return D.SCHEMATICS
-      .filter(s => !s.minDepth || depth >= s.minDepth)
+      .filter(s => (!s.minDepth || depth >= s.minDepth) &&
+                   (!s.needs || (built[s.needs] || 0) > 0))
       .map(s => s.id)
       .filter(id => run.schematics.indexOf(id) < 0);
   }
