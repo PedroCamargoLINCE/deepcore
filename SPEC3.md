@@ -1111,6 +1111,16 @@ one at a time.** Each entry records the symptom in the director's words, the
 arithmetic underneath it, and candidate fixes — the *decision* is made when the
 wave is dispatched, with all findings on the table at once.
 
+Entries come in two kinds, and they do **not** ship together:
+
+- **TUNING** findings (1, 2) are numbers. They are the reason this wave is one
+  wave: several of them push the same values the same way, so they are decided
+  as a set, last, against systems that have stopped moving.
+- **CRAFT** findings (3, 4) are features the director asked for while playing.
+  They are recorded here because this is where playtest findings go, but they
+  are *built*, not tuned — dispatch each as its own brief whenever the board
+  allows, and do not hold them behind the tuning pass.
+
 #### Finding 1 — the plate death spiral: stratum 1 can soft-lock, silently
 
 > *"if i mistakenly use an extractor and dont make it to a smelter, and the ores
@@ -1196,9 +1206,86 @@ reader is misled. Directions worth considering:
   plain meaning anyway; "not saturated" is a different condition and deserves a
   different word.
 
+#### Finding 3 (CRAFT) — the induction stops one third of the way through the loop
+
+> Director, 2026-08-17: *"an expansion of the tutorial."*
+
+`BEATS = ['place', 'rotate', 'belt', 'ore']`. The induction teaches the player
+to deliver **ore** to the rig — and **the rig does not run on ore.** It runs on
+gears, 20 of them on stratum 1. A player who completes every beat of the
+tutorial still does not know what a smelter is for, which is *verbatim the
+question the director had to ask* ("whats the smelter for? should i get the ore
+to the drill or to the smelter?"). The tutorial ends exactly one beat before the
+lesson he actually needed.
+
+Worse, it ends before **coal**, which is Finding 1's murder weapon: coal is not
+in start stock, a smelter is dead without it, and nothing in the game currently
+tells a new player that a second extractor on a second resource is mandatory
+before a single plate exists.
+
+Proposed second act — four more beats, same machinery, same gating on the player
+actually doing it:
+
+| beat | teaches | why it must exist |
+|---|---|---|
+| 5 · smelt | place a smelter, belt ore into it | the question he asked out loud |
+| 6 · coal | a *second* extractor, on coal, belted to the same smelter | the soft-lock's root cause, taught before it can bite |
+| 7 · craft | assembler, plates → gears | the rig's actual fuel |
+| 8 · feed | gears to the rig, watch GEAR fill, then `D` | closes the loop and hands over the run |
+
+Notes for whoever builds it:
+
+- **The pressure pause must not cover all eight beats.** `run.instHold` freezing
+  instability through a full chain build is most of a stratum with no clock,
+  which trains a habit stratum 2 then punishes. Release it at the end of beat 4
+  as it does today, and let acts two run under real pressure — GRIT can say so,
+  which is more dramatic than silence.
+- Beat 6 is the one that may need a map guarantee: stratum 1 must have a coal
+  vein reachable, or the beat must detect that it does not and skip gracefully.
+  `pickVein` already does the lazy-wait dance for iron; reuse the pattern.
+- Eight gated beats is a long induction for a returning player — **`TAB` must
+  keep skipping the whole thing from any beat**, and the act break after beat 4
+  is a natural second offer to bow out.
+- The manual (page 1) and CHAIN already explain this chain. Point at them rather
+  than restating them, exactly as beat 4 now points at STOCK.
+
+#### Finding 4 (CRAFT) — GRIT has no face
+
+> Director, 2026-08-17: *"alongside a face/icon for grit."*
+
+He has 422 lines, a typewriter, a bar of his own, and now an induction he
+narrates — and he has never been *seen*. `js/art.js` has a layered rig portrait
+and nothing else; there is no GRIT anywhere in the art.
+
+A small ASCII portrait, built the way the STOCK icons and the rig are built
+(sub-cell bitmaps through `DC.Art.raster`, so the source is a readable picture
+and the glyphs fall out of the rasterizer). Where it goes:
+
+- **the induction box** first — he is the teacher there, it is his scene, and a
+  face makes the corporate-script bit land as performance rather than text;
+- the foreman bar, if it can be afforded (2 × 41 is tight);
+- the Foundry and/or the recap card, where there is room to breathe.
+
+The real cost to state up front: **the speech box is 40 wide with three prose
+rows of 36.** A face in a left-hand column takes ~6 of those columns and drops
+the prose to ~30, which reflows every one of the 67 authored induction lines and
+tightens the ceiling for the ~60 more that Finding 3 needs. That is a writing
+cost, not just a drawing one, and it is the thing to decide *before* act two is
+written rather than after.
+
+- **Expressions, keyed to state the game already has** — no new tracking:
+  deadpan (default), pleased (a beat completed, a breach ready), alarmed
+  (quake, low integrity), and one for the dad jokes he is proudest of. Three
+  rows is eyes and a mouth; that is enough for all four if the eyes carry it.
+- Law 6 governs: it must read at one cell = 10 × 19 px, and it must never cost
+  a row of GRIT's actual words. If the face and the line compete, the line wins.
+- Law 7: expression follows state, never `run.rng`.
+
 **Contracts:** `js/data.js` (values — this brief and M-POLISH are the only two
 that may change them), `js/sim.js` (refund/undo window), `js/render.js` (CHAIN's
 colour rule), `test/balance.js`, `test/headless.js` (constructed dead-end).
+Findings 3 and 4 are separate dispatches: `js/tutorial.js` + `js/barks.js` for
+the second act, `js/art.js` + `js/render.js` for the face.
 **Acceptance:** the dead-end state is provably escapable or provably announced;
 SPEC §12's targets still hold after the tuning is applied *as a set*; no finding
 is fixed in a way that re-breaks an earlier one.
