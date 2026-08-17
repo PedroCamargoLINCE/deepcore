@@ -1615,6 +1615,406 @@ function checkRigOutput() {
 }
 
 // ======================================================================
+// M-TIER2 — Logistics II: the five tier-II structures.
+//
+// The suite scaffolds a FLAT FLOOR around the rig (every tile revealed
+// floor, nothing built) and then places real structures through the public
+// API on it. A generated map cannot be relied on to have a straight open
+// run of eight tiles beside the rig on every seed, and this section is
+// about the structures' rules, not about procgen's generosity.
+//
+// What it holds them to, in order: they are sealed until their stratum;
+// every one of them obeys FACING, NOT ADJACENCY; the network they form
+// carries at the belt's rate and no slower; and none of them spends from
+// run.rng (SPEC3 §0 law 7).
+// ======================================================================
+function flatRun(seed, depth) {
+  const r = S.newRun(DC.Meta.effects(DC.Meta.newProfile()), seed || 1337);
+  r.depth = depth === undefined ? D.BUILDINGS.splitter.unlockDepth : depth;
+  for (let y = 0; y < D.MAP_H; y++)
+    for (let x = 0; x < D.MAP_W; x++) {
+      const t = r.grid[y][x];
+      t.revealed = true;
+      if (t.machine === 0) continue;                 // the rig stays put
+      t.t = 'floor'; t.machine = null; t.belt = null; t.rubble = false;
+      t.digT = 0; t.ore = null; t.oreAmt = 0; t.lm = null;
+    }
+  r.landmark = null;
+  r.inv.ironPlate = 9999; r.inv.copperPlate = 999;   // scaffold: not a cost test
+  return r;
+}
+function machAt(r, x, y) {
+  const t = r.grid[y] && r.grid[y][x];
+  return (t && t.machine !== null) ? r.machines[t.machine] : null;
+}
+function beltItems(r) {
+  const out = [];
+  for (let y = 0; y < D.MAP_H; y++)
+    for (let x = 0; x < D.MAP_W; x++) {
+      const b = r.grid[y][x].belt;
+      if (b && b.item) out.push({ x: x, y: y, item: b.item });
+    }
+  return out;
+}
+
+function checkTier2() {
+  const T2 = D.BUILD_ORDER.filter(t => !!D.BUILDINGS[t].unlockDepth);
+  assert(T2.length === 5, 'M-TIER2 ships five sealed structures (' + T2.join(',') + ')');
+
+  // ---- sealed until their stratum --------------------------------------
+  {
+    const early = flatRun(2001, 1);
+    for (const t of T2) {
+      const B = D.BUILDINGS[t];
+      assert(B.unlockDepth >= 2, t + ' is sealed at all');
+      assertEq(S.unlocked(early, t), false, t + ' is locked on stratum 1');
+      const chk = S.canPlace(early, t, early.hub.x - 6, early.hub.y, 1);
+      assertEq(chk.ok, false, t + ' cannot be placed on stratum 1');
+      assert(/stratum/.test(chk.reason), t + "'s refusal names the stratum: " + chk.reason);
+      assertEq(S.place(early, t, early.hub.x - 6, early.hub.y, 1), false,
+        t + ' cannot be forced past the seal');
+    }
+    const late = flatRun(2001, D.BUILDINGS.splitter.unlockDepth);
+    for (const t of T2)
+      assertEq(S.unlocked(late, t), true, t + ' is unlocked on its own stratum');
+    // ...and the opening two floors are untouched: the four-machine lesson
+    for (const t of D.BUILD_ORDER.filter(k => !D.BUILDINGS[k].unlockDepth))
+      assertEq(S.unlocked(early, t), true, t + ' is available from stratum 1');
+  }
+
+  // ---- THE RULE: facing, not adjacency ---------------------------------
+  // Every structure is asked the same question the rig is asked in
+  // checkRigOutput: does it take cargo from a thing that is merely NEXT to
+  // it? The answer has to be no, five times, or the game's own lesson about
+  // belts is a lie the moment a player unlocks tier II.
+  {
+    const r = flatRun(2002);
+    const hx = r.hub.x, hy = r.hub.y;
+    // a smelter with a full ore buffer, and a taker parked beside it
+    function feeder(x, y, facing) {
+      assert(S.place(r, 'smelter', x, y, facing), 'scaffold smelter at ' + x + ',' + y);
+      const m = machAt(r, x, y);
+      m.input = { ironOre: 8 }; m.fuel = 99;
+      return m;
+    }
+    // (a) a LOADER only empties the machine its own arrow comes out of. The
+    // first one is TOUCHING the smelter and aimed across it; the second is
+    // one tile further on and aimed out of it. Same distance, opposite result.
+    const sm = feeder(hx - 10, hy + 4, 0);             // faces north, into floor
+    assert(S.place(r, 'loader', sm.x + 1, sm.y - 1, 1), 'loader placed beside the smelter');
+    const side = machAt(r, sm.x + 1, sm.y - 1);
+    tickRun(r, 200);
+    assertEq(side.out.length, 0,
+      'a loader NEXT TO a machine takes nothing — adjacency is not a connection');
+    S.demolishAt(r, side.x, side.y);
+    // the same loader, one tile on, with its arrow pointing out of the smelter
+    assert(S.place(r, 'loader', sm.x + sm.w, sm.y, 1), 'loader placed on the smelter');
+    const puller = machAt(r, sm.x + sm.w, sm.y);
+    tickRun(r, 100);
+    assertEq(puller.out.length > 0 || (r.grid[puller.y][puller.x + 1].belt || {}).item != null,
+      true, 'a loader whose arrow leaves the machine empties it');
+  }
+  {
+    // (b) a belt beside a splitter/filter/tunnel hands it nothing; a belt
+    // POINTED at one hands it everything.
+    for (const type of ['splitter', 'filter', 'tunnel']) {
+      const r = flatRun(2003);
+      const x = r.hub.x - 8, y = r.hub.y;
+      assert(S.place(r, type, x, y, 1), type + ' placed');
+      const m = machAt(r, x, y);
+      if (type === 'tunnel') {                        // give it a far end
+        assert(S.place(r, 'tunnel', x + 3, y, 1), 'the tunnel gets its pair');
+      }
+      // a belt ALONGSIDE it, running past into another belt
+      assert(S.place(r, 'belt', x, y - 1, 1), 'belt laid alongside');
+      assert(S.place(r, 'belt', x + 1, y - 1, 1), '...and one for it to run into');
+      r.grid[y - 1][x].belt.item = 'ironOre';
+      tickRun(r, 8);
+      assertEq(m.out.length, 0, type + ' took cargo off a belt that merely passed it');
+      assertEq(r.grid[y - 1][x].belt.item, null, 'that belt moved its cargo on as usual');
+      // and now one that points AT it
+      assert(S.place(r, 'belt', x - 1, y, 1), 'belt laid into it');
+      r.grid[y][x - 1].belt.item = 'ironOre';
+      tickRun(r, 4);
+      assertEq(r.grid[y][x - 1].belt.item, null, type + ' took the cargo aimed at it');
+    }
+  }
+
+  // ---- the splitter ----------------------------------------------------
+  {
+    const r = flatRun(2004);
+    const x = r.hub.x - 8, y = r.hub.y;
+    assert(S.place(r, 'splitter', x, y, 1), 'splitter placed facing east');
+    const m = machAt(r, x, y);
+    assert(S.place(r, 'belt', x, y - 1, 0), 'left catcher');
+    assert(S.place(r, 'belt', x, y + 1, 2), 'right catcher');
+    // 12 items in, and they come out 6 and 6
+    const got = { n: 0, s: 0 };
+    for (let i = 0; i < 12; i++) {
+      m.out.length = 0; m.out.push('ironOre'); m.moveT = r.t;
+      tickRun(r, D.BELT_PERIOD);
+      if (r.grid[y - 1][x].belt.item) { got.n++; r.grid[y - 1][x].belt.item = null; }
+      if (r.grid[y + 1][x].belt.item) { got.s++; r.grid[y + 1][x].belt.item = null; }
+    }
+    assertEq(got.n, 6, 'the splitter sent half its cargo left');
+    assertEq(got.s, 6, 'and half right');
+    // one side jammed: everything goes the other way, because a splitter that
+    // stalls on a dead branch is a jam the player did not build
+    S.demolishAt(r, x, y - 1);
+    let right = 0;
+    for (let i = 0; i < 6; i++) {
+      m.out.length = 0; m.out.push('ironOre'); m.moveT = r.t;
+      tickRun(r, D.BELT_PERIOD);
+      if (r.grid[y + 1][x].belt.item) { right++; r.grid[y + 1][x].belt.item = null; }
+    }
+    assertEq(right, 6, 'with one side dead the splitter feeds the live one, every time');
+    // ...and with both dead it holds, which IS back-pressure
+    S.demolishAt(r, x, y + 1);
+    m.out.length = 0; m.out.push('ironOre'); m.moveT = r.t;
+    tickRun(r, 4 * D.BELT_PERIOD);
+    assertEq(m.out.length, 1, 'a splitter with nowhere to go holds its cargo');
+    // Trident Yokes opens the third arrow
+    assertEq(S.outputTiles(r, m).length, 2, 'two arrows by default');
+    r.mods.split3 = true;
+    assertEq(S.outputTiles(r, m).length, 3, 'three with Trident Yokes');
+    assert(S.place(r, 'belt', x + 1, y, 1), 'a catcher straight ahead');
+    tickRun(r, 2 * D.BELT_PERIOD);
+    assertEq(r.grid[y][x + 1].belt.item, 'ironOre', 'and it uses it');
+  }
+
+  // ---- the underground pair --------------------------------------------
+  {
+    const r = flatRun(2005);
+    const y = r.hub.y, x = r.hub.x - 12;
+    const gap = D.BUILDINGS.tunnel.gap;
+    assert(S.place(r, 'tunnel', x, y, 1), 'entrance placed');
+    const a = machAt(r, x, y);
+    assertEq(a.mode, 'in', 'a lone tunnel is an entrance');
+    assertEq(a.pair, 0, '...with no far end');
+    assertEq(machineStatusAfter(r, a), 'unpaired', 'and it says so');
+    assertEq(S.machineAccepts === undefined, true, 'accepts stays private');
+    // a lonely entrance takes nothing: better a line that backs up in front of
+    // the player than one that swallows cargo into a hole with no far side
+    assert(S.place(r, 'belt', x - 1, y, 1), 'a belt into the lonely entrance');
+    r.grid[y][x - 1].belt.item = 'coal';
+    tickRun(r, 4);
+    assertEq(r.grid[y][x - 1].belt.item, 'coal', 'a half-built tunnel eats nothing');
+    // the far end, across a chasm nothing else crosses
+    for (let k = 1; k <= gap; k++) r.grid[y][x + k].t = 'chasm';
+    assertEq(S.canPlace(r, 'belt', x + 1, y, 1).ok, false, 'a belt cannot cross the chasm');
+    assert(S.place(r, 'tunnel', x + gap + 1, y, 1), 'exit placed beyond the chasm');
+    const b = machAt(r, x + gap + 1, y);
+    assertEq(a.pair, b.id, 'the two ends found each other');
+    assertEq(b.mode, 'out', 'the far one is the exit');
+    assert(S.place(r, 'belt', x + gap + 2, y, 1), 'a belt off the exit');
+    tickRun(r, 6 * D.BELT_PERIOD);
+    assertEq(r.grid[y][x + gap + 2].belt.item, 'coal', 'the cargo crossed the chasm');
+    // too far is too far
+    assertEq(S.place(r, 'tunnel', x + gap + 1 + gap + 2, y + 2, 1), true, 'a far pair placed');
+    const c = machAt(r, x + gap + 1 + gap + 2, y + 2);
+    assertEq(c.pair, 0, 'a tunnel out of range pairs with nothing');
+    // Deep Conduits doubles the span
+    const r2 = flatRun(2006);
+    r2.mods.tunnelMult = 2;
+    assertEq(S.tunnelGap(r2), gap * 2, 'Deep Conduits doubles the reach');
+    assert(S.place(r2, 'tunnel', x, y, 1) && S.place(r2, 'tunnel', x + gap * 2 + 1, y, 1),
+      'both ends placed at the doubled span');
+    assert(machAt(r2, x, y).pair, 'and they pair at a distance the base pair cannot');
+    // reverse order works too: the second one placed becomes the entrance
+    const r3 = flatRun(2007);
+    assert(S.place(r3, 'tunnel', x + 3, y, 1), 'the far end goes down first');
+    assert(S.place(r3, 'tunnel', x, y, 1), 'the near end second');
+    assertEq(machAt(r3, x, y).mode, 'in', 'the upstream end is the entrance');
+    assertEq(machAt(r3, x + 3, y).mode, 'out', 'the downstream end is the exit');
+    // and losing one end makes the other lonely again rather than a cargo hole
+    S.demolishAt(r3, x + 3, y);
+    S.tick(r3);
+    assertEq(machAt(r3, x, y).pair, 0, 'the survivor is unpaired');
+    assertEq(machAt(r3, x, y).status, 'unpaired', 'and marked');
+  }
+
+  // ---- the loader ------------------------------------------------------
+  {
+    // The exact failure it exists for: an extractor whose output side is
+    // buried, which mines one ore and then sits there being correct.
+    const r = flatRun(2008);
+    const x = r.hub.x - 9, y = r.hub.y;
+    r.grid[y][x].ore = 'ironOre'; r.grid[y][x].oreAmt = 99;
+    assert(S.place(r, 'extractor', x, y, 1), 'extractor on the vein, facing east');
+    r.grid[y][x + 1].t = 'rock';                       // its output is a wall
+    tickRun(r, 60);
+    const ex = machAt(r, x, y);
+    assertEq(ex.status, 'blocked', 'the extractor really is stuck');
+    assert(S.place(r, 'loader', x, y - 1, 0), 'loader above it, facing north');
+    assert(S.place(r, 'belt', x, y - 2, 0), 'a belt off the loader');
+    tickRun(r, 40);
+    assertEq(r.grid[y - 2][x].belt.item, 'ironOre', 'the loader gave it a second output');
+    // and it keeps the machine running rather than draining it once
+    r.grid[y - 2][x].belt.item = null;
+    tickRun(r, 40);
+    assertEq(r.grid[y - 2][x].belt.item, 'ironOre', 'the extractor is producing again');
+    // a loader with nothing behind it is inert, not an error
+    const r2 = flatRun(2009);
+    assert(S.place(r2, 'loader', x, y, 1), 'a loader on bare floor');
+    tickRun(r2, 40);
+    assertEq(machAt(r2, x, y).status, 'idle', 'a loader with nothing behind it idles');
+  }
+
+  // ---- the filter gate -------------------------------------------------
+  {
+    const r = flatRun(2010);
+    const x = r.hub.x - 8, y = r.hub.y;
+    assert(S.place(r, 'filter', x, y, 1), 'gate placed');
+    const g = machAt(r, x, y);
+    assertEq(g.filter, D.ITEM_ORDER[0], 'a new gate passes the first cargo in the order');
+    assert(S.place(r, 'belt', x - 1, y, 1) && S.place(r, 'belt', x + 1, y, 1), 'a line through it');
+    r.grid[y][x - 1].belt.item = 'coal';
+    tickRun(r, 6 * D.BELT_PERIOD);
+    assertEq(r.grid[y][x + 1].belt.item, null, 'the gate held the cargo it does not pass');
+    assertEq(r.grid[y][x - 1].belt.item, 'coal', '...and the line backed up behind it');
+    // clicking cycles it, through every cargo and back
+    const seen = [];
+    for (let i = 0; i < D.ITEM_ORDER.length; i++) {
+      const res = S.clickTile(r, x, y);
+      assert(res.handled, 'clicking a gate is handled');
+      seen.push(machAt(r, x, y).filter);
+    }
+    assertEq(seen.length, new Set(seen).size, 'the cycle visits every cargo exactly once');
+    assertEq(seen[seen.length - 1], D.ITEM_ORDER[0], 'and comes back round');
+    g.filter = 'coal';
+    tickRun(r, 6 * D.BELT_PERIOD);
+    assertEq(r.grid[y][x + 1].belt.item, 'coal', 'set to coal, it passes coal');
+    // Sorting Gates: what it does not pass goes right instead of nowhere
+    const r2 = flatRun(2011);
+    r2.mods.smartGate = true;
+    assert(S.place(r2, 'filter', x, y, 1), 'gate placed');
+    machAt(r2, x, y).filter = 'crystal';
+    assert(S.place(r2, 'belt', x - 1, y, 1), 'a feed');
+    assert(S.place(r2, 'belt', x + 1, y, 1), 'the pass line');
+    assert(S.place(r2, 'belt', x, y + 1, 2), 'the shunt line');
+    r2.grid[y][x - 1].belt.item = 'coal';
+    tickRun(r2, 4 * D.BELT_PERIOD);
+    assertEq(r2.grid[y + 1][x].belt.item, 'coal', 'the rest shunts right');
+    assertEq(r2.grid[y][x + 1].belt.item, null, 'and does not come out the front');
+    r2.grid[y][x - 1].belt.item = 'crystal';
+    tickRun(r2, 4 * D.BELT_PERIOD);
+    assertEq(r2.grid[y][x + 1].belt.item, 'crystal', 'while its own cargo goes straight through');
+  }
+
+  // ---- the crusher -----------------------------------------------------
+  {
+    const r = flatRun(2012);
+    const x = r.hub.x - 10, y = r.hub.y;
+    const B = D.BUILDINGS.crusher;
+    assert(S.place(r, 'crusher', x, y, 1), 'crusher placed');
+    const c = machAt(r, x, y);
+    tickRun(r, 4);
+    assertEq(c.status, 'idle', 'a crusher with no rubble is idle, not broken');
+    assertEq(S.chain(r).stages[0].rate, 0, 'and CHAIN says it is making nothing');
+    // the quake's leavings, in reach and out of it
+    r.grid[y + 3][x].rubble = true;
+    r.grid[y][x + 2 + B.reach + 2].rubble = true;      // deliberately too far
+    assert(S.place(r, 'belt', x + B.w, y, 1), 'a belt off its arrow');
+    tickRun(r, B.period + 4);
+    assertEq(r.grid[y + 3][x].rubble, false, 'the rubble in reach is gone');
+    assertEq(r.grid[y][x + 2 + B.reach + 2].rubble, true, 'the rubble out of reach is not');
+    let ore = (r.grid[y][x + B.w].belt.item === 'ironOre' ? 1 : 0) + c.out.length;
+    assertEq(ore, B.yield, 'one rubble tile paid ' + B.yield + ' iron ore');
+    // Rock Grinders: it eats the wall too, and slower per tile
+    const r2 = flatRun(2013);
+    r2.mods.crushRock = true;
+    assert(S.place(r2, 'crusher', x, y, 1), 'crusher placed');
+    r2.grid[y + 3][x].t = 'rock';
+    assert(S.place(r2, 'belt', x + B.w, y, 1), 'a belt off its arrow');
+    tickRun(r2, B.period + 4);
+    assertEq(r2.grid[y + 3][x].t, 'floor', 'the wall came down');
+    ore = (r2.grid[y][x + B.w].belt.item === 'ironOre' ? 1 : 0) + machAt(r2, x, y).out.length;
+    assertEq(ore, B.rockYield, 'rock pays ' + B.rockYield + ', less than rubble');
+    // ...and without the schematic the wall is just a wall
+    const r3 = flatRun(2014);
+    assert(S.place(r3, 'crusher', x, y, 1), 'crusher placed');
+    r3.grid[y + 3][x].t = 'rock';
+    tickRun(r3, B.period * 3);
+    assertEq(r3.grid[y + 3][x].t, 'rock', 'a plain crusher does not eat rock');
+  }
+
+  // ---- SPEC §12: the line carries faster than anything can fill it ------
+  // A mixed run — belts, a splitter, a tunnel pair, a gate — measured
+  // end to end, against the fastest single machine in the game.
+  {
+    const r = flatRun(2015);
+    const y = r.hub.y, x0 = r.hub.x - 16;
+    // belt, belt, splitter, belt(through the live side), tunnel, gap, tunnel,
+    // gate, belt into the rig
+    assert(S.place(r, 'belt', x0, y, 1), 'b0');
+    assert(S.place(r, 'belt', x0 + 1, y, 1), 'b1');
+    assert(S.place(r, 'splitter', x0 + 2, y, 1), 'splitter');
+    assert(S.place(r, 'belt', x0 + 2, y + 1, 1), 'the live branch');
+    assert(S.place(r, 'belt', x0 + 3, y + 1, 1), 'b2');
+    assert(S.place(r, 'tunnel', x0 + 4, y + 1, 1), 'tunnel in');
+    assert(S.place(r, 'tunnel', x0 + 7, y + 1, 1), 'tunnel out');
+    assert(S.place(r, 'filter', x0 + 8, y + 1, 1), 'gate');
+    machAt(r, x0 + 8, y + 1).filter = 'ironOre';
+    let bx = x0 + 9;
+    while (r.grid[y + 1][bx] && r.grid[y + 1][bx].machine !== 0) {
+      assert(S.place(r, 'belt', bx, y + 1, 1), 'run to the rig at ' + bx);
+      bx++;
+    }
+    // feed the head of the line every belt step for a sim-minute
+    const before = r.inv.ironOre || 0;
+    const secs = 60;
+    for (let i = 0; i < secs * D.TICK_HZ; i++) {
+      if (i % D.BELT_PERIOD === 0 && !r.grid[y][x0].belt.item)
+        r.grid[y][x0].belt.item = 'ironOre';
+      S.tick(r);
+    }
+    const moved = (r.inv.ironOre || 0) - before;
+    const perSec = moved / secs;
+    const beltRate = D.TICK_HZ / D.BELT_PERIOD;
+    assert(perSec > beltRate * 0.9,
+      'a mixed tier-II line carries ' + perSec.toFixed(2) + '/s, under the belt rate ' +
+      beltRate.toFixed(2));
+    // and that is comfortably clear of the fastest thing that can fill it
+    let fastest = 0;
+    for (const t of D.BUILD_ORDER) {
+      const B = D.BUILDINGS[t];
+      if (B.period) fastest = Math.max(fastest, D.TICK_HZ / B.period * (B.yield || 1));
+    }
+    for (const k in D.RECIPES) {
+      let n = 0;
+      for (const o in D.RECIPES[k].out) n += D.RECIPES[k].out[o];
+      fastest = Math.max(fastest, D.TICK_HZ / D.RECIPES[k].ticks * n);
+    }
+    assert(perSec >= fastest * 2,
+      'SPEC §12: the line (' + perSec.toFixed(2) + '/s) must comfortably exceed the ' +
+      'fastest machine (' + fastest.toFixed(2) + '/s) — lines may only jam when the ' +
+      'player under-builds');
+  }
+
+  // ---- law 7: none of it spends from the sim's stream -------------------
+  {
+    const quiet = flatRun(2016);
+    const busy = flatRun(2016);
+    const y = busy.hub.y, x = busy.hub.x - 10;
+    for (const t of T2) {
+      assert(S.place(busy, t, x + T2.indexOf(t) * 3, y + 4, 1), t + ' placed');
+    }
+    busy.grid[y + 6][x].rubble = true;
+    assert(S.place(busy, 'belt', x, y, 1), 'and a belt with cargo on it');
+    busy.grid[y][x].belt.item = 'ironOre';
+    tickRun(quiet, 600);
+    tickRun(busy, 600);
+    S.chain(busy); S.chain(busy);
+    assertEq(busy.rng(), quiet.rng(),
+      'a base full of tier-II structures moved the quake schedule (SPEC3 §0 law 7)');
+  }
+
+  return T2.length;
+}
+// A machine's status after one tick of the sim has looked at it.
+function machineStatusAfter(r, m) { S.tick(r); return m.status; }
+
+// ======================================================================
 // M-WIDE — Sim.chain: the production chain as numbers
 // The CHAIN panel's whole job is to teach the ratio trap, so the model
 // behind it is pinned here against the data rather than against itself:
@@ -1687,6 +2087,68 @@ function checkChain() {
   const noAsm = S.chain(r);
   assertEq(noAsm.breachSec > 0, true, 'projection is stable across calls');
 
+  // ---- M-TIER2: the new machines are IN the model ------------------------
+  // A structure the player can see on the map and not in CHAIN is a hole in
+  // the game's only live explanation of itself, so every type this brief adds
+  // is asked for its number here.
+  {
+    // the crusher stands in the ore stage beside the extractors, and the row
+    // says which is which: '2E1C'
+    r.depth = D.BUILDINGS.crusher.unlockDepth;
+    r.inv.ironPlate = (r.inv.ironPlate || 0) + 999;    // scaffold: not a cost test
+    r.inv.copperPlate = (r.inv.copperPlate || 0) + 99;
+    let put = false;
+    for (let y = 0; y < D.MAP_H && !put; y++)
+      for (let x = 0; x < D.MAP_W && !put; x++)
+        if (S.canPlace(r, 'crusher', x, y, 1).ok) put = S.place(r, 'crusher', x, y, 1);
+    assert(put, 'a crusher site exists');
+    const cm = Object.keys(r.machines).map(k => r.machines[k])
+      .filter(m => m.type === 'crusher')[0];
+    const dry = S.chain(r);
+    assertEq(dry.stages[0].n, 3, 'the crusher joins the ore stage');
+    assertEq(dry.stages[0].parts.map(p => p.n + p.letter).join(''), '2E1C',
+      'and the row says which machines are on it');
+    assert(Math.abs(dry.stages[0].rate - ore.rate) < 1e-9,
+      'a crusher with no rubble adds no rate — the same honesty a dead vein gets');
+    // give it something to chew and the stage rate moves by exactly its cadence
+    r.grid[cm.y + 3][cm.x].rubble = true;
+    S.tick(r);
+    const wet = S.chain(r);
+    const B = D.BUILDINGS.crusher;
+    assert(Math.abs(wet.stages[0].rate - (ore.rate + D.TICK_HZ / B.period * B.yield)) < 1e-9,
+      'a fed crusher adds ' + B.yield + ' ore every ' + B.period + ' ticks (' +
+      wet.stages[0].rate + ')');
+    assert(wet.flow.ironOre > dry.flow.ironOre, 'and the ore trend answers');
+
+    // the routing layer is counted and rated, and it is never a stage: it
+    // makes nothing, and the number that matters about it is that it is
+    // faster than everything that fills it (SPEC §12)
+    assertEq(dry.route.n, 0, 'no routing structures, nothing to report');
+    const before = dry.stages.length;
+    let laid = 0;
+    for (const t of ['splitter', 'tunnel', 'loader', 'filter']) {
+      let done = false;
+      for (let y = 0; y < D.MAP_H && !done; y++)
+        for (let x = 0; x < D.MAP_W && !done; x++)
+          if (S.canPlace(r, t, x, y, 1).ok) done = S.place(r, t, x, y, 1);
+      assert(done, 'a ' + t + ' site exists');
+      laid++;
+    }
+    assertEq(laid, 4, 'one of each routing structure placed');
+    S.tick(r);
+    const routed = S.chain(r);
+    assertEq(routed.route.n, 4, 'CHAIN counts every routing structure');
+    assert(Math.abs(routed.route.rate - D.TICK_HZ / D.BELT_PERIOD) < 1e-9,
+      'and rates them at the belt (' + routed.route.rate + '/s)');
+    assertEq(routed.stages.length, before, 'the routing layer is not a stage');
+    for (const s of routed.stages)
+      assert(s.gears === undefined || s.n > 0 || s.rate === 0,
+        'no stage was invented for a structure that makes nothing');
+    // the lonely tunnel is reported, because that IS the fault the panel can
+    // see and the player cannot
+    assert(routed.route.lonely >= 1, 'a tunnel with one end is reported as lonely');
+  }
+
   // it is a READ: no mutation, and not one draw from the sim's stream
   assertEq(r.rng(), twin.rng(), 'Sim.chain never advances run.rng (SPEC3 law 7)');
   return ch;
@@ -1702,6 +2164,7 @@ function main() {
   const lmSweep = checkLandmarkSweep();
   const diagN = checkDiagnostics();   // M-ONBOARD: the game explains itself
   const rigFeed = checkRigOutput();   // facing, not adjacency, feeds the rig
+  const tier2N = checkTier2();        // M-TIER2: the tier-II logistics layer
   const chainCh = checkChain();       // M-WIDE: the CHAIN panel's numbers
 
   const eff = DC.Meta.effects(DC.Meta.newProfile());
@@ -1767,6 +2230,7 @@ function main() {
     'veins+connectivity held' +
     ' | diagnostics: ' + diagN + ' causes named, once each, rng untouched' +
     ' | ' + rigFeed +
+    ' | tier II: ' + tier2N + ' structures, facing not adjacency, line > machines' +
     ' | chain: ' + chainCh.stages.map(s => s.n + s.letter + ' ' +
       s.rate.toFixed(2) + '/s').join(' -> ') +
     ' limited by ' + chainCh.stages.filter(s => s.limiting).map(s => s.name).join(','));
