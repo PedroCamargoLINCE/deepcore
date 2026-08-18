@@ -98,8 +98,14 @@ wave, with nothing beside it. It slots after Wave 2 only because Wave 2 was
 already dispatched; on a clean board it would be worth doing first, since
 "the game fills my monitor" is the most visible single change left.
 
-Model/effort per worker: **Opus 5, effort `high`** (see the note below the
-prompts list — `xhigh` is now by exemption only). Use `ultracode` only for
+Model/effort per worker: **Opus 5, effort `high`, 1M context** — model id
+`claude-opus-5[1m]` (director's call, 2026-08-18; see the note below the
+prompts list — `xhigh` is now by exemption only). The 1M variant is selected
+with the CLI flag (`--model "claude-opus-5[1m]"`); the orchestrator's in-session
+Agent tool only offers the plain `opus` alias, which is acceptable for
+worktree workers since briefs are sized to fit. The MASTER session (the
+orchestrator) is not covered by this default — the director runs it on
+Fable 5 by his own /model setting. Use `ultracode` only for
 **M-POLISH** (find→verify→fix fans out well) and **M-EVENTS** (20 vignettes
 can be written in parallel then tone-edited). Everything else: one focused
 session — big fan-outs burn the session limit fastest, and three fleets have
@@ -113,11 +119,14 @@ Every prompt below is **complete — no blanks to fill**. Open a new session in
 `/home/pedro/Documents/games/deepcore`, paste one, and walk away. Sessions in
 the same wave run at the same time; wait for a wave to merge before the next.
 
-Model/effort for all of them: **Opus 5, effort `high`** (director's call,
-2026-08-17). `xhigh` was the old default and is no longer used for routine
-briefs — raise it only for a brief the director has explicitly exempted, and say
-so when you dispatch. M-TIER2 was granted that exemption and ran at `xhigh`,
-because it rewrites the logistics layer every other system feeds through.
+Model/effort for all of them: **Opus 5, effort `high`, 1M context**
+(`--model "claude-opus-5[1m]"` — director's calls, 2026-08-17/18). `xhigh` was
+the old default and is no longer used for routine briefs — raise it only for a
+brief the director has explicitly exempted, and say so when you dispatch.
+M-TIER2 was granted that exemption and ran at `xhigh`, because it rewrites the
+logistics layer every other system feeds through. The master session stays on
+whatever the director sets it to (currently Fable 5); this default is for
+WORKERS.
 
 ### Running a brief in a CLOUD session (laptop closed)
 
@@ -133,7 +142,7 @@ elsewhere — that one still needs the laptop awake.)
 cd /home/pedro/Documents/games/deepcore
 
 claude --cloud "M-ONBOARD-2: GRIT teaches the tutorial" \
-  --model opus --effort high \
+  --model "claude-opus-5[1m]" --effort high \
   --permission-mode bypassPermissions \
   "$(cat docs/prompts/M-ONBOARD-2.cloud.txt)"
 ```

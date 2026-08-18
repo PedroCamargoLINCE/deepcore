@@ -1113,13 +1113,13 @@ wave is dispatched, with all findings on the table at once.
 
 Entries come in two kinds, and they do **not** ship together:
 
-- **TUNING** findings (1, 2) are numbers. They are the reason this wave is one
-  wave: several of them push the same values the same way, so they are decided
-  as a set, last, against systems that have stopped moving.
-- **CRAFT** findings (3, 4) are features the director asked for while playing.
-  They are recorded here because this is where playtest findings go, but they
-  are *built*, not tuned — dispatch each as its own brief whenever the board
-  allows, and do not hold them behind the tuning pass.
+- **TUNING** findings (1, 2, 5, 6, 7) are numbers. They are the reason this
+  wave is one wave: several of them push the same values the same way, so they
+  are decided as a set, last, against systems that have stopped moving.
+- **CRAFT** findings (3, 4, 8, 9, 10, 11, 12) are features the director asked
+  for while playing. They are recorded here because this is where playtest
+  findings go, but they are *built*, not tuned — dispatch each as its own brief
+  whenever the board allows, and do not hold them behind the tuning pass.
 
 #### Finding 1 — the plate death spiral: stratum 1 can soft-lock, silently
 
@@ -1280,6 +1280,156 @@ written rather than after.
 - Law 6 governs: it must read at one cell = 10 × 19 px, and it must never cost
   a row of GRIT's actual words. If the face and the line compete, the line wins.
 - Law 7: expression follows state, never `run.rng`.
+
+
+#### Finding 5 (TUNING) — building costs, the director's numbers
+
+> Director, 2026-08-18: *"game is too hard: extractor at 4, smelter at 5,
+> assembler at 6, damper at 6 / 2"*
+
+Current -> asked: extractor **8 -> 4**, smelter **10 -> 5**, assembler
+**12 -> 6**, damper **8+2cu -> 6+2cu** (belt stays 1). Roughly a halving of
+the buy-in for the whole tier-1 chain: the classic first base (2 extractors +
+smelter + assembler) goes from 38 of your 40 starting plates to **19**.
+
+These are the director's explicit numbers, so the tuning pass starts FROM
+them rather than debating them — but apply them aware of the couplings:
+
+- They soften Finding 1's death spiral enormously (a full rebuild after a
+  mistake costs half as much), possibly enough that Finding 1 needs only its
+  "name the state" fix and no refund mechanics at all. Decide together.
+- `test/balance.js` re-baselines: s1 breach med will drop well below 137s and
+  cores/run will rise. SPEC §12's bands themselves may need re-stating — that
+  is allowed here and nowhere else, with the director in the loop.
+- Demolish refunds `floor(cost * 0.5)` — at the new costs, extractor refunds 2,
+  smelter 2, assembler 3. The absolute loss per mistake shrinks with the cost,
+  which is the point.
+
+#### Finding 6 (TUNING) — the stratum-2 cliff: descending broke
+
+> Director, 2026-08-18: *"constantly gets to stratum 2, but without resources.
+> unable to advance at all"*
+
+Verified — this is the run-killer for a human and it is STRUCTURAL, not a map
+roll. What descend actually carries (sim `startStratum` + SPEC §5.9): your
+**inventory** rides down, your **machines do not** — every building stays on
+the floor above, unrefunded unless the Foundry's Salvage Rig (1 level, 40%) is
+bought. `START_STOCK` (40 plates, 8 gears) is granted ONCE per run, not per
+stratum. So the natural first-run shape is: spend ~38 of 40 plates on the s1
+base, feed the drill, descend — and arrive at s2 with pocket change, no
+machines, and a fresh 28-gear bill. The bot survives s2 93% of the time
+because it BANKS plates before descending, which no first-time human knows to
+do; the game never says the machines stay behind. Candidate directions:
+
+1. Finding 5's cost cuts alone close most of it (a fresh s2 base costs ~19).
+2. Teach it: the tutorial's proposed beat 8 / a GRIT line on first breach-ready
+   ("pack a crate before you drop, kid") — cheap and honest.
+3. A small per-stratum arrival stipend, in fiction a Company resupply drop.
+4. Make base salvage a default at some %, with the Foundry upgrade raising it.
+
+#### Finding 7 (TUNING) — instability a touch slower
+
+> Director, 2026-08-18: *"instability needs to tick a bit slower"*
+
+Current `instabRate` runs 0.29/s (s1) to 0.52/s (s8), already -35% from the
+original values per data.js's own comment. "A bit" is the instruction —
+something like a further 10-15%, decided WITH Findings 5/6 (cheaper buildings
+mean faster recovery, which already relieves pressure) and re-checked against
+the DRIFTED camper note in test/balance.js's footer: the camper currently dies
+at s8 rather than the target s6-s7, and slowing instability pushes that number
+the WRONG way. This is the clearest example of why the ledger ships as a set.
+
+#### Finding 8 (CRAFT) — rock and rubble as an emergency ore source
+
+> Director, 2026-08-18: *"what rewards can come from rubble or rocks? that may
+> be a good place to farm some ores when in need, but with low chances of
+> finding them (30ish %)"*
+
+What exists today: digging ROCK rolls M-EVENTS' find table at **8%** per
+completed excavation (`D.EVENTS.findRate`) — flavour finds, occasionally
+useful; and from s3 the crusher already eats RUBBLE into iron ore (M-TIER2),
+but that is a machine, not a shovel. The ask: digging as a hands-on fallback
+when the veins are far and the crate is empty — i.e. exactly the situation of
+Findings 1 and 6. Direction: a ~30% chance of a small ore payout (1-2 ore,
+stratum-appropriate) on completed ROCK digs, SEPARATE from the 8% find table
+so the vignettes stay special; X-dig already costs 4s of standing still, which
+is the built-in price. Law 7: the roll pattern must match rollDig's (the
+events stream, not run.rng). Balance note: it is a floor under bad luck, not
+an economy — the numbers land in the tuning set with Findings 5/6.
+
+#### Finding 9 (CRAFT) — strata as biomes: thematic colour per floor
+
+> Director, 2026-08-18: *"thematic per stratum colors and biome."*
+
+Today each stratum has a name, a one-line tag, an `accent` colour and terrain
+features (chasms, magma, obsidian) — the accent tints a few UI touches, but
+floor rock is the same grey everywhere and s2 reads like s6. The ask is that
+each floor LOOK like a place: palette (rock/floor/vein tints from the
+stratum's accent family), flora/detail glyphs per biome (the ♠ moss of the
+topsoil giving way to crystal growths, bone beds, obsidian sheen), and the FX
+layer's ambient dust/embers following suit. Law 6 rules it: machines, veins,
+belts and hazards must stay MORE readable than the scenery, on every palette —
+a biome that costs one glance of machine-finding is a failed biome.
+
+#### Finding 10 (CRAFT) — the icon overhaul, on the rasterizer we already have
+
+> Director, 2026-08-18: *"cosmetic overhaul: do new beautifull icons: for this
+> we will try any engine capable of upresolution ascii"*
+
+The engine exists in-repo: `DC.Art.raster` (M-HIRES) draws sub-cell bitmaps
+through quadrants, eighth-blocks and braille — it is what the STOCK icons, the
+gauges and the victory sphere already use. The overhaul is to use it HARDER:
+richer multi-cell icons (2 rows where 1 is cramped), per-icon colour pairs
+instead of single-colour glyphs, the BUILD/SCHEMATIC/FOUNDRY lists brought up
+to the same standard, and the braille tier used where the probe says the font
+can carry it. No CDN, no image assets, no new dependency — file:// stays law.
+If a genuinely better third-party approach is found it must vendor in under
+the same rules M-HIRES vendored its font subset.
+
+#### Finding 11 (CRAFT) — the rig portrait breathes
+
+> Director, 2026-08-18: *"animated background for the rig art while in game"*
+
+The YOUR RIG panel (M-WIDE) is a still. Give it life through js/fx.js, which
+already owns exactly this kind of motion and its own PRNG (law 7 is why that
+matters — the panel must not touch run.rng): smoke curling from the stack,
+the ▼ drill-bit column ticking when the drill actually feeds, rock rows
+shimmering with the stratum accent (Finding 9's palette reaching the portrait),
+sparks on quake frames, the whole panel dimming with §A2 when collapse nears.
+State-driven, never random-scheduled: the portrait animating what the sim is
+DOING makes it an instrument; ambient wiggle makes it a screensaver.
+
+#### Finding 12 (CRAFT, big — likely its own brief) — difficulty as CONTRACTS
+
+> Director, 2026-08-18: *"3 levels of difficulty with different rewards (meta
+> progression wise, harder difficulties are more rewarding) but i dont want
+> the classic easy normal hard selector, think of another cool way to select
+> difficulties, like the chips options in balatro."*
+
+The fiction already owns the answer: you work for the Company, so difficulty
+is the CONTRACT you sign before descending. Three contracts on the descent
+screen, presented as cards (the schematic-pick screen already renders exactly
+this shape), each a document with terms, a wage multiplier and a Company-form
+name — picked, not configured:
+
+  STANDARD TERMS      wage x1.0   the game as shipped
+  HAZARD CLAUSE       wage x1.5   harsher terms, e.g. +instability, -stock
+  DEATH WARRANT       wage x2.0   the planet reads your paperwork and objects
+
+Principles for whoever builds it (numbers are illustrative, not decided):
+- Reward is META-side, as asked: the wage multiplies CORES banked, so harder
+  contracts are the fast lane through the Foundry.
+- Terms are named, concrete and few — two or three lines a player can hold in
+  their head ("quakes hit 25% harder; start with 20 plates"), not a stat sheet.
+  GRIT gets a line about each; legal-document humour writes itself.
+- Sim-side it is a `run.mods` bundle, the mechanism M-MANTLE's mutators
+  already use — same machinery, so build it WITH or AFTER M-MANTLE, not
+  against it. The Daily signs STANDARD TERMS always (ranked runs stay equal).
+- Locked contracts unlock by deeds (first win unlocks HAZARD, a HAZARD win
+  unlocks WARRANT), which is itself meta-progression.
+- test/balance.js grows a per-contract loadout row; SPEC §12's bands apply to
+  STANDARD TERMS only, with the harder contracts checked for "winnable at
+  all" rather than banded.
 
 **Contracts:** `js/data.js` (values — this brief and M-POLISH are the only two
 that may change them), `js/sim.js` (refund/undo window), `js/render.js` (CHAIN's
