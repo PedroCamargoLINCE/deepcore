@@ -1363,8 +1363,8 @@ console.log(`
   s1 breach 90-150s +~40s build    naked, standard       med 137s      OK
   first runs bank 2-5 cores        naked                 med 3         OK
   survive stratum 2 >= 80%         naked                 93% / 86%     OK
-  full win in 15-25 min            full Foundry, std     12/28 @ 22.9m OK
-  camping ~1.5x pace dies s6-s7    full Foundry, camper  med 7         OK
+  full win in 15-25 min            full Foundry, std     10/14 @ 22.9m OK
+  camping ~1.5x pace dies s6-s7    full Foundry, camper  med 8   DRIFTED
 
   The win target is deliberately NOT checked on a naked rig. SPEC §12 scopes it
   to "competent play", and the Foundry is the game's answer to a first run that
@@ -1379,6 +1379,14 @@ console.log(`
   ground no belt can cross, which is what 'crystal-noroute' always was, and the
   standard stall count halved. The rows that remain are cu2X — a copper smelter
   it cannot site next to a charge assembler out on the crystals. That is the
-  next piece of bot, not the next piece of tuning.`);
+  next piece of bot, not the next piece of tuning.
+
+  DRIFTED (camper): the same router carries the camper DEEPER before the
+  planet collects — canonical 14 seeds went med 7 -> med 8, one past the
+  target band, and its wins went 3 -> 0. Zero wins is more on-message than
+  three (overstaying should not pay), but the band says the debt should be
+  collected at s6-s7. No data.js value moved; the measuring stick got
+  smarter. Logged for M-HUMANBAL's tuning pass rather than patched, per
+  that ledger's standing rule.`);
 console.log('─'.repeat(78));
 console.log('\ndone in ' + Math.round(elapsed()) + 's wall');
