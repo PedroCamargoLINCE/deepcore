@@ -86,6 +86,16 @@ for (const t of EVENT_POOLS) {
   assert(pool.length >= 4 && pool.length <= 8,
     'pool "' + t + '" has 4-8 lines (got ' + pool.length + ')');
 }
+// M-MANTLE adds one, on the same 4-8 rule and for the same reason. It is the
+// safety net under MUTATOR_LINES rather than a voice of its own, so it is
+// pinned here rather than added to the SPEC2 catalog.
+{
+  const pool = B.POOLS.mutator;
+  assert(Array.isArray(pool), 'M-MANTLE trigger "mutator" has a pool');
+  assert(pool.length >= 4 && pool.length <= 8,
+    'pool "mutator" has 4-8 lines (got ' + pool.length + ')');
+}
+
 // The one line that is deliberately NOT a pool: the cat's ending is a
 // punchline, and a punchline that rotates is one nobody can quote back.
 assert(typeof B.CAT_EPITAPH === 'string' && B.CAT_EPITAPH.length <= 70,
@@ -106,6 +116,48 @@ for (const s of D.SCHEMATICS) {
   assert(s.minDepth >= 1 && s.minDepth <= D.STRATA_COUNT,
     'schematic ' + s.id + ' is gated to a stratum that exists');
 }
+// M-MANTLE: every mutator gets GRIT's opinion — INCLUDING the ones gated
+// behind a module that has not landed. A floor rule that deals itself the day
+// its module loads must not deal itself into the generic shrug pool, so the
+// line is written now, with the rest of the batch, in the same voice.
+for (const m of D.MUTATORS) {
+  assertEq(typeof B.MUTATOR_LINES[m.id], 'string',
+    'bespoke line for mutator ' + m.id);
+  // ...and he reacts, he does not explain (§0 law 3). The banner already
+  // carries the rule; a line that restated the numbers would be the system
+  // talking in his voice.
+  assert(!/[0-9]/.test(B.MUTATOR_LINES[m.id]),
+    'mutator line for ' + m.id + ' quotes a number — that is the banner\'s job');
+}
+assert(B.POOLS.mutator && B.POOLS.mutator.length >= 4,
+  'the generic mutator pool exists as the safety net');
+
+// M-MANTLE/'echo chamber': the corrupted answer. It is a PURE function of the
+// line — no pool, no draw — so the whole corpus is run through it here and
+// held to the foreman bar, which is the only place it is ever drawn.
+{
+  let n = 0, longest = 0;
+  const seen = {};
+  for (const k in B.POOLS)
+    for (const line of B.POOLS[k]) {
+      const e = B.echoOf(line);
+      assert(typeof e === 'string' && e.length > 0, 'echo for ' + JSON.stringify(line));
+      assertEq(B.echoOf(line), e, 'echoes are stable for ' + JSON.stringify(line));
+      assert(e.length <= 70, 'echo fits the bar: ' + JSON.stringify(e));
+      // it must still be recognisably HIS line coming back, or the joke is
+      // just a second voice saying unrelated things
+      const last = line.replace(/[^A-Za-z' ]+/g, ' ').trim().split(/\s+/)
+        .filter((w) => w.length > 1).pop();
+      if (last) assert(e.toLowerCase().indexOf(last.toLowerCase()) >= 0,
+        'the echo repeats him: ' + JSON.stringify(line) + ' -> ' + JSON.stringify(e));
+      longest = Math.max(longest, e.length);
+      seen[e] = (seen[e] || 0) + 1;
+      n++;
+    }
+  assert(n > 100, 'the whole corpus echoes (' + n + ')');
+  assert(longest <= 70, 'longest echo ' + longest);
+}
+
 for (const u of D.META_UPGRADES)
   assertEq(typeof B.META_LINES[u.id], 'string', 'bespoke line for meta upgrade ' + u.id);
 assertEq(D.META_UPGRADES.length, 9, 'all 9 meta upgrades covered');
@@ -1733,6 +1785,7 @@ console.log('PASS barks | categories ' + CATALOG.length +
   ' | core ' + CORE_N + ' (' + B.CORE.intrusion.length + ' intrusions, ' +
   B.CORE.gate.length + ' gate beats, ' + B.CORE.reveal.length + ' reveal, ' +
   B.CORE.mantle.length + ' mantle)' +
+  ' | mutators ' + Object.keys(B.MUTATOR_LINES).length + ' lines, all echoing' +
   ' | graffiti ' + GRAFFITI_N +
   ' | logbook ' + logLines.length +
   ' | vignette lines ' + eventLines().length +

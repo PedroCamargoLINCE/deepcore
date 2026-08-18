@@ -4564,6 +4564,41 @@ function wideSection(seed) {
   run.schematics = many;
   rows = frame(state);
 
+  // ---- M-MANTLE: the mutator banner, on the divider under the header -----
+  // The floor's rule is drawn INTO row 1's rule, which is the one row on this
+  // screen with space for it. Two things have to be true and neither is
+  // obvious from the code: it is actually on screen (a rule that does not fit
+  // is silently not drawn, by design), and it never bleeds into the sidebar.
+  {
+    const was = { depth: run.depth, mantle: run.mantle, mut: run.mutator };
+    // Strata 1-8 draw the plain divider, with nothing inlaid in it.
+    run.depth = 1; run.mantle = false; run.mutator = null;
+    const plain = frame(state);
+    assertEq(plain[1].slice(0, L.sb - 1).indexOf('†'), -1,
+      'no mutator, no mark on the divider');
+    run.depth = D.MUTATOR_DEPTH; run.mantle = true;
+    for (const m of D.MUTATORS) {
+      run.mutator = m.id;
+      const rws = frame(state);
+      const rule = rws[1].slice(0, L.sb - 1);
+      assert(rule.indexOf('†') >= 0, m.id + ': the divider carries the mark');
+      assert(rule.indexOf(m.name) >= 0,
+        m.id + ': ...and its NAME, which is what the player will call this floor');
+      assert(rule.indexOf(m.tag) >= 0,
+        m.id + ': ...and the one line that is the whole rule (' +
+        JSON.stringify(rule) + ')');
+      // the rule stops at the map column: the sidebar is not its to write in
+      assertEq(rws[1][L.sb - 1], ' ', m.id + ': the gutter is still a gutter');
+      assert('│├┌└'.indexOf(rws[1][L.sb]) >= 0,
+        m.id + ": the sidebar's wall survived the banner");
+      // and the header above it still says which stratum this is
+      assert(rws[0].indexOf('STRATUM ' + D.MUTATOR_DEPTH) >= 0,
+        m.id + ': the stratum line is untouched');
+    }
+    run.depth = was.depth; run.mantle = was.mantle; run.mutator = was.mut;
+    rows = frame(state);
+  }
+
   // ---- PANEL 4: CHAIN — the ratio trap, made visible ---------------------
   function colARow(rws, needle) {
     for (let r = 1; r < D.ROWS; r++) {
@@ -4702,7 +4737,8 @@ function wideSection(seed) {
   assert(ch.length >= 1 && ch[0].col >= 20,
     'the vignette choices sit under the panel, not out in the dark');
 
-  return D.COLS + 'x' + D.ROWS + ', ' + 12 + ' screens';
+  return D.COLS + 'x' + D.ROWS + ', ' + 12 + ' screens, ' +
+    D.MUTATORS.length + ' mutator banners';
 }
 
 // =========================================================================

@@ -892,6 +892,7 @@
         coreBeats: {},       // gate beat -> true (each fires once per run)
         eggAt: 0,            // EGG-420: totalT of the last mellow line
         eggEnded: 0,         // EGG-420: totalT of the window we already closed
+        echoPend: null,      // M-MANTLE/'echo chamber': { line, at }
       };
     }
     return run._barks;
@@ -915,6 +916,46 @@
     if (trigger === 'vignette' && typeof ctx === 'string')
       return VIGNETTE_LINES[ctx] || null;
     return null;
+  }
+
+  // ---------------- M-MANTLE: 'echo chamber' ----------------
+  // The floor repeats the foreman back at him, wrong. Every GRIT line gets one
+  // answer in the Core's gold, built out of the tail of what he just said.
+  //
+  // IT IS A PURE FUNCTION OF THE LINE, and that is the whole trick: no pool to
+  // write, no rng to spend, and — the part that matters — no draw from
+  // run.rng at all. Barks fire off things the player did, and §0 law 7 says
+  // what the player does must not move the stream; a mutator that rolled a
+  // corruption per bark would make the quake schedule depend on how often
+  // somebody jammed a belt. The shape is chosen by an FNV-1a hash of the line,
+  // so the same sentence always comes back the same way and a player can
+  // notice that it does.
+  //
+  // Three shapes, all of them the rock being bad at language rather than the
+  // rock being clever: the tail stuttering, the tail backwards, and the last
+  // word shouted. Two words, never three, so no echo can outgrow the bar.
+  function echoOf(line) {
+    const words = String(line || '').replace(/[^A-Za-z' ]+/g, ' ').trim()
+      .split(/\s+/).filter(function (w) { return w.length > 1; });
+    if (!words.length) return null;
+    const tail = words.slice(-2).map(function (w) { return w.toLowerCase(); });
+    const last = tail[tail.length - 1];
+    let h = 0x811c9dc5;
+    const src = String(line);
+    for (let i = 0; i < src.length; i++) {
+      h ^= src.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    const shape = (h >>> 1) % 3;
+    let s;
+    if (shape === 0) s = tail.join(' ') + '. ' + last + '. ' + last + '.';
+    else if (shape === 1) s = last + '. ' + tail.slice().reverse().join(' ') + '.';
+    else s = tail.join(' ') + '... ' + last.toUpperCase() + '.';
+    s = '...' + s;
+    // A pathological line (two very long words) falls back to the short form
+    // rather than being cut mid-word — the bar never shows half a sentence.
+    if (s.length > 70) s = '...' + last + '. ' + last + '.';
+    return s.length > 70 ? null : s;
   }
 
   function pickLine(run, S, pool) {
@@ -948,6 +989,16 @@
       text: (core ? '  ▸ ' : 'GRIT ▸ ') + line,
       color: core ? D.COLORS.gold : D.COLORS.darkgray, t: run.t,
     };
+    // M-MANTLE/'echo chamber': the floor answers him, about a beat after he
+    // finishes typing (GRIT reveals 2 chars a tick). Scheduled rather than
+    // said, because an echo that landed on the same tick would simply replace
+    // the line it is echoing and nobody would ever read the original. An echo
+    // is Core-voiced and therefore never echoes itself, and a Core intrusion
+    // already pending outranks it — the planet does not interrupt itself.
+    if (!core && run.mutator === 'echo' && !S.corePend) {
+      const e = echoOf(line);
+      if (e) S.echoPend = { line: e, at: run.totalT + Math.ceil(line.length / 2) + 2 * HZ };
+    }
     return line;
   }
   // Hand the last spoken line to the LOG (SPEC2 §F's mirror, one beat later).
@@ -1099,6 +1150,14 @@
       const pend = S.corePend;
       S.corePend = null;
       say(run, S, pend.line);
+    }
+
+    // M-MANTLE/'echo chamber': ...and on those floors, everything he says
+    // comes back. In the Core's voice, in the Core's gold, and wrong.
+    if (S.echoPend && run.totalT >= S.echoPend.at) {
+      const e = S.echoPend;
+      S.echoPend = null;
+      say(run, S, e.line, 'core');
     }
 
     // M-CORELORE: the ambient intrusion. Stratum 6 and below, once per floor,
@@ -1336,6 +1395,7 @@
     // data exposed for the headless acceptance test (SPEC2 §G)
     POOLS: POOLS, STRATUM_LINES: STRATUM_LINES, SCHEM_LINES: SCHEM_LINES,
     MUTATOR_LINES: MUTATOR_LINES,     // M-MANTLE
+    echoOf: echoOf,                   // M-MANTLE/'echo chamber' (pure, rng-free)
     META_LINES: META_LINES, EPITAPHS: EPITAPHS, TOASTS: TOASTS,
     LANDMARK_LINES: LANDMARK_LINES,   // M-WONDERS
     VIGNETTE_LINES: VIGNETTE_LINES,   // M-EVENTS
