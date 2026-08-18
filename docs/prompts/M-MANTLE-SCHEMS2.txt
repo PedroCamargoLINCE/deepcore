@@ -1,0 +1,76 @@
+You are a worker session on the DEEPCORE project, implementing TWO briefs in
+one session: M-MANTLE and M-SCHEMS2. The repository is at
+/home/pedro/Documents/games/deepcore and you have your own git worktree — do
+ALL work there, never in the main working copy; the orchestrator is using it.
+
+Create and switch to a branch named M-MANTLE-SCHEMS2 off origin/master. You
+are the only worker running this wave.
+
+Read SPEC.md, SPEC2.md, and SPEC3.md sections M-MANTLE and M-SCHEMS2 in full,
+plus §0's EIGHT laws AND the lineage note above them, js/data.js, js/sim.js,
+and docs/STATE.md to orient. Honor SPEC3's rules of engagement.
+
+WHAT HAS LANDED SINCE THESE BRIEFS WERE WRITTEN — read before designing:
+
+- M-TIER2 is merged: splitter, underground belt pair, loader, crusher, filter
+  gate, all from stratum 3, all under the FACING-NOT-ADJACENCY rule pinned by
+  test/headless.js checkRigOutput — that test must pass unmodified. Ghost
+  Belts were CUT from M-SCHEMS2 in favour of underground belts; the seven
+  schematics in the current SPEC3 list are the batch, do not reinvent an
+  eighth.
+- Sim.chain(run) is the CHAIN panel's model: pure, rng-free (law 7), pinned by
+  checkChain. Anything a schematic changes about a machine's rate or fuel
+  (Magma Boiler most of all: a smelter beside magma needs no coal) must be
+  reflected there, or the panel lies — extend checkChain alongside.
+- The first-run tutorial (js/tutorial.js) gates on belts and delivery. Your
+  mutators live at depth 9+ so they cannot collide with it, but keep its
+  integration section green.
+- The screen is 112 columns (M-WIDE); the map is still 46x26. The mutator
+  banner and any new schematic card text must be checked at that width.
+- test/balance.js's footer now carries a DRIFTED marker: full-Foundry standard
+  is 10/14 @ 22.9m and the camper is med 8 (one past its band) on the
+  canonical 14 seeds. Compare your before/after against THOSE numbers, and do
+  not chase the camper drift — it is logged for M-HUMANBAL, a tuning wave
+  that runs last.
+- SPEC3 has an M-HUMANBAL ledger. If you believe an existing data.js value
+  must change, do NOT change it — append the case to that ledger's candidate
+  notes in your report instead. js/data.js is ADDITIVE ONLY for you.
+
+DESIGN NOTES, decided in advance:
+
+- 'worm season' needs M-WORMS, which does not exist. Guard it: absent feature
+  = the mutator is not in the roll table, a silent no-op.
+- 'cold seam' (smelters must border magma) and M-SCHEMS2's Magma Boiler
+  (smelters beside magma need no coal) are the SAME engine. Build the
+  magma-adjacency check once, in the sim, and let both consume it.
+- Mutators roll in startStratum for depth > 8, from run.rng AT THAT ONE SITE
+  ONLY — one roll, stored on the run (law 7: a re-render must never re-roll).
+  The banner announces it; GRIT gets a line per mutator (guardrails: profanity
+  and gallows humour yes; slurs, hate, explicit anatomy, non-consent never).
+- The lineage note names Balatro: mutators and schematics are PICKS with
+  names and one-line consequences a player can hold in their head, never stat
+  soup.
+- Everything stays DOM-free and deterministic; no CDN; file:// keeps working.
+
+Use node tools/ab.js '<js mutating D>' to A/B any tuning question without
+editing data.js.
+
+Gate: all five suites green (node test/headless.js, test/integration.js,
+test/barks_test.js, test/rig_test.js, test/balance.js) and node
+tools/build.js parses, extended to cover every mutator and every schematic.
+Run test/balance.js before and after and report both.
+
+Checkpoint-commit AND PUSH your branch after every green milestone, with a
+"Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>" trailer. Pushing each
+checkpoint is what makes your work recoverable if this session dies — the
+last worker died at its session limit and lost nothing for exactly this
+reason.
+
+Ship M-MANTLE first, mutator by mutator, then the schematic batch one card at
+a time — a session limit mid-brief should leave working mutators, not a
+half-wired table.
+
+When done: push your branch to origin and STOP — do not merge, rebase or
+force-push; the orchestrator merges. Report: what you built, mutator by
+mutator and card by card, your before/after balance numbers, anything you
+deviated on and why, and your final test output.
