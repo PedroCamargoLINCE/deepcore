@@ -23,6 +23,10 @@
   // would be dropped and the line lost for the whole stratum. Held and
   // retried until a line actually lands instead. { trigger, id }
   let lmPending = null;
+  // M-MANTLE: the same problem, and the same answer. A mutator is announced on
+  // arrival, which is exactly when stratumArrive is holding the bar — so the
+  // id is held here and retried until GRIT actually says something about it.
+  let mutPending = null;
   let helpFrom = 'title';    // screen to return to from help
   let recapFrom = 'gameover';// screen to return to from the recap card
   let gesture = {};          // "x,y" -> true: belts placed in the current drag/lay gesture
@@ -162,6 +166,9 @@
     // The wonder waits its turn, and yields to the one moment that outranks
     // it: once the rig is breach-ready the bar belongs to that: a tourist
     // observation about a rock must not step on "press D".
+    // M-MANTLE: the floor's rule gets said before any tourism about a rock —
+    // one of these can end the run and the other is scenery.
+    if (mutPending && bark('mutator', mutPending)) mutPending = null;
     if (lmPending && run.status !== 'breachReady' &&
         bark(lmPending.trigger, lmPending.id)) lmPending = null;
     const B = DC.Barks;
@@ -215,6 +222,20 @@
       // than from run.rng, because these fire only when the player has made a
       // mistake and law 7 forbids that moving the stream.
       else if (ev.type === 'diagnostic' && ev.data) diagBark(run, ev.data.cause);
+      // M-MANTLE: the floor arrived with a rule. The banner carries it for the
+      // whole stratum; this is the moment it lands — a flash over the map and
+      // GRIT's opinion of it, retried on later ticks if the arrival line is
+      // still holding the bar (same shape as the landmark's pending bark).
+      else if (ev.type === 'mutator' && ev.data && ev.data.id) {
+        mutPending = ev.data.id;
+        const def = (D.MUTATOR_BY_ID || {})[ev.data.id];
+        if (def && DC.state && DC.state.ui) {
+          DC.state.ui.flash = {
+            text: '† ' + def.name + ' †',
+            color: D.COLORS.red, until: run.t + 4 * D.TICK_HZ,
+          };
+        }
+      }
       else if (ev.type === 'landmark' && ev.data) {
         lmPending = { trigger: ev.data.act === 'find' ? 'landmarkFound' : 'landmarkUse',
                       id: ev.data.id };
@@ -346,7 +367,7 @@
         DC.Meta.catFound(st.meta)) {
       try { DC.Events.grantCat(st.run, true); } catch (e) { /* optional */ }
     }
-    awarded = false; awardedCores = 0; breachFlashed = false; lmPending = null;
+    awarded = false; awardedCores = 0; breachFlashed = false; lmPending = null; mutPending = null;
     // M-ONBOARD Part 2: the first-run induction, on the real generated map.
     // Never on the Daily — that run is ranked against everybody else's, and a
     // tutorial that freezes instability while it plays would be a handicap
@@ -515,6 +536,7 @@
     bark('schematicPick', id);
     breachFlashed = false;
     lmPending = null;   // the last floor's wonder is behind us (M-WONDERS)
+    mutPending = null;  // ...and its rule (M-MANTLE); the new one re-announces
     arriveFlash(st);
     st.ui.shakeUntil = 0;
     st.ui.hover = null;

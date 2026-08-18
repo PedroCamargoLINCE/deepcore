@@ -175,6 +175,15 @@
       "This deep, the rock remembers being a star. It's grumpy about it.",
       "The Mantle. Even my cough echoes wrong. Keep drilling.",
     ],
+    // M-MANTLE: the generic shrug, for the day a mutator ships before its
+    // bespoke line does. bespokeFor prefers MUTATOR_LINES for every id in
+    // data.js, so in a green tree this pool is a safety net and not a voice.
+    mutator: [
+      "This floor's got a personality. They all do. None of 'em nice.",
+      "Something's off down here. Read the banner. I'm not reading it twice.",
+      "Every floor past eight has a rule. Learn it or wear it, kid.",
+      "The Mantle's dealing again. Check what it dealt us.",
+    ],
     jam: [
       "Line's backed up worse than the site latrine on chili night.",
       "Belts are jammed, kid. Somewhere an item lives its worst life.",
@@ -722,6 +731,21 @@
     s_grind: "Rock grinders. We eat the walls now. The walls started it.",
   };
 
+  // M-MANTLE: one bespoke line per mutator. The floor's rule is already on the
+  // banner in the system's flat voice — GRIT's job here is the reaction, not
+  // the rule (§0 law 3), so not one of these explains a mechanic. 'worms' is
+  // written and waiting: the day M-WORMS loads, the mutator deals itself and
+  // this line is already here.
+  const MUTATOR_LINES = {
+    dark: "Lights are losing. Stay in the lamp, kid. I mean it this time.",
+    hungry: "She's biting double and twice as often. Feed her or she eats us.",
+    coldseam: "No coal in this rock. Smelt at the lava like our grandads did.",
+    worms: "Three of 'em in the walls. Don't name them. You'll get attached.",
+    glass: "Floor's glass under the rubble. Whole place is one bad step.",
+    echo: "...Did you hear that? No? Good. Forget I said anything. Dig.",
+    seal: "Thin floor, angry planet. Punch through fast or don't punch at all.",
+  };
+
   // Bespoke line per Foundry meta upgrade id (9).
   const META_LINES = {
     m_stock: "Deeper stores. More plates up front. Spend 'em like you hate 'em.",
@@ -878,6 +902,8 @@
       return run.depth <= D.STRATA_COUNT ? STRATUM_LINES[run.depth] : STRATUM_LINES.mantle;
     if (trigger === 'mantleArrive') return STRATUM_LINES.mantle;
     if (trigger === 'schematicPick' && typeof ctx === 'string') return SCHEM_LINES[ctx] || null;
+    // M-MANTLE: ctx is the mutator id off the sim's arrival event.
+    if (trigger === 'mutator' && typeof ctx === 'string') return MUTATOR_LINES[ctx] || null;
     if (trigger === 'foundryBuy' && typeof ctx === 'string') return META_LINES[ctx] || null;
     // M-WONDERS: ctx is the landmark id; the generic pool covers the rest.
     if ((trigger === 'landmarkFound' || trigger === 'landmarkUse') &&
@@ -1309,6 +1335,7 @@
     fillReview: fillReview, REVIEWS: REVIEWS,
     // data exposed for the headless acceptance test (SPEC2 §G)
     POOLS: POOLS, STRATUM_LINES: STRATUM_LINES, SCHEM_LINES: SCHEM_LINES,
+    MUTATOR_LINES: MUTATOR_LINES,     // M-MANTLE
     META_LINES: META_LINES, EPITAPHS: EPITAPHS, TOASTS: TOASTS,
     LANDMARK_LINES: LANDMARK_LINES,   // M-WONDERS
     VIGNETTE_LINES: VIGNETTE_LINES,   // M-EVENTS

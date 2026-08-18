@@ -564,6 +564,11 @@
 
     // thin rule (row 1, under the map column only — sidebar starts here)
     text(0, 1, '─'.repeat(SB - 1), C.amberDim);
+    // M-MANTLE: from stratum 9 that rule carries the floor's one rule. It is
+    // drawn INTO the existing divider rather than on a row of its own — the
+    // run screen has no spare rows, and a mutator is not a fifth panel, it is
+    // a property of the stratum whose name is already on the line above.
+    drawMutatorRule(run, accent);
 
     // map box rows 2..29, cols 0..47; interior = 46x26 at (MAP_X, MAP_Y)
     box(0, 2, 48, 28, accent, 'STRATUM ' + run.depth + ' ─ ' + st.name, C.white);
@@ -612,6 +617,36 @@
       text(bx + 3, by + 4, '[A]   ABANDON RUN', C.red);
       text(bx + 3, by + 5, '[H]   MANUAL', C.gray);
     }
+  }
+
+  // M-MANTLE: the floor's rule, inlaid in the divider under the header.
+  //
+  // Three inks, because it is three different things: a mark that says a rule
+  // is in force at all, the NAME (which is what the player will call this
+  // floor afterwards), and the consequence in the quiet grey every other
+  // explanatory string in this game is written in. The '†' is the Mantle's own
+  // mark — the same dagger its stratum name counts in — so the symbol is
+  // already learned by the time the first mutator is dealt.
+  //
+  // If the pair does not fit the divider it is not drawn: a rule truncated
+  // mid-word is worse than no rule, because it reads as a rule the player has
+  // understood (§0 law 6). test/headless.js holds every entry to this width,
+  // so the branch is a guarantee and not a fallback anybody should ever see.
+  function drawMutatorRule(run, accent) {
+    const def = (DC.Sim && DC.Sim.mutatorOf) ? DC.Sim.mutatorOf(run) : null;
+    if (!def) return;
+    const w = SB - 1;
+    const mark = '†', dash = '—';
+    const inset = ' ' + mark + ' ' + def.name + ' ' + dash + ' ' + def.tag + ' ';
+    if (inset.length > w) return;
+    let x = Math.max(0, (w - inset.length) >> 1);
+    text(x, 1, ' '.repeat(inset.length), C.amberDim);   // clear the rule under it
+    x += 1;
+    put(x, 1, mark, C.red);
+    x += 2;
+    text(x, 1, def.name, accent || C.amber);
+    x += def.name.length + 1;
+    text(x, 1, dash + ' ' + def.tag, C.gray);
   }
 
   function mapPut(tx, ty, ch, fg, xo) {
@@ -725,7 +760,8 @@
                 fg = m.hp === 1 ? (phase ? C.red : base) : base;
               } else { ch = '▓'; fg = shade(b.color, 0.55); }
               const bad = m.status === 'nofuel' || m.status === 'blocked' ||
-                          m.status === 'depleted' || m.status === 'unpaired';
+                          m.status === 'depleted' || m.status === 'unpaired' ||
+                          m.status === 'cold';   // M-MANTLE/'cold seam'
               if (bad && phase) {
                 // '!' over first non-anchor tile (the anchor itself for 1x1s)
                 const mkx = (b.w > 1 || b.h > 1) ? m.x + 1 : m.x;

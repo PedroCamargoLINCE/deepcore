@@ -13,9 +13,19 @@
              lm: null };
   }
 
-  function generate(depth, rng, mods) {
+  // `mutator` is M-MANTLE's floor rule, decided by sim.js BEFORE this runs
+  // because one of them is an instruction to this function. Everything else in
+  // the tree calls generate() with three arguments and gets the map it always
+  // got — an undefined mutator changes not one roll.
+  function generate(depth, rng, mods, mutator) {
     mods = mods || {};
     const W = D.MAP_W, H = D.MAP_H;
+    const MUT = mutator ? (D.MUTATOR_BY_ID || {})[mutator] || null : null;
+    // M-MANTLE/'cold seam': there is no coal in this rock. Not "less coal",
+    // none — the mutator's one line is that you smelt at the planet's forge or
+    // you do not smelt, and a stray coal vein would make that a lie the player
+    // discovers forty seconds after building for it.
+    const coldSeam = mutator === 'coldseam';
     const S = depth <= D.STRATA_COUNT ? D.STRATA[depth - 1] : D.mantleStratum(depth);
 
     // -- 1. cellular caves --------------------------------------------------
@@ -104,10 +114,22 @@
       return null;
     }
 
+    // Under cold seam the coal weight is redistributed across the ores that
+    // remain, in proportion — so the floor is as ore-rich as its stratum says
+    // it is, just made of things you can actually use. Renormalising rather
+    // than dropping the weight keeps `rollOre` spending exactly ONE number
+    // from the stream, whatever the table looks like.
+    const ORES = {};
+    {
+      let tot = 0;
+      for (const k in S.ores) if (!(coldSeam && k === 'coal')) tot += S.ores[k];
+      for (const k in S.ores)
+        if (!(coldSeam && k === 'coal')) ORES[k] = S.ores[k] / (tot || 1);
+    }
     function rollOre() {
       const r = rng(); let acc = 0;
-      const ks = Object.keys(S.ores);
-      for (const k of ks) { acc += S.ores[k]; if (r < acc) return k; }
+      const ks = Object.keys(ORES);
+      for (const k of ks) { acc += ORES[k]; if (r < acc) return k; }
       return ks[ks.length - 1];
     }
     for (let i = 0; i < S.nodes; i++) placeVein(rollOre(), 0, false);
@@ -119,7 +141,7 @@
       for (let i = have; i < count; i++) placeVein(type, 6, true);
     }
     ensureVeins('ironOre', 2);
-    ensureVeins('coal', 1);
+    if (!coldSeam) ensureVeins('coal', 1);
 
     // -- 4. chasms ----------------------------------------------------------
     function carveChasm(x, y) {
@@ -151,11 +173,16 @@
     }
 
     // -- 5. magma pools -----------------------------------------------------
-    for (let i = 0; i < (F.magma || 0); i++) {
+    // One pool per F.magma, exactly as before — the body of this function is
+    // the old inline loop, lifted so cold seam can ask for more of them.
+    // `relaxed` drops the edge-region rule and pulls the hub-distance floor
+    // in, and is only ever reached under that mutator.
+    function placePool(relaxed) {
+      const minD = relaxed ? 7 : 10;
       for (let att = 0; att < 60; att++) {
         const x = U.ri(rng, 1, W - 2), y = U.ri(rng, 1, H - 2);
-        if (!(x < 6 || x > W - 7 || y < 5 || y > H - 6)) continue; // edge region
-        if (Math.hypot(x - hcx, y - hcy) < 10) continue;
+        if (!relaxed && !(x < 6 || x > W - 7 || y < 5 || y > H - 6)) continue; // edge region
+        if (Math.hypot(x - hcx, y - hcy) < minD) continue;
         const t0 = grid[y][x];
         if (t0.ore || t0.machine !== null || inClear(x, y) || t0.t === 'chasm') continue;
         const size = U.ri(rng, 3, 6);
@@ -164,14 +191,32 @@
           const tt = grid[cy][cx];
           if (!inClear(cx, cy) && !tt.ore && tt.machine === null &&
               tt.t !== 'chasm' && tt.t !== 'magma' &&
-              Math.hypot(cx - hcx, cy - hcy) >= 10) {
+              Math.hypot(cx - hcx, cy - hcy) >= minD) {
             tt.t = 'magma'; placed++;
           }
           const d = D.DIRS[U.ri(rng, 0, 3)];
           if (inb(cx + d.dx, cy + d.dy)) { cx += d.dx; cy += d.dy; }
         }
-        break;
+        return placed > 0;
       }
+      return false;
+    }
+    function magmaCount() {
+      let n = 0;
+      for (let y = 1; y < H - 1; y++)
+        for (let x = 1; x < W - 1; x++) if (grid[y][x].t === 'magma') n++;
+      return n;
+    }
+    // Cold seam wants at least the mutator's `magma` pools, and it wants them
+    // to have actually landed: on this floor magma is not a hazard, it is the
+    // supply of plates, and a map that rolled none is not a hard map but an
+    // unwinnable one.
+    const wantPools = Math.max(F.magma || 0,
+      (coldSeam && MUT && MUT.magma) ? MUT.magma : 0);
+    for (let i = 0; i < wantPools; i++) placePool(false);
+    if (coldSeam) {
+      const minTiles = 3 * ((MUT && MUT.magma) || 2);   // two pools' worth
+      for (let g = 0; magmaCount() < minTiles && g < 40; g++) placePool(true);
     }
 
     // -- 6. obsidian maze walls --------------------------------------------
@@ -256,6 +301,92 @@
           for (const c of v.tiles) if (carvePath(hcx, hcy, c.x, c.y)) break;
       }
       seen = reachSet();
+    }
+
+    // -- 7b. the forge is reachable (M-MANTLE / 'cold seam') ----------------
+    // Every other floor can shrug at a magma pool sealed behind obsidian: it
+    // is a hazard, and a hazard you cannot get to is a hazard you have won
+    // against. On a cold seam floor the pool is where PLATES come from, and a
+    // smelter is 2x2 — so this checks the thing the player actually has to do
+    // (stand a smelter on ground it can reach, touching lava) rather than the
+    // thing that is easy to check (magma exists somewhere).
+    //
+    // Verify, then carve, then — only if the map refuses both — build the
+    // forge a shore of its own beside ground the rig can already walk to. The
+    // last branch cannot fail, which is the point: this floor ships winnable.
+    if (coldSeam) {
+      const free = (x, y) => {
+        const t = grid[y][x];
+        return inb(x, y) && !t.ore && t.machine === null && !inClear(x, y) &&
+               (t.t === 'floor' || t.t === 'rock');
+      };
+      const touchesMagma = (x, y) => {
+        for (const d of D.DIRS)
+          if (inb(x + d.dx, y + d.dy) && grid[y + d.dy][x + d.dx].t === 'magma')
+            return true;
+        return false;
+      };
+      // A 2x2 smelter pad, all of it standable-or-diggable, at least one cell
+      // against the lava. Ordered by distance from the rig so the carve, if it
+      // is needed at all, is the shortest one on offer.
+      const pads = [];
+      for (let y = 1; y < H - 2; y++)
+        for (let x = 1; x < W - 2; x++) {
+          if (!free(x, y) || !free(x + 1, y) || !free(x, y + 1) || !free(x + 1, y + 1))
+            continue;
+          if (!(touchesMagma(x, y) || touchesMagma(x + 1, y) ||
+                touchesMagma(x, y + 1) || touchesMagma(x + 1, y + 1))) continue;
+          pads.push({ x: x, y: y, d: Math.hypot(x - hcx, y - hcy) });
+        }
+      pads.sort((a, b) => a.d - b.d);
+      seen = reachSet();
+      const live = (p) => {
+        for (let dy = 0; dy < 2; dy++)
+          for (let dx = 0; dx < 2; dx++)
+            if (grid[p.y + dy][p.x + dx].t === 'floor' &&
+                seen.has((p.y + dy) * W + (p.x + dx))) return true;
+        return false;
+      };
+      let ok = pads.some(live);
+      for (let i = 0; i < pads.length && !ok; i++) {
+        if (!carvePath(hcx, hcy, pads[i].x, pads[i].y)) continue;
+        // carvePath only opens ONE tile's width; open the pad itself too, or
+        // the smelter has a road to a corner it cannot stand on.
+        for (let dy = 0; dy < 2; dy++)
+          for (let dx = 0; dx < 2; dx++) {
+            const t = grid[pads[i].y + dy][pads[i].x + dx];
+            if (t.t === 'rock') t.t = 'floor';
+          }
+        seen = reachSet();
+        ok = live(pads[i]);
+      }
+      if (!ok) {
+        // No pad anywhere the rig can reach. Take reachable open ground a
+        // decent walk from the rig and give it a shore: three tiles of magma
+        // against a 2x2 the player can already stand on.
+        const spots = [];
+        for (let y = 2; y < H - 3; y++)
+          for (let x = 2; x < W - 3; x++) {
+            if (Math.hypot(x - hcx, y - hcy) < 8) continue;
+            if (!free(x, y) || !free(x + 1, y) || !free(x, y + 1) || !free(x + 1, y + 1))
+              continue;
+            if (grid[y][x].t !== 'floor' || !seen.has(y * W + x)) continue;
+            if (!free(x, y + 2) || !free(x + 1, y + 2)) continue;
+            spots.push({ x: x, y: y, d: Math.hypot(x - hcx, y - hcy) });
+          }
+        spots.sort((a, b) => a.d - b.d);
+        const s = spots[0];
+        if (s) {
+          grid[s.y + 2][s.x].t = 'magma';
+          grid[s.y + 2][s.x + 1].t = 'magma';
+          for (let dy = 0; dy < 2; dy++)
+            for (let dx = 0; dx < 2; dx++) {
+              const t = grid[s.y + dy][s.x + dx];
+              if (t.t === 'rock') t.t = 'floor';
+            }
+          seen = reachSet();
+        }
+      }
     }
 
     // -- 8. landmark (M-WONDERS) -------------------------------------------
