@@ -417,6 +417,8 @@
     // discount a recipe nothing is running.
     { id: 's_echo',     name: 'Echo Charges',         minDepth: 5,
       desc: 'Every fifth core charge assembles free.' },
+    { id: 's_chute',    name: 'Gravity Chute',
+      desc: 'Demolished machines refund 75% of their cost.' },
   ];
 
   // ---------------- meta upgrades (Foundry) ----------------

@@ -214,6 +214,8 @@
       // exists — the forge check above all (M-MANTLE built it, this switches
       // it on as a reward instead of a rule).
       magmaBoiler: false, echoCharge: false,
+      // Gravity Chute raises this; everything demolished reads it.
+      refund: D.DEMOLISH_REFUND,
     };
   }
   function applyMeta(mods, fx) {
@@ -256,6 +258,7 @@
       // M-SCHEMS2
       case 's_boiler': m.magmaBoiler = true; break;
       case 's_echo': m.echoCharge = true; break;
+      case 's_chute': m.refund = D.CHUTE_REFUND; break;
     }
   }
 
@@ -1811,7 +1814,9 @@
       if (t.machine === 0) return { ok: false, reason: 'the rig is not yours to scrap' };
       const m = run.machines[t.machine];
       const B = D.BUILDINGS[m.type];
-      for (const k in B.cost) add(run.inv, k, Math.floor(B.cost[k] * D.DEMOLISH_REFUND));
+      // M-SCHEMS2/Gravity Chute: the refund fraction lives on the mods now.
+      const refund = (run.mods && run.mods.refund) || D.DEMOLISH_REFUND;
+      for (const k in B.cost) add(run.inv, k, Math.floor(B.cost[k] * refund));
       for (const k in m.input) if (m.input[k] > 0) add(run.inv, k, m.input[k]);
       destroyMachine(run, m);
       return { ok: true };

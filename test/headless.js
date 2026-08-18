@@ -2554,6 +2554,41 @@ function checkSchems2() {
     cards++;
   }
 
+  // ---- Gravity Chute ---------------------------------------------------
+  // A smelter costs 10 plates: half back is 5, the chute's three quarters is
+  // 7. Belts are untouched — they already refund whole, card or no card.
+  {
+    const mk = function (chute) {
+      const r = S.newRun(eff, 1337);
+      revealAll(r);
+      r.inv.ironPlate = 100;
+      if (chute)
+        assertEq(S.installSchematic(r, 's_chute'), 's_chute', 'the card installs');
+      let pad = null;
+      for (let y = 2; y < D.MAP_H - 3 && !pad; y++)
+        for (let x = 2; x < D.MAP_W - 3 && !pad; x++) {
+          let ok = true;
+          for (let dy = 0; dy < 2 && ok; dy++)
+            for (let dx = 0; dx < 2 && ok; dx++) {
+              const t = r.grid[y + dy][x + dx];
+              if (t.ore || t.machine !== null || t.lm || t.belt || t.t !== 'floor')
+                ok = false;
+            }
+          if (ok) pad = { x: x, y: y };
+        }
+      assert(pad, 'the test floor offers a pad');
+      assert(S.place(r, 'smelter', pad.x, pad.y, 1), 'the smelter stands');
+      const before = r.inv.ironPlate;
+      assert(S.demolishAt(r, pad.x, pad.y).ok, 'and comes down');
+      return r.inv.ironPlate - before;
+    };
+    assertEq(mk(false), Math.floor(10 * D.DEMOLISH_REFUND),
+      'half back without the card');
+    assertEq(mk(true), Math.floor(10 * D.CHUTE_REFUND),
+      'three quarters back with it');
+    cards++;
+  }
+
   return cards;
 }
 

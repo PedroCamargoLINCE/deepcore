@@ -1114,6 +1114,13 @@
       '‡‡   ))  )',
       '‡    )   )',
     ],
+    s_chute: [               // scrap riding the chute back to the crate
+      '▐▌▬       ',
+      ' ▐▌¤      ',
+      '  ▐▌▬     ',
+      '   ▐▌¤    ',
+      '   ╘════╛ ',
+    ],
   };
 
   // ---------------- M-WIDE: 3-cell item & building icons ----------------
@@ -1232,8 +1239,9 @@
     s_veins: '≡≡', s_gear: '¤¤',
     // M-TIER2: down-and-up, a fan, a gate with two sides, broken wall
     s_conduit: '↓↑', s_yoke: '◀▶', s_gate: '╡╞', s_grind: '▓▓',
-    // M-SCHEMS2: a furnace riding the lava, a charge and its echo
-    s_boiler: '≈≈', s_echo: '‡)',
+    // M-SCHEMS2: a furnace riding the lava, a charge and its echo, scrap
+    // falling home
+    s_boiler: '≈≈', s_echo: '‡)', s_chute: '↓¤',
   };
   // ---------------- M-WIDE: the LOADOUT panel's two short strings ----------
   // run.schematics is tracked all run and shown for four seconds on the pick
@@ -1253,6 +1261,7 @@
     s_conduit: 'Deep Conduits', s_yoke: 'Trident Yokes',
     s_gate: 'Sorting Gates',    s_grind: 'Rock Grinders',
     s_boiler: 'Magma Boiler', s_echo: 'Echo Charges',
+    s_chute: 'Gravity Chute',
   };
   A.schemEffect = {
     s_beltfree: 'belts free',   s_extract: 'mine +35%',    s_smelt: 'smelt +30%',
@@ -1263,6 +1272,7 @@
     s_conduit: 'reach x2',      s_yoke: 'three ways',
     s_gate: 'shunt right',      s_grind: 'rock to ore',
     s_boiler: 'lava smelts', s_echo: 'fifth free',
+    s_chute: 'refund 75%',
   };
   A.schemColors = {
     s_beltfree: 'cyan', s_extract: 'amber', s_smelt: 'magma', s_coal: 'gray',
@@ -1270,7 +1280,7 @@
     s_salvage: 'orange', s_survey: 'blue', s_charge: 'magenta', s_over: 'red',
     s_veins: 'magmaHot', s_gear: 'orange',
     s_conduit: 'blue', s_yoke: 'cyan', s_gate: 'magenta', s_grind: 'steel',
-    s_boiler: 'magma', s_echo: 'magenta',
+    s_boiler: 'magma', s_echo: 'magenta', s_chute: 'green',
   };
 
   // ---------------- helpers & color suggestions ----------------

@@ -727,6 +727,7 @@
     // M-SCHEMS2
     s_boiler: "Magma boiler. The planet pays the fuel bill now. Don't thank it.",
     s_echo: "Echo charges. Every fifth one's on the house. Whose house? Shh.",
+    s_chute: "Gravity chute. Tear it down and most of it walks home. Tidy.",
     // M-TIER2
     s_conduit: "Deep conduits. Twice the reach under the floor. Mind the pipes.",
     s_yoke: "Trident yokes. One line in, three out. Greedy little fork.",
