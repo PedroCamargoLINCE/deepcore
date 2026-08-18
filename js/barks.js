@@ -742,6 +742,7 @@
     s_chute: "Gravity chute. Tear it down and most of it walks home. Tidy.",
     s_jury: "Jury rig. Broken means faster now. The hull disagrees. Loudly.",
     s_insure: "Deep insurance. One free miracle per shift. Don't schedule it.",
+    s_loop: "Closed loop. She vents on her own exhaust now. Coal's off the menu.",
     // M-TIER2
     s_conduit: "Deep conduits. Twice the reach under the floor. Mind the pipes.",
     s_yoke: "Trident yokes. One line in, three out. Greedy little fork.",

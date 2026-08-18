@@ -423,6 +423,8 @@
       desc: 'Damaged machines run full speed. Each costs 1 hull a minute.' },
     { id: 's_insure',   name: 'Deep Insurance',
       desc: 'The first killing blow leaves 1 integrity instead. Once.' },
+    { id: 's_loop',     name: 'Closed Loop',
+      desc: 'Dampers burn no coal, but calm half as much.' },
   ];
 
   // ---------------- meta upgrades (Foundry) ----------------

@@ -697,6 +697,7 @@
       smelter: scs.indexOf('s_smelt') >= 0 || scs.indexOf('s_coal') >= 0 ||
                scs.indexOf('s_boiler') >= 0,   // M-SCHEMS2
       assembler: scs.indexOf('s_gear') >= 0,
+      damper: scs.indexOf('s_loop') >= 0,      // M-SCHEMS2
     };
 
     for (let y = 0; y < D.MAP_H; y++) {

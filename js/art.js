@@ -1135,6 +1135,13 @@
       '└────────┘',
       ' ▪      ▪ ',
     ],
+    s_loop: [                // a vent circling back into itself, no coal pile
+      '  ┌────┐  ',
+      ' ▲│    │▼ ',
+      ' │└────┘│ ',
+      ' └──────┘ ',
+      '  ♠ ♠  ×  ',
+    ],
   };
 
   // ---------------- M-WIDE: 3-cell item & building icons ----------------
@@ -1256,6 +1263,7 @@
     // M-SCHEMS2: a furnace riding the lava, a charge and its echo, scrap
     // falling home
     s_boiler: '≈≈', s_echo: '‡)', s_chute: '↓¤', s_jury: '×═', s_insure: '+1',
+    s_loop: '○○',
   };
   // ---------------- M-WIDE: the LOADOUT panel's two short strings ----------
   // run.schematics is tracked all run and shown for four seconds on the pick
@@ -1276,7 +1284,7 @@
     s_gate: 'Sorting Gates',    s_grind: 'Rock Grinders',
     s_boiler: 'Magma Boiler', s_echo: 'Echo Charges',
     s_chute: 'Gravity Chute', s_jury: 'Jury Rig',
-    s_insure: 'Insurance',
+    s_insure: 'Insurance', s_loop: 'Closed Loop',
   };
   A.schemEffect = {
     s_beltfree: 'belts free',   s_extract: 'mine +35%',    s_smelt: 'smelt +30%',
@@ -1288,7 +1296,7 @@
     s_gate: 'shunt right',      s_grind: 'rock to ore',
     s_boiler: 'lava smelts', s_echo: 'fifth free',
     s_chute: 'refund 75%',  s_jury: 'no slowdown',
-    s_insure: 'cheat death',
+    s_insure: 'cheat death', s_loop: 'coal-free',
   };
   A.schemColors = {
     s_beltfree: 'cyan', s_extract: 'amber', s_smelt: 'magma', s_coal: 'gray',
@@ -1297,7 +1305,7 @@
     s_veins: 'magmaHot', s_gear: 'orange',
     s_conduit: 'blue', s_yoke: 'cyan', s_gate: 'magenta', s_grind: 'steel',
     s_boiler: 'magma', s_echo: 'magenta', s_chute: 'green', s_jury: 'red',
-    s_insure: 'white',
+    s_insure: 'white', s_loop: 'green',
   };
 
   // ---------------- helpers & color suggestions ----------------

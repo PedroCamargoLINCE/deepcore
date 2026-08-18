@@ -214,6 +214,7 @@
       // exists — the forge check above all (M-MANTLE built it, this switches
       // it on as a reward instead of a rule).
       magmaBoiler: false, echoCharge: false, juryRig: false, insurance: false,
+      closedLoop: false,
       // Gravity Chute raises this; everything demolished reads it.
       refund: D.DEMOLISH_REFUND,
     };
@@ -261,6 +262,7 @@
       case 's_chute': m.refund = D.CHUTE_REFUND; break;
       case 's_jury': m.juryRig = true; break;
       case 's_insure': m.insurance = true; break;
+      case 's_loop': m.closedLoop = true; break;
     }
   }
 
@@ -1048,9 +1050,14 @@
         }
       }
     } else if (m.type === 'damper') {
-      if (m.fuel <= 0 && (m.input.coal || 0) > 0) { m.input.coal--; m.fuel = B.coalTicks; }
-      if (m.fuel > 0) { m.fuel--; working = true; }
-      else nofuel = true;
+      // M-SCHEMS2/Closed Loop: it just runs. No coal drawn, none missed —
+      // instRate reads the card and halves the calm instead.
+      if (run.mods.closedLoop) working = true;
+      else {
+        if (m.fuel <= 0 && (m.input.coal || 0) > 0) { m.input.coal--; m.fuel = B.coalTicks; }
+        if (m.fuel > 0) { m.fuel--; working = true; }
+        else nofuel = true;
+      }
     } else if (m.type === 'crusher') {
       // M-TIER2: the hazard, banked. Nearest rubble first (pure arithmetic on
       // the grid — no roll, law 7), one grind per period, ore out the arrow.
@@ -1425,7 +1432,10 @@
           if (m.starveSince) starved = true;
         }
       } else if (m.type === 'damper') {
-        add2('coal', -HZ / D.BUILDINGS.damper.coalTicks);
+        // Closed Loop dampers draw nothing, and the panel must not send the
+        // player mining coal for them (same honesty as the forge above).
+        if (!(run.mods && run.mods.closedLoop))
+          add2('coal', -HZ / D.BUILDINGS.damper.coalTicks);
       }
       if (m.status === 'blocked') blocked = true;
       if (m.hp === 1) damaged = true;
@@ -1595,10 +1605,15 @@
     let dampers = 0;
     for (const id in run.machines) {
       const m = run.machines[id];
-      if (m.type === 'damper' && m.fuel > 0 && dampers < D.DAMPER_MAX) {
+      // M-SCHEMS2/Closed Loop: a looped damper is always venting (no coal to
+      // run out of) and vents half as hard — the card's whole trade.
+      if (m.type === 'damper' && (run.mods.closedLoop || m.fuel > 0) &&
+          dampers < D.DAMPER_MAX) {
         dampers++;
         const calm = Math.min(0.9,
-          D.BUILDINGS.damper.calm * auraMult(run, 'damper', m.x, m.y));
+          D.BUILDINGS.damper.calm *
+          (run.mods.closedLoop ? D.CLOSED_LOOP_CALM : 1) *
+          auraMult(run, 'damper', m.x, m.y));
         rate *= 1 - calm;
       }
     }
@@ -2171,6 +2186,10 @@
       // it has no fuel — the sentence that replaces it is the reason why.
       if (forgeSmelter(run, m))
         L.push({ text: 'the forge feeds it — no coal', color: D.COLORS.magma });
+      // M-SCHEMS2/Closed Loop: a fuel line on a damper that burns nothing
+      // would read as a damper about to stop. The sentence is the trade.
+      else if (m.type === 'damper' && run.mods.closedLoop)
+        L.push({ text: 'closed loop — no coal, half', color: D.COLORS.green });
       else if (m.type === 'smelter' || m.type === 'damper')
         L.push({ text: fuelLine(m), color: D.COLORS.orange });
       if (m.type === 'extractor') {

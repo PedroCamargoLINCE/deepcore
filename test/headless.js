@@ -2671,6 +2671,53 @@ function checkSchems2() {
     cards++;
   }
 
+  // ---- Closed Loop -----------------------------------------------------
+  // Three otherwise-identical floors, twenty coal-free seconds: no damper,
+  // a looped damper, a fuelled damper. The looped one calms — genuinely —
+  // and calms exactly half as hard as the coal-burner it replaced.
+  {
+    const mk = function (damper, loop) {
+      const r = S.newRun(eff, 555);
+      revealAll(r);
+      r.inv.ironPlate = 100; r.inv.copperPlate = 10;
+      if (loop)
+        assertEq(S.installSchematic(r, 's_loop'), 's_loop', 'the card installs');
+      if (!damper) return { r: r, m: null };
+      let pad = null;
+      for (let y = 2; y < D.MAP_H - 2 && !pad; y++)
+        for (let x = 2; x < D.MAP_W - 2 && !pad; x++) {
+          const t = r.grid[y][x];
+          if (t.t === 'floor' && !t.ore && t.machine === null && !t.lm && !t.belt)
+            pad = { x: x, y: y };
+        }
+      assert(S.place(r, 'damper', pad.x, pad.y, 1), 'the damper stands');
+      const m = Object.keys(r.machines).map((k) => r.machines[k])
+        .filter((mm) => mm.type === 'damper')[0];
+      return { r: r, m: m };
+    };
+    const none = mk(false, false), loop = mk(true, true), coal = mk(true, false);
+    coal.m.input.coal = 8;
+    loop.m.input.coal = 8;   // deliberately: the loop must not touch it
+    for (let i = 0; i < 8 * 20; i++) { S.tick(none.r); S.tick(loop.r); S.tick(coal.r); }
+    assertEq(loop.m.input.coal, 8, 'the looped damper never draws its coal');
+    assertEq(loop.m.fuel, 0, '...nor holds any');
+    assert(loop.m.status !== 'nofuel', 'and it never reads out-of-fuel');
+    assert(loop.r.instability < none.r.instability,
+      'it genuinely vents (' + loop.r.instability.toFixed(2) + ' < ' +
+      none.r.instability.toFixed(2) + ')');
+    assert(coal.r.instability < loop.r.instability,
+      'at half the coal-burner\'s strength');
+    // the arithmetic, exactly: 25% calm plain, 12.5% looped
+    const base = none.r.instability;
+    assert(Math.abs(loop.r.instability - base * (1 - D.BUILDINGS.damper.calm *
+                                                     D.CLOSED_LOOP_CALM)) < 0.01,
+      'the looped calm is the data.js product');
+    // ...and the projection stops charging coal for it
+    assertEq(S.chain(loop.r).flow.coal || 0, 0, 'CHAIN draws no coal for the loop');
+    assert((S.chain(coal.r).flow.coal || 0) < 0, 'and still does for the burner');
+    cards++;
+  }
+
   return cards;
 }
 
