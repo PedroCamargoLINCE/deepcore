@@ -2424,6 +2424,77 @@ function checkMutators() {
   return table.length;
 }
 
+// --------------------------------------------- M-SCHEMS2: the second batch
+// One block per card, each installing the pick through Sim.installSchematic —
+// the same applySchematicMod every descent pick goes through — never by
+// poking run.mods directly, so a card that stopped wiring its own flag would
+// fail here before a player ever drew it.
+function checkSchems2() {
+  const eff = DC.Meta.effects(DC.Meta.newProfile());
+  let cards = 0;
+
+  // ---- Magma Boiler ----------------------------------------------------
+  // The reward half of the cold seam engine: the SAME forge check, read from
+  // the other end. With the card, a smelter beside magma burns nothing and
+  // the lava spares it; without it, the same smelter in the same spot is an
+  // ordinary machine standing too close to the fire.
+  {
+    const mk = function (boiler) {
+      const r = S.newRun(eff, 777);
+      revealAll(r);
+      r.inv.ironPlate = 999;
+      // a clear 2x2 pad with a spare column to its left for the pool
+      let pad = null;
+      for (let y = 2; y < D.MAP_H - 3 && !pad; y++)
+        for (let x = 2; x < D.MAP_W - 3 && !pad; x++) {
+          let ok = true;
+          for (let dy = 0; dy < 2 && ok; dy++)
+            for (let dx = -1; dx < 2 && ok; dx++) {
+              const t = r.grid[y + dy][x + dx];
+              if (t.ore || t.machine !== null || t.lm || t.belt ||
+                  (t.t !== 'floor' && t.t !== 'rock')) ok = false;
+            }
+          if (ok) pad = { x: x, y: y };
+        }
+      assert(pad, 'the test floor offers a pad with a spare column');
+      for (let dy = 0; dy < 2; dy++) {
+        for (let dx = 0; dx < 2; dx++) r.grid[pad.y + dy][pad.x + dx].t = 'floor';
+        r.grid[pad.y + dy][pad.x - 1].t = 'magma';   // the pool
+      }
+      r.magmaCap = 4;    // stratum 1 rolls none, so arm the burn loop by hand
+      if (boiler)
+        assertEq(S.installSchematic(r, 's_boiler'), 's_boiler', 'the card installs');
+      assert(S.place(r, 'smelter', pad.x, pad.y, 1), 'the smelter stands');
+      const m = Object.keys(r.machines).map((k) => r.machines[k])
+        .filter((mm) => mm.type === 'smelter')[0];
+      m.input.ironOre = 8;
+      return { r: r, m: m };
+    };
+    const a = mk(true);
+    assert(S.forgeSmelter(a.r, a.m), 'with the card, beside magma IS the forge');
+    for (let i = 0; i < 8 * 30; i++) S.tick(a.r);
+    assert(a.m.out.length > 0 || a.m.status === 'blocked',
+      'it smelted with no coal at all');
+    assertEq(a.m.fuel, 0, 'and burned none of its own');
+    assertEq(a.m.hp, D.BUILDINGS.smelter.hp, 'and the lava lets the chimney be');
+    const ch = S.chain(a.r);
+    assert(!(ch.flow.coal < 0), 'CHAIN draws no coal for the forge either');
+    // ...and the same smelter without the card
+    const b = mk(false);
+    assert(!S.forgeSmelter(b.r, b.m), 'no card, no forge');
+    assert(!S.coldSmelter(b.r, b.m),
+      'and no cold box either — the card is a reward, never a rule');
+    for (let i = 0; i < 8 * 3; i++) S.tick(b.r);
+    assertEq(b.m.status, 'nofuel', 'it wants coal like it always did');
+    for (let i = 0; i < 8 * 30; i++) S.tick(b.r);
+    assert(!b.r.machines[b.m.id] || b.r.machines[b.m.id].hp < D.BUILDINGS.smelter.hp,
+      'and the lava does not spare it');
+    cards++;
+  }
+
+  return cards;
+}
+
 function checkChain() {
   const eff = DC.Meta.effects(DC.Meta.newProfile());
   const r = S.newRun(eff, 4242);
@@ -2569,6 +2640,7 @@ function main() {
   const tier2N = checkTier2();        // M-TIER2: the tier-II logistics layer
   const chainCh = checkChain();       // M-WIDE: the CHAIN panel's numbers
   const mutN = checkMutators();       // M-MANTLE: the deep's one rule per floor
+  const schemN = checkSchems2();      // M-SCHEMS2: the second card batch
 
   const eff = DC.Meta.effects(DC.Meta.newProfile());
   assert(eff && typeof eff.instMult === 'number' && eff.offerCount === 3,
@@ -2635,6 +2707,7 @@ function main() {
     ' | ' + rigFeed +
     ' | tier II: ' + tier2N + ' structures, facing not adjacency, line > machines' +
     ' | mutators ' + mutN + ' dealt of ' + D.MUTATORS.length + ' written, one roll a floor' +
+    ' | schems2: ' + schemN + ' cards through the real pick path' +
     ' | chain: ' + chainCh.stages.map(s => s.n + s.letter + ' ' +
       s.rate.toFixed(2) + '/s').join(' -> ') +
     ' limited by ' + chainCh.stages.filter(s => s.limiting).map(s => s.name).join(','));

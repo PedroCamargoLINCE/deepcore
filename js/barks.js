@@ -724,6 +724,8 @@
     s_over: "Overdrive coupling. Redline's cheaper now. My kind of discount.",
     s_veins: "Rich veins ahead. The planet's wallet is open, kid. Reach in.",
     s_gear: "Bronze gearworks. Two metals, one gear, zero patents. Beautiful.",
+    // M-SCHEMS2
+    s_boiler: "Magma boiler. The planet pays the fuel bill now. Don't thank it.",
     // M-TIER2
     s_conduit: "Deep conduits. Twice the reach under the floor. Mind the pipes.",
     s_yoke: "Trident yokes. One line in, three out. Greedy little fork.",

@@ -694,7 +694,8 @@
     const scs = run.schematics || [];
     const chromed = {
       extractor: scs.indexOf('s_extract') >= 0,
-      smelter: scs.indexOf('s_smelt') >= 0 || scs.indexOf('s_coal') >= 0,
+      smelter: scs.indexOf('s_smelt') >= 0 || scs.indexOf('s_coal') >= 0 ||
+               scs.indexOf('s_boiler') >= 0,   // M-SCHEMS2
       assembler: scs.indexOf('s_gear') >= 0,
     };
 

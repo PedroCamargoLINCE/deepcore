@@ -210,6 +210,10 @@
       // fields rather than new mechanics, so a tier-II schematic can never
       // teach a rule the plain structure does not already teach.
       tunnelMult: 1, split3: false, smartGate: false, crushRock: false,
+      // M-SCHEMS2: the second batch. Flags read by machinery that already
+      // exists — the forge check above all (M-MANTLE built it, this switches
+      // it on as a reward instead of a rule).
+      magmaBoiler: false,
     };
   }
   function applyMeta(mods, fx) {
@@ -249,6 +253,8 @@
       case 's_yoke': m.split3 = true; break;
       case 's_gate': m.smartGate = true; break;
       case 's_grind': m.crushRock = true; break;
+      // M-SCHEMS2
+      case 's_boiler': m.magmaBoiler = true; break;
     }
   }
 

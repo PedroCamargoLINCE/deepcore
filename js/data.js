@@ -406,6 +406,13 @@
       desc: 'Filters shunt what they do not pass to their right.' },
     { id: 's_grind',    name: 'Rock Grinders',        minDepth: 3, needs: 'crusher',
       desc: 'Crushers chew rock as well as rubble.' },
+    // M-SCHEMS2: the second batch. Same Balatro grammar as the first fourteen
+    // — a name and ONE consequence — and the same gating grammar as M-TIER2
+    // where an ungated card would be a dead pick: `minDepth` measures the
+    // floor the card is USED on, so the Magma Boiler is only dealt going down
+    // to ground that has magma at all.
+    { id: 's_boiler',   name: 'Magma Boiler',         minDepth: 6,
+      desc: 'Smelters beside magma burn no coal.' },
   ];
 
   // ---------------- meta upgrades (Foundry) ----------------
