@@ -419,6 +419,8 @@
       desc: 'Every fifth core charge assembles free.' },
     { id: 's_chute',    name: 'Gravity Chute',
       desc: 'Demolished machines refund 75% of their cost.' },
+    { id: 's_jury',     name: 'Jury Rig',
+      desc: 'Damaged machines run full speed. Each costs 1 hull a minute.' },
   ];
 
   // ---------------- meta upgrades (Foundry) ----------------

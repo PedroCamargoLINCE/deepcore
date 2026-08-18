@@ -213,7 +213,7 @@
       // M-SCHEMS2: the second batch. Flags read by machinery that already
       // exists — the forge check above all (M-MANTLE built it, this switches
       // it on as a reward instead of a rule).
-      magmaBoiler: false, echoCharge: false,
+      magmaBoiler: false, echoCharge: false, juryRig: false,
       // Gravity Chute raises this; everything demolished reads it.
       refund: D.DEMOLISH_REFUND,
     };
@@ -259,6 +259,7 @@
       case 's_boiler': m.magmaBoiler = true; break;
       case 's_echo': m.echoCharge = true; break;
       case 's_chute': m.refund = D.CHUTE_REFUND; break;
+      case 's_jury': m.juryRig = true; break;
     }
   }
 
@@ -624,6 +625,17 @@
     // every run a returning player starts is arithmetically untouched.
     if (!run.instHold)
       run.instability = U.clamp(run.instability + instRate(run) / HZ, 0, 100);
+    // M-SCHEMS2/Jury Rig: every damaged machine runs whole and bills the hull
+    // for the privilege — working or idle, because it is the patch cable that
+    // costs, not the work. Repair it and the bleeding stops.
+    if (run.mods.juryRig) {
+      let patched = 0;
+      for (const id in run.machines) {
+        const m = run.machines[id];
+        if (m && m.id !== 0 && m.hp === 1) patched++;
+      }
+      if (patched > 0) run.integrity -= patched * D.JURY_DRAIN / (60 * HZ);
+    }
     stepLandmark(run);
     stepEgg(run);
     stepCoreGate(run);
@@ -649,7 +661,12 @@
   }
 
   // ---------------- machines (§5.3) ----------------
-  function halfSkip(run, m) { return m.hp === 1 && run.t % 2 === 1; }
+  // M-SCHEMS2/Jury Rig: a damaged machine ordinarily works every other tick.
+  // With the card it works every tick and the drain in tick() bills the hull
+  // instead — speed bought with the one resource the planet is already taking.
+  function halfSkip(run, m) {
+    return m.hp === 1 && !run.mods.juryRig && run.t % 2 === 1;
+  }
 
   function outputTile(m) {
     if (m.facing === 0) return { x: m.x + ((m.w - 1) >> 1), y: m.y - 1 };
@@ -1296,7 +1313,8 @@
   // number in test/balance.js depend on the shape of the base).
   function machineRate(run, m) {
     const B = D.BUILDINGS[m.type];
-    const dmg = m.hp === 1 ? 0.5 : 1;                 // halfSkip: every other tick
+    // halfSkip: every other tick — unless Jury Rig is paying the hull for it.
+    const dmg = m.hp === 1 && !(run.mods && run.mods.juryRig) ? 0.5 : 1;
     if (m.type === 'extractor') {
       if (m.status === 'depleted') return 0;
       return HZ * run.mods.extractMult * auraMult(run, 'extract', m.x, m.y) / B.period * dmg;

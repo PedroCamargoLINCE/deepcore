@@ -2589,6 +2589,63 @@ function checkSchems2() {
     cards++;
   }
 
+  // ---- Jury Rig --------------------------------------------------------
+  // A damaged machine ordinarily works every other tick. With the card it
+  // works every tick — measurably double the ore — and each patched machine
+  // bills the hull D.JURY_DRAIN a minute until it is repaired.
+  {
+    const mk = function (jury) {
+      const r = S.newRun(eff, 90210);
+      revealAll(r);
+      r.inv.ironPlate = 100;
+      r.instHold = true;   // no quakes: the only hull cost here is the card's
+      if (jury)
+        assertEq(S.installSchematic(r, 's_jury'), 's_jury', 'the card installs');
+      let vein = null;
+      for (let y = 1; y < D.MAP_H - 1 && !vein; y++)
+        for (let x = 1; x < D.MAP_W - 1 && !vein; x++) {
+          const t = r.grid[y][x];
+          if (t.ore === 'ironOre' && t.machine === null && !t.lm && t.t === 'floor')
+            vein = { x: x, y: y };
+        }
+      assert(vein, 'the test floor has an iron vein on open floor');
+      r.grid[vein.y][vein.x].oreAmt = 999;
+      assert(S.place(r, 'extractor', vein.x, vein.y, 1), 'the extractor stands');
+      const m = Object.keys(r.machines).map((k) => r.machines[k])
+        .filter((mm) => mm.type === 'extractor')[0];
+      m.hp = 1;
+      return { r: r, m: m };
+    };
+    const a = mk(true), b = mk(false);
+    let fast = 0, slow = 0;
+    for (let i = 0; i < D.BUILDINGS.extractor.period * 20; i++) {
+      S.tick(a.r);
+      S.tick(b.r);
+      while (a.m.out.length) { fast++; a.m.out.shift(); }
+      while (b.m.out.length) { slow++; b.m.out.shift(); }
+    }
+    assert(fast >= slow * 2 - 1 && fast > 0,
+      'the patched extractor mines at full speed (' + fast + ' vs ' + slow + ')');
+    // ...and the model agrees with the floor
+    assert(Math.abs(S.chain(a.r).flow.ironOre -
+                    2 * S.chain(b.r).flow.ironOre) < 1e-9,
+      'CHAIN rates the patched machine whole');
+    // the bill: one damaged machine, one JURY_DRAIN per minute, until repaired
+    const before = a.r.integrity;
+    for (let i = 0; i < 60 * 8; i++) { S.tick(a.r); a.m.out.length = 0; }
+    assert(Math.abs((before - a.r.integrity) - D.JURY_DRAIN) < 0.01,
+      'a minute on the patch costs exactly ' + D.JURY_DRAIN + ' hull');
+    a.m.hp = D.BUILDINGS.extractor.hp;         // repaired: the bleeding stops
+    const held = a.r.integrity;
+    for (let i = 0; i < 60 * 8; i++) { S.tick(a.r); a.m.out.length = 0; }
+    assertEq(a.r.integrity, held, 'repair stops the drain');
+    // ...and without the card the hull never paid at all
+    const b0 = b.r.integrity;
+    for (let i = 0; i < 60 * 8; i++) { S.tick(b.r); b.m.out.length = 0; }
+    assertEq(b.r.integrity, b0, 'no card, no bill');
+    cards++;
+  }
+
   return cards;
 }
 
