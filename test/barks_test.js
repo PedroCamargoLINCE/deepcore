@@ -1258,10 +1258,12 @@ let scanLines = 0;
 
   // scaffold: one of every building, in every status, damaged and whole, with
   // every input buffer full — the widest strings the panel can be asked to draw
-  const types = ['belt', 'extractor', 'smelter', 'assembler', 'damper'];
+  const types = D.BUILD_ORDER.slice();
   // 'depleted' joins the sweep with M-ONBOARD: it is one of the three statuses
   // render draws the red '!' for, so it now prints a legend line of its own.
-  const statuses = ['ok', 'idle', 'jammed', 'nofuel', 'blocked', 'dead', 'depleted'];
+  // 'unpaired' is M-TIER2's fourth.
+  const statuses = ['ok', 'idle', 'jammed', 'nofuel', 'blocked', 'dead',
+                    'depleted', 'unpaired'];
   let id = 1000;
   const spots = [];
   for (let y = 1; y < D.MAP_H - 3; y++)
@@ -1290,6 +1292,31 @@ let scanLines = 0;
     for (const k in run.machines)
       if (run.machines[k].type === 'assembler') run.machines[k].recipe = r;
     sweep();
+  }
+  // M-TIER2: every gate setting, every tunnel state, a crusher mid-grind, a
+  // loader over each of the machines it can empty, and the same again with
+  // the schematics that add a line to those panels.
+  for (const mods of [{}, { smartGate: true, crushRock: true, split3: true }]) {
+    for (const k in mods) run.mods[k] = mods[k];
+    for (const item of D.ITEM_ORDER) {
+      for (const k in run.machines) {
+        const m = run.machines[k];
+        if (m.type === 'filter') m.filter = item;
+        if (m.type === 'crusher') m.cell = { x: m.x, y: m.y + 3 };
+        if (m.type === 'tunnel') { m.mode = 'in'; m.pair = 0; }
+        if (m.type === 'splitter') m.facing = D.ITEM_ORDER.indexOf(item) % 4;
+        if (m.out) m.out = [item];
+      }
+      sweep();
+      // ...and the paired tunnel, whose line quotes a distance
+      for (const k in run.machines) {
+        const m = run.machines[k];
+        if (m.type !== 'tunnel') continue;
+        m.pair = Number(k); m.mode = m.id % 2 ? 'in' : 'out';
+        run.machines[k] = m;
+      }
+      sweep();
+    }
   }
   // belts carrying the longest-named cargo
   for (let y = 0; y < D.MAP_H; y++)
