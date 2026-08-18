@@ -41,6 +41,27 @@ dispatch prompt):
 
 ## §0 The Eight Laws (design compass — read before inventing anything)
 
+**The lineage** (director, 2026-08-18: *"we have strong inspirations in these
+games, please note that"*). When a design question has no obvious answer, ask
+which of these six already solved it — and steal the SHAPE of the solution,
+never the content:
+
+- **Papers, Please** — bureaucracy as drama: documents, stamps, terms you sign
+  and regret. The Company's voice, the contracts (M-HUMANBAL F12), GRIT's
+  induction script. Dread delivered on a form.
+- **Dwarf Fortress** — the world simulates and does not care; losing is fun;
+  glyphs are honest (law 1 is named for it). The quake that owes you nothing.
+- **Factorio** — the chain is the game: ratios, bottlenecks, belts, the itch
+  to rebuild it better. CHAIN-panel arithmetic, tier-II logistics.
+- **Candy Box** — ASCII that keeps escalating past what it has any right to
+  do; the interface itself is the unfolding surprise. The rasterizer, the
+  wonders, EGG-420.
+- **Balatro** — picks, not sliders: difficulty and build variety chosen as
+  concrete cards with names, synergies you discover, one more run. Schematics,
+  contracts, mutators.
+- **Cookie Clicker** — numbers that feel good ticking up, meta that compounds,
+  the long tail that stays generous. The Foundry, cores, the Mantle.
+
 1. **Animation is honest.** Every animated glyph communicates true sim state
    (a fire flickers because the smelter is actually smelting). Decoration that
    lies about state is banned. Dwarf Fortress rule.
