@@ -213,7 +213,7 @@
       // M-SCHEMS2: the second batch. Flags read by machinery that already
       // exists — the forge check above all (M-MANTLE built it, this switches
       // it on as a reward instead of a rule).
-      magmaBoiler: false,
+      magmaBoiler: false, echoCharge: false,
     };
   }
   function applyMeta(mods, fx) {
@@ -255,6 +255,7 @@
       case 's_grind': m.crushRock = true; break;
       // M-SCHEMS2
       case 's_boiler': m.magmaBoiler = true; break;
+      case 's_echo': m.echoCharge = true; break;
     }
   }
 
@@ -267,6 +268,9 @@
       depth: 1, status: 'active', t: 0, totalT: 0,
       grid: null, hub: null, machines: {}, nextId: 1,
       inv: {}, gearsFed: 0, chargesFed: 0,
+      // M-SCHEMS2/Echo Charges: charges assembled this run. A counter and not
+      // a roll (law 7): the fifth is free because it is the fifth, every time.
+      echoN: 0,
       breachReq: { gear: 0, charge: 0 },
       integrity: 0, maxIntegrity: 0,
       instability: 0, quakeAt: 0, overdrive: false,
@@ -982,11 +986,20 @@
       if (!m.recipe) m.recipe = 'gear';
       if (!m.job && m.out.length === 0) {
         const rec = D.RECIPES[m.recipe];
+        // M-SCHEMS2/Echo Charges: the fifth charge needs nothing at all — not
+        // a discount on the recipe but a job that starts with the buffer as it
+        // is, so a line four charges deep gets its fifth even while the
+        // crystal run is still arriving.
+        const free = m.recipe === 'charge' && run.mods.echoCharge &&
+                     ((run.echoN || 0) + 1) % D.ECHO_EVERY === 0;
         let can = true;
-        for (const k in rec.in)
-          if ((m.input[k] || 0) < rec.in[k]) { can = false; missing = k; break; }
+        if (!free)
+          for (const k in rec.in)
+            if ((m.input[k] || 0) < rec.in[k]) { can = false; missing = k; break; }
         if (can) {
-          for (const k in rec.in) m.input[k] -= rec.in[k];
+          if (!free) for (const k in rec.in) m.input[k] -= rec.in[k];
+          if (m.recipe === 'charge' && run.mods.echoCharge)
+            run.echoN = (run.echoN || 0) + 1;
           m.job = m.recipe;
           m.progress = 0;
         }

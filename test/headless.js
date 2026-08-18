@@ -2492,6 +2492,68 @@ function checkSchems2() {
     cards++;
   }
 
+  // ---- Echo Charges ----------------------------------------------------
+  // Eight coal is exactly four charges' worth of fuel. Without the card that
+  // is where the assembler stops; with it, the same buffer yields five — the
+  // fifth starting on nothing, counted and never rolled (law 7).
+  {
+    const mk = function (echo) {
+      const r = S.newRun(eff, 4242);
+      revealAll(r);
+      r.inv.ironPlate = 999;
+      let pad = null;
+      for (let y = 2; y < D.MAP_H - 3 && !pad; y++)
+        for (let x = 2; x < D.MAP_W - 3 && !pad; x++) {
+          let ok = true;
+          for (let dy = 0; dy < 2 && ok; dy++)
+            for (let dx = 0; dx < 2 && ok; dx++) {
+              const t = r.grid[y + dy][x + dx];
+              if (t.ore || t.machine !== null || t.lm || t.belt ||
+                  (t.t !== 'floor' && t.t !== 'rock')) ok = false;
+            }
+          if (ok) pad = { x: x, y: y };
+        }
+      assert(pad, 'the test floor offers an assembler pad');
+      for (let dy = 0; dy < 2; dy++)
+        for (let dx = 0; dx < 2; dx++) r.grid[pad.y + dy][pad.x + dx].t = 'floor';
+      if (echo)
+        assertEq(S.installSchematic(r, 's_echo'), 's_echo', 'the card installs');
+      assert(S.place(r, 'assembler', pad.x, pad.y, 1), 'the assembler stands');
+      const m = Object.keys(r.machines).map((k) => r.machines[k])
+        .filter((mm) => mm.type === 'assembler')[0];
+      m.recipe = 'charge';
+      m.input = { crystal: 8, copperPlate: 8, coal: 8 };
+      return { r: r, m: m };
+    };
+    const a = mk(true);
+    let made = 0;
+    for (let i = 0; i < 8 * 60 && made < 5; i++) {
+      S.tick(a.r);
+      while (a.m.out.length) { made++; a.m.out.shift(); }
+    }
+    assertEq(made, 5, 'eight coal bought five charges with the card');
+    assertEq(a.m.input.crystal, 4, 'four crystal paid for them');
+    assertEq(a.m.input.coal, 0, '...and all eight coal');
+    assertEq(a.r.echoN, 5, 'the counter counted every one');
+    // the sixth is a paid charge again, and there is nothing left to pay with
+    for (let i = 0; i < 8 * 10; i++) { S.tick(a.r); a.m.out.length = 0; }
+    assertEq(a.r.echoN, 5, 'the free one does not chain into a free two');
+    // ...and the projection draws four fifths of the recipe
+    const ch = S.chain(a.r);
+    const rec = D.RECIPES.charge;
+    const rate = 8 / rec.ticks;
+    assert(Math.abs(ch.flow.crystal - (-rate * (1 - 1 / D.ECHO_EVERY))) < 1e-9,
+      'CHAIN draws crystal at four fifths of the card rate');
+    const b = mk(false);
+    let plain = 0;
+    for (let i = 0; i < 8 * 60 && plain < 5; i++) {
+      S.tick(b.r);
+      while (b.m.out.length) { plain++; b.m.out.shift(); }
+    }
+    assertEq(plain, 4, 'without the card the same buffer stops at four');
+    cards++;
+  }
+
   return cards;
 }
 

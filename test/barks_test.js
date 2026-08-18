@@ -108,8 +108,8 @@ for (let d = 1; d <= D.STRATA_COUNT; d++)
 assertEq(typeof B.STRATUM_LINES.mantle, 'string', 'bespoke line for the mantle');
 for (const s of D.SCHEMATICS)
   assertEq(typeof B.SCHEM_LINES[s.id], 'string', 'bespoke line for schematic ' + s.id);
-assertEq(D.SCHEMATICS.length, 19,
-  'all 19 schematics covered (14 + M-TIER2 four + M-SCHEMS2 so far)');
+assertEq(D.SCHEMATICS.length, 20,
+  'all 20 schematics covered (14 + M-TIER2 four + M-SCHEMS2 so far)');
 // M-TIER2: a schematic gated to a stratum must name a real one, or it is a
 // card the deck can never deal.
 for (const s of D.SCHEMATICS) {

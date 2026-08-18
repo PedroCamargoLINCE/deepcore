@@ -413,6 +413,10 @@
     // to ground that has magma at all.
     { id: 's_boiler',   name: 'Magma Boiler',         minDepth: 6,
       desc: 'Smelters beside magma burn no coal.' },
+    // Charges gate the breach from stratum 5 down; above that the card would
+    // discount a recipe nothing is running.
+    { id: 's_echo',     name: 'Echo Charges',         minDepth: 5,
+      desc: 'Every fifth core charge assembles free.' },
   ];
 
   // ---------------- meta upgrades (Foundry) ----------------
