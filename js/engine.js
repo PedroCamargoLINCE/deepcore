@@ -744,8 +744,23 @@
       else return false;
       return true;
     }
-    const bi = (k >= '1' && k <= '9') ? k.charCodeAt(0) - 49 : -1;
-    if (bi >= 0 && bi < D.BUILD_ORDER.length) { setTool(st, D.BUILD_ORDER[bi]); return true; }
+    // M-TIER2: ten tools now, so the tenth is on '0' — the digit row read left
+    // to right, which is where a hand already is. The index is the ONLY thing
+    // that binds a key to a tool (data.js BUILD_ORDER), and the manual and the
+    // induction compose their keycaps from the same list.
+    const bi = k === '0' ? 9 : (k >= '1' && k <= '9') ? k.charCodeAt(0) - 49 : -1;
+    if (bi >= 0 && bi < D.BUILD_ORDER.length) {
+      const type = D.BUILD_ORDER[bi];
+      // A sealed structure is not a tool yet. Say so once, in the LOG, rather
+      // than arming a ghost that can never be placed.
+      if (DC.Sim.unlocked && !DC.Sim.unlocked(run, type)) {
+        DC.Sim.msg(run, D.BUILDINGS[type].name + ': no schematics until stratum ' +
+          D.BUILDINGS[type].unlockDepth, D.COLORS.red);
+        return true;
+      }
+      setTool(st, type);
+      return true;
+    }
     switch (lk) {
       case 'x': setTool(st, 'demolish'); return true;
       case 'r': ui.facing = (ui.facing + 1) % 4; return true;

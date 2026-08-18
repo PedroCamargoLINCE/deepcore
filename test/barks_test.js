@@ -98,7 +98,14 @@ for (let d = 1; d <= D.STRATA_COUNT; d++)
 assertEq(typeof B.STRATUM_LINES.mantle, 'string', 'bespoke line for the mantle');
 for (const s of D.SCHEMATICS)
   assertEq(typeof B.SCHEM_LINES[s.id], 'string', 'bespoke line for schematic ' + s.id);
-assertEq(D.SCHEMATICS.length, 14, 'all 14 schematics covered');
+assertEq(D.SCHEMATICS.length, 18, 'all 18 schematics covered (14 + M-TIER2 four)');
+// M-TIER2: a schematic gated to a stratum must name a real one, or it is a
+// card the deck can never deal.
+for (const s of D.SCHEMATICS) {
+  if (s.minDepth === undefined) continue;
+  assert(s.minDepth >= 1 && s.minDepth <= D.STRATA_COUNT,
+    'schematic ' + s.id + ' is gated to a stratum that exists');
+}
 for (const u of D.META_UPGRADES)
   assertEq(typeof B.META_LINES[u.id], 'string', 'bespoke line for meta upgrade ' + u.id);
 assertEq(D.META_UPGRADES.length, 9, 'all 9 meta upgrades covered');
@@ -1176,13 +1183,41 @@ let MANUAL_COLORS = 0;
     "engine turns the manual's pages on the arrow keys");
   assert(/st\.ui\.helpPage = n/.test(engSrc),
     'engine jumps straight to a page by its number');
-  // build tool names/order come straight from data.js
-  for (let i = 0; i < D.BUILD_ORDER.length; i++) {
-    const nm = D.BUILDINGS[D.BUILD_ORDER[i]].name;
-    assert(new RegExp('\\b' + nm + '\\b').test(joined),
-      'the manual lists build tool ' + (i + 1) + ' as ' + nm);
-    assert(new RegExp(' ' + (i + 1) + ' ').test(pages[0].text[5 + i]),
-      'hotkey ' + (i + 1) + ' caps the ' + nm + ' row');
+  // build tool names/order come straight from data.js. M-TIER2 split the list
+  // across two pages — the opening five on OPERATE, the five that are sealed
+  // until a stratum on LOGISTICS — so the assertion follows the SPLIT RULE
+  // (data.js `unlockDepth`) rather than a typed row number, and a structure
+  // that is documented on neither page still fails here.
+  {
+    const t1 = D.BUILD_ORDER.filter(k => !D.BUILDINGS[k].unlockDepth);
+    const t2 = D.BUILD_ORDER.filter(k => !!D.BUILDINGS[k].unlockDepth);
+    assert(t1.length && t2.length, 'the manual has both tiers to document');
+    for (let i = 0; i < D.BUILD_ORDER.length; i++) {
+      const nm = D.BUILDINGS[D.BUILD_ORDER[i]].name;
+      assert(new RegExp('\\b' + nm + '\\b').test(joined),
+        'the manual lists build tool ' + (i + 1) + ' as ' + nm);
+    }
+    for (let i = 0; i < t1.length; i++) {
+      const b = D.BUILDINGS[t1[i]];
+      assert(new RegExp(' ' + b.key + ' ').test(pages[0].text[5 + i]),
+        'hotkey ' + b.key + ' caps the ' + b.name + ' row on ' + pages[0].id);
+    }
+    const t2page = pages[2];
+    assert(t2page, 'the tier-II structures have a page');
+    for (let i = 0; i < t2.length; i++) {
+      const b = D.BUILDINGS[t2[i]];
+      const row = t2page.text[5 + i * 2];
+      assert(new RegExp(' ' + b.key + ' ').test(row),
+        'hotkey ' + b.key + ' caps the ' + b.name + ' row on ' + t2page.id);
+      assert(row.indexOf(b.name) >= 0, t2page.id + ' names the ' + b.name);
+      assert(row.indexOf(b.letter) >= 0,
+        t2page.id + " shows the " + b.name + "'s own map letter");
+    }
+    // the page exists to state ONE rule; if that sentence goes, the page is
+    // just a second hotkey table and the structures teach nothing
+    assert(/ONE\s*\n?/.test(t2page.text.join('\n')) &&
+           /arrow/.test(t2page.text.join('\n')),
+      'the LOGISTICS page still states the facing rule');
   }
   // and so do the goods in the CARGO legend
   for (const id of D.ITEM_ORDER) {
@@ -1223,10 +1258,12 @@ let scanLines = 0;
 
   // scaffold: one of every building, in every status, damaged and whole, with
   // every input buffer full — the widest strings the panel can be asked to draw
-  const types = ['belt', 'extractor', 'smelter', 'assembler', 'damper'];
+  const types = D.BUILD_ORDER.slice();
   // 'depleted' joins the sweep with M-ONBOARD: it is one of the three statuses
   // render draws the red '!' for, so it now prints a legend line of its own.
-  const statuses = ['ok', 'idle', 'jammed', 'nofuel', 'blocked', 'dead', 'depleted'];
+  // 'unpaired' is M-TIER2's fourth.
+  const statuses = ['ok', 'idle', 'jammed', 'nofuel', 'blocked', 'dead',
+                    'depleted', 'unpaired'];
   let id = 1000;
   const spots = [];
   for (let y = 1; y < D.MAP_H - 3; y++)
@@ -1255,6 +1292,31 @@ let scanLines = 0;
     for (const k in run.machines)
       if (run.machines[k].type === 'assembler') run.machines[k].recipe = r;
     sweep();
+  }
+  // M-TIER2: every gate setting, every tunnel state, a crusher mid-grind, a
+  // loader over each of the machines it can empty, and the same again with
+  // the schematics that add a line to those panels.
+  for (const mods of [{}, { smartGate: true, crushRock: true, split3: true }]) {
+    for (const k in mods) run.mods[k] = mods[k];
+    for (const item of D.ITEM_ORDER) {
+      for (const k in run.machines) {
+        const m = run.machines[k];
+        if (m.type === 'filter') m.filter = item;
+        if (m.type === 'crusher') m.cell = { x: m.x, y: m.y + 3 };
+        if (m.type === 'tunnel') { m.mode = 'in'; m.pair = 0; }
+        if (m.type === 'splitter') m.facing = D.ITEM_ORDER.indexOf(item) % 4;
+        if (m.out) m.out = [item];
+      }
+      sweep();
+      // ...and the paired tunnel, whose line quotes a distance
+      for (const k in run.machines) {
+        const m = run.machines[k];
+        if (m.type !== 'tunnel') continue;
+        m.pair = Number(k); m.mode = m.id % 2 ? 'in' : 'out';
+        run.machines[k] = m;
+      }
+      sweep();
+    }
   }
   // belts carrying the longest-named cargo
   for (let y = 0; y < D.MAP_H; y++)
@@ -1289,7 +1351,7 @@ let diagN = 0;
     // Reason AND fix, always. A line that only names the fault leaves the
     // player exactly where the director was: told something is wrong, not
     // told what to do. Every one of these ends in an instruction.
-    assert(/belt|demolish|mine |assembler|takes/i.test(l),
+    assert(/belt|demolish|mine |assembler|takes|place /i.test(l),
       'diagnostic names a fault but no fix: ' + JSON.stringify(l));
   }
   assertEq(new Set(lines).size >= 20, true, 'the causes do not all say the same thing');

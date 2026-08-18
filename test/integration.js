@@ -1393,7 +1393,10 @@ function engineBarksSection(seed) {
   {
     const A = DC.Art, R = DC.Render;
     const pages = A.helpPages;
-    assertEq(pages.length, 2, 'the manual ships two pages');
+    // M-TIER2 added LOGISTICS. The count is asserted rather than assumed so a
+    // page that stops being composed fails here, and the pager checks below
+    // walk the list rather than typing page numbers.
+    assertEq(pages.length, 3, 'the manual ships three pages');
     const x0 = (D.COLS - pages[0].w) >> 1, y0 = (D.ROWS - pages[0].h) >> 1;
     for (let i = 0; i < pages.length; i++) {
       st.ui.helpPage = i;
@@ -1422,12 +1425,16 @@ function engineBarksSection(seed) {
     }
     // the pager itself: arrows wrap, page numbers jump, ESC leaves
     st.ui.helpPage = 0;
+    const last = pages.length - 1;
     key('ArrowRight'); assertEq(st.ui.helpPage, 1, '→ turns to page 2');
-    key('ArrowRight'); assertEq(st.ui.helpPage, 0, '→ wraps back to page 1');
-    key('ArrowLeft');  assertEq(st.ui.helpPage, 1, '← wraps to the last page');
+    for (let i = 1; i <= last; i++) key('ArrowRight');
+    assertEq(st.ui.helpPage, 0, '→ wraps back to page 1 off the last page');
+    key('ArrowLeft');  assertEq(st.ui.helpPage, last, '← wraps to the last page');
     key('1');          assertEq(st.ui.helpPage, 0, "'1' jumps to page 1");
     key('2');          assertEq(st.ui.helpPage, 1, "'2' jumps to page 2");
-    key('9');          assertEq(st.ui.helpPage, 1, 'a page that does not exist is ignored');
+    key(String(pages.length));
+    assertEq(st.ui.helpPage, last, 'the last page has its own number key');
+    key('9');          assertEq(st.ui.helpPage, last, 'a page that does not exist is ignored');
     frames(1);
   }
 
@@ -1499,11 +1506,21 @@ function engineBarksSection(seed) {
   // --- mouse: sidebar build-row click, hub click = overdrive ---
   frames(1);                                           // publish layout.buildRows
   const rows = DC.Render.layout.buildRows;
-  assert(Array.isArray(rows) && rows.length === D.BUILD_ORDER.length + 1,
-    'render published the sidebar build rows');
+  // M-TIER2: the panel only lists what this stratum has unlocked, and from
+  // stratum 3 it lists two entries to a ROW — so the published payload is one
+  // entry per selectable tool with its own column span, not one per row.
+  const unlockedTools = D.BUILD_ORDER.filter(t => DC.Sim.unlocked(run, t));
+  assert(Array.isArray(rows) && rows.length === unlockedTools.length + 1,
+    'render published the sidebar build rows (' + rows.length + ' for ' +
+    unlockedTools.length + ' unlocked tools + demolish)');
+  for (const t of D.BUILD_ORDER) {
+    const listed = rows.some(r => r.tool === t);
+    assertEq(listed, DC.Sim.unlocked(run, t),
+      'BUILD lists ' + t + ' exactly when the stratum has unlocked it');
+  }
   const beltRow = rows.filter(r => r.tool === 'belt')[0];
   assert(beltRow, 'belt row published');
-  const sbEv = { clientX: 52 * 10 + 5, clientY: beltRow.row * 19 + 9 };
+  const sbEv = { clientX: (beltRow.col + 1) * 10 + 5, clientY: beltRow.row * 19 + 9 };
   handlers.mousedown(sbEv);
   assertEq(st.ui.tool, 'belt', 'sidebar click selects the belt tool');
   handlers.mousedown(sbEv);
@@ -4488,15 +4505,45 @@ function wideSection(seed) {
     'STOCK shows iron ore trending UP');
   assert(panelRow(rows, DC.Render.itemLabel('ironPlate')).text.indexOf('↓') > 0,
     'STOCK shows iron plate trending DOWN');
-  // and the BUILD list got the same treatment
-  for (const t of D.BUILD_ORDER) {
-    const ic = DC.Art.buildIcons[t];
-    assert(ic && ic.length === DC.Art.ICON_W, t + ' has a build icon');
-    let seen = false;
-    for (let r = 1; r < D.ROWS; r++) {
-      if (rows[r].slice(L.sb, L.sb + L.sbw).indexOf(ic) >= 0) seen = true;
+  // and the BUILD list got the same treatment — for the tools this stratum
+  // has actually unlocked. M-TIER2 seals five of them until stratum 3, so the
+  // check runs TWICE: once here on stratum 1 (the locked five must be absent,
+  // because a build list that advertises what it cannot place is the same
+  // failure as one that hides what it can), and once below on stratum 3.
+  function assertBuildIcons(rws, r0, label) {
+    for (const t of D.BUILD_ORDER) {
+      const ic = DC.Art.buildIcons[t];
+      assert(ic && ic.length === DC.Art.ICON_W, t + ' has a build icon');
+      let seen = false;
+      for (let r = 1; r < D.ROWS; r++) {
+        if (rws[r].slice(L.sb, L.sb + L.sbw).indexOf(ic) >= 0) seen = true;
+      }
+      assertEq(seen, S.unlocked(r0, t),
+        label + ': the BUILD list draws the ' + t + ' icon iff it is unlocked');
     }
-    assert(seen, 'the BUILD list draws the ' + t + ' icon');
+  }
+  assertBuildIcons(rows, run, 'stratum ' + run.depth);
+  {
+    // scaffold: the same run, one floor deeper, so the panel has to reshape
+    const was = run.depth;
+    run.depth = D.BUILDINGS.splitter.unlockDepth;
+    const deepRows = frame(state);
+    assertBuildIcons(deepRows, run, 'stratum ' + run.depth);
+    // ...and it reshaped INSIDE its own budget: the panel is the same height
+    // it was, because the LOG below it is where every diagnostic lands
+    const panelH = function (rws) {
+      let top = -1, bot = -1;
+      for (let r = 1; r < D.ROWS; r++) {
+        const s = rws[r].slice(L.sb, L.sb + L.sbw);
+        if (s.indexOf('BUILD') >= 0) top = r;
+        else if (top >= 0 && bot < 0 && s.indexOf('SCAN') >= 0) bot = r;
+      }
+      return bot - top;
+    };
+    assertEq(panelH(deepRows), panelH(rows),
+      'BUILD holds its height when tier II doubles the tool list');
+    run.depth = was;
+    rows = frame(state);
   }
 
   // ---- PANEL 3: LOADOUT — what you picked, still on screen ---------------

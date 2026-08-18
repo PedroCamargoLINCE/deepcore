@@ -110,6 +110,11 @@
         return 'The rig is waiting for drill gears. An assembler makes them from iron plate.';
       case 'stallCharge':
         return 'The rig is waiting for core charges. An assembler makes them from crystal.';
+      // M-TIER2: a tunnel with one end. It is the only tier-II structure that
+      // can be built WRONG rather than merely built badly, so it says so.
+      case 'tunnel':
+        return 'That tunnel has no far end. Place its pair up to ' + c.gap +
+               ' tiles ahead, same way.';
     }
     return null;
   }
@@ -134,6 +139,7 @@
     const items = D.ITEM_ORDER.map(k => D.ITEMS[k].name);
     const out = ['depleted', 'stallGear', 'stallCharge'].map(c => diagLine(c, {}));
     out.push(diagLine('beltJam', {}));
+    out.push(diagLine('tunnel', { gap: (D.BUILDINGS.tunnel.gap || 4) * 2 }));
     for (const name of names) {
       out.push(diagLine('blocked', { name: name }));
       out.push(diagLine('nofuel', { name: name }));
@@ -160,6 +166,10 @@
       chargeX2: false, overCheap: false, richVeins: false, bronzeGear: false,
       drillMult: 1, startBonus: {}, scanBonus: 0, repairCost: D.REPAIR_COST,
       integrityBonus: 0, offerCount: 3,
+      // M-TIER2: the tier-II picks. Multipliers on the structures' own data
+      // fields rather than new mechanics, so a tier-II schematic can never
+      // teach a rule the plain structure does not already teach.
+      tunnelMult: 1, split3: false, smartGate: false, crushRock: false,
     };
   }
   function applyMeta(mods, fx) {
@@ -194,6 +204,11 @@
       case 's_over': m.overCheap = true; break;
       case 's_veins': m.richVeins = true; break;
       case 's_gear': m.bronzeGear = true; break;
+      // M-TIER2
+      case 's_conduit': m.tunnelMult *= 2; break;
+      case 's_yoke': m.split3 = true; break;
+      case 's_gate': m.smartGate = true; break;
+      case 's_grind': m.crushRock = true; break;
     }
   }
 
@@ -391,7 +406,7 @@
   // `applySchematicMod` every descent pick does, so a sealed hatch can never
   // grant an effect the schematic screen cannot.
   function grantSchematic(run) {
-    const pool = D.SCHEMATICS.map(s => s.id).filter(id => run.schematics.indexOf(id) < 0);
+    const pool = schematicPool(run, run.depth);
     if (!pool.length) return null;
     const id = pool[Math.floor(run.rng() * pool.length)];
     run.schematics.push(id);
@@ -533,6 +548,111 @@
     return { x: m.x - 1, y: m.y + ((m.h - 1) >> 1) };
   }
 
+  // ---------------- M-TIER2: the tier-II logistics layer ----------------
+  // FOUR STRUCTURES THAT CARRY CARGO WITHOUT MAKING ANY, and one that makes
+  // ore out of the wreckage. They are collectively "belt-like": each holds at
+  // most ONE item, exactly as a belt tile does, and each hands that item on
+  // during the belt step rather than the machine step — so a line of belts,
+  // splitters, filters and tunnels compresses in a single pass the way a pure
+  // belt line always has, and the network's throughput stays the belt's
+  // (D.BELT_PERIOD => 4 tiles/s), comfortably clear of any machine's rate
+  // (SPEC §12). A line still only jams when the player under-builds.
+  //
+  // THE RULE THEY ALL OBEY IS FACING, NOT ADJACENCY (test/headless.js
+  // checkRigOutput; director, 2026-08-14). A splitter has two arrows and the
+  // schematic gives it three, a tunnel's far arrow is up to four tiles away,
+  // and the loader's is the only one that points at what it TAKES from — but
+  // every one of those tiles is chosen by the structure's facing, and nothing
+  // here ever collects from a neighbour for being a neighbour.
+  const BELTLIKE = { splitter: 1, tunnel: 1, loader: 1, filter: 1 };
+  function isBeltLike(m) { return !!(m && BELTLIKE[m.type]); }
+  // Sealed until its stratum (data.js `unlockDepth`), so the opening floors
+  // stay the four-machine lesson they were built as.
+  function unlocked(run, type) {
+    const B = D.BUILDINGS[type];
+    return !!B && (!B.unlockDepth || (run.depth || 1) >= B.unlockDepth);
+  }
+  function dirOf(k) { return D.DIRS[((k % 4) + 4) % 4]; }
+  // How far a tunnel throws, in tiles between its two ends (s_conduit doubles).
+  function tunnelGap(run) {
+    return Math.max(1, Math.round((D.BUILDINGS.tunnel.gap || 4) *
+      ((run.mods && run.mods.tunnelMult) || 1)));
+  }
+  // Where a splitter's cargo can go, in preference order from `m.side`. Left
+  // and right of the arrow; s_yoke adds straight ahead.
+  function splitDirs(run, m) {
+    const out = [(m.facing + 3) % 4, (m.facing + 1) % 4];
+    if (run.mods && run.mods.split3) out.push(m.facing);
+    return out;
+  }
+  function filterItem(m) { return m.filter || D.ITEM_ORDER[0]; }
+  // The machine a loader empties: the ONE tile behind it, never a neighbour.
+  // Belt-like machines are excluded — they push on their own, and a loader
+  // pulling one would be a belt that costs five plates.
+  function loaderSource(run, m) {
+    const d = dirOf(m.facing);
+    const t = tileAt(run, m.x - d.dx, m.y - d.dy);
+    if (!t || t.machine === null || t.machine === 0) return null;
+    const s = run.machines[t.machine];
+    return (!s || isBeltLike(s)) ? null : s;
+  }
+  // Every tile a machine can put cargo on, for the placement ghost and the
+  // tooltip. `outputTile` (SPEC §5.3) stays the single-tile contract every
+  // other caller reads; this is the plural of it.
+  function outputTiles(run, m) {
+    if (m.type === 'splitter') {
+      return splitDirs(run, m).map(function (k) {
+        const d = dirOf(k);
+        return { x: m.x + d.dx, y: m.y + d.dy };
+      });
+    }
+    if (m.type === 'tunnel' && m.mode === 'in') {
+      const o = m.pair && run.machines[m.pair];
+      return o ? [{ x: o.x, y: o.y }] : [];
+    }
+    if (m.type === 'filter' && run.mods && run.mods.smartGate) {
+      const a = dirOf(m.facing), b = dirOf(m.facing + 1);
+      return [{ x: m.x + a.dx, y: m.y + a.dy }, { x: m.x + b.dx, y: m.y + b.dy }];
+    }
+    return [outputTile(m)];
+  }
+
+  // Two tunnels of the same facing, 2..gap+1 tiles apart, are one tunnel. The
+  // pairing is decided ONCE, at placement, and stored — so the map never has
+  // to be re-read to know which end is which, and three in a row cannot mean
+  // two different things on two different ticks. Placing them in either order
+  // works: a new end looks BACKWARD for a lonely entrance to be the exit of,
+  // then FORWARD for one to become the entrance of.
+  function pairTunnel(run, m) {
+    const d = dirOf(m.facing), gap = tunnelGap(run);
+    function lookup(sx, sy) {
+      const t = tileAt(run, sx, sy);
+      if (!t || t.machine === null || t.machine === 0) return null;
+      const o = run.machines[t.machine];
+      return (o && o.type === 'tunnel' && o.facing === m.facing &&
+              !o.pair && o.id !== m.id) ? o : null;
+    }
+    for (let k = 2; k <= gap + 1; k++) {
+      const o = lookup(m.x - d.dx * k, m.y - d.dy * k);
+      if (o) { o.mode = 'in'; o.pair = m.id; m.mode = 'out'; m.pair = o.id; return; }
+    }
+    for (let k = 2; k <= gap + 1; k++) {
+      const o = lookup(m.x + d.dx * k, m.y + d.dy * k);
+      if (o) { o.mode = 'out'; o.pair = m.id; m.mode = 'in'; m.pair = o.id; return; }
+    }
+    m.mode = 'in';
+    m.pair = 0;
+  }
+  // A tunnel with one end is not a tunnel. Whichever end survives goes back to
+  // being a lonely entrance — inert, marked, and named in the SCAN panel —
+  // rather than quietly eating cargo into a hole with no far side.
+  function unpairTunnel(run, m) {
+    if (!m || m.type !== 'tunnel' || !m.pair) return;
+    const o = run.machines[m.pair];
+    if (o) { o.pair = 0; o.mode = 'in'; o.out.length = 0; }
+    m.pair = 0;
+  }
+
   // Does this machine take this KIND of item at all, buffer capacity aside?
   // M-ONBOARD needs the two questions separated: a belt stopped against a
   // merely-full buffer is back-pressure, which is ordinary, while a belt
@@ -544,31 +664,105 @@
       return item === 'ironOre' || item === 'copperOre' || item === 'coal';
     if (m.type === 'assembler') return !!D.RECIPES[m.recipe || 'gear'].in[item];
     if (m.type === 'damper') return item === 'coal';
+    if (m.type === 'splitter' || m.type === 'loader') return true;
+    // A gate takes what it passes. With Sorting Gates it takes everything and
+    // shunts the rest right, which is the difference between a stopper and a
+    // sorter — and the reason that pick exists.
+    if (m.type === 'filter')
+      return item === filterItem(m) || !!(run.mods && run.mods.smartGate);
+    // An entrance takes cargo; an exit is an exit. A tunnel with no far end
+    // takes nothing at all, so a half-built one backs the line up in front of
+    // the player instead of swallowing it.
+    if (m.type === 'tunnel') return m.mode === 'in' && !!m.pair;
     return false;
   }
 
   function machineAccepts(run, m, item) {
     if (m.type === 'hub') return true;
-    return machineWants(run, m, item) && (m.input[item] || 0) < D.INPUT_CAP;
+    if (!machineWants(run, m, item)) return false;
+    if (isBeltLike(m)) return m.out.length === 0;   // one item, exactly like a belt
+    return (m.input[item] || 0) < D.INPUT_CAP;
+  }
+
+  // Hand ONE item to the tile (tx, ty): the rig swallows it, a machine buffers
+  // it, a belt-like structure holds it, an empty belt carries it. Every push
+  // in the game goes through here — machine ejection, belt handoff and the
+  // tier-II structures alike — so "what can receive cargo" is one answer.
+  function giveTo(run, item, tx, ty) {
+    const t = tileAt(run, tx, ty);
+    if (!t) return false;
+    if (t.machine !== null) {
+      const m = run.machines[t.machine];
+      if (!m) return false;
+      if (m.id === 0) { deliver(run, item); return true; }
+      if (!machineAccepts(run, m, item)) return false;
+      if (isBeltLike(m)) {
+        m.out.push(item);
+        m.moved = true;                 // arrived this step; it travels the next
+        m.moveT = run.t;
+        return true;
+      }
+      add(m.input, item, 1);
+      return true;
+    }
+    if (t.belt && t.belt.item === null) {
+      t.belt.item = item;
+      t.belt.moved = true;
+      return true;
+    }
+    return false;
   }
 
   function tryEject(run, m) {
     if (!m.out.length) return;
     const o = outputTile(m);
-    const t = tileAt(run, o.x, o.y);
-    if (!t) return;
     while (m.out.length) {
-      const item = m.out[0];
-      if (t.machine !== null) {
-        const tm = run.machines[t.machine];
-        if (!tm) return;
-        if (tm.id === 0) { deliver(run, item); m.out.shift(); continue; }
-        if (machineAccepts(run, tm, item)) { add(tm.input, item, 1); m.out.shift(); continue; }
-        return;
-      }
-      if (t.belt && t.belt.item === null) { t.belt.item = item; m.out.shift(); }
-      return; // belt holds one item; anything else blocks
+      if (!giveTo(run, m.out[0], o.x, o.y)) return;
+      m.out.shift();                    // a belt refuses the second one itself
     }
+  }
+
+  // ---------------- M-TIER2: the crusher ----------------
+  // Chebyshev distance from the footprint box, so "within 6" is a square the
+  // player can count on the map rather than a circle they have to trust.
+  function boxDist(m, x, y) {
+    const dx = Math.max(m.x - x, 0, x - (m.x + m.w - 1));
+    const dy = Math.max(m.y - y, 0, y - (m.y + m.h - 1));
+    return { c: Math.max(dx, dy), d2: dx * dx + dy * dy };
+  }
+  function crushable(run, t) {
+    if (!t || t.lm || t.machine !== null) return false;
+    if (t.rubble) return true;
+    return !!(run.mods && run.mods.crushRock) && t.t === 'rock';   // s_grind
+  }
+  // The tile it is chewing. Cached on the machine and revalidated, because the
+  // honest search is a 13x13 sweep and this runs every tick of every crusher
+  // in every run of the balance sweep. The cache is also what Sim.chain reads,
+  // so that model stays a pure read of state the tick already computed.
+  function crushTarget(run, m) {
+    const c = m.cell;
+    if (c && crushable(run, tileAt(run, c.x, c.y))) return c;
+    const B = D.BUILDINGS[m.type], R = B.reach;
+    let best = null, bd = Infinity;
+    for (let y = m.y - R; y < m.y + m.h + R; y++)
+      for (let x = m.x - R; x < m.x + m.w + R; x++) {
+        const t = tileAt(run, x, y);
+        if (!crushable(run, t) || t.machine !== null) continue;
+        const b = boxDist(m, x, y);
+        if (b.c > R || b.d2 >= bd) continue;
+        bd = b.d2; best = { x: x, y: y };
+      }
+    m.cell = best;
+    return best;
+  }
+  function crush(run, m, cell) {
+    const B = D.BUILDINGS[m.type], t = tileAt(run, cell.x, cell.y);
+    if (!t) { m.cell = null; return; }
+    let n = B.yield;
+    if (t.rubble) { t.rubble = false; }
+    else { t.t = 'floor'; n = B.rockYield || 1; }
+    t.digT = 0;
+    for (let i = 0; i < n; i++) m.out.push('ironOre');
   }
 
   function stepMachine(run, m) {
@@ -578,7 +772,9 @@
       if (m.hp === 1) { m.hp = B.hp; msg(run, B.name + ' self-repaired.', D.COLORS.green); }
       m.repairAt = 0;
     }
-    tryEject(run, m);
+    // Belt-like structures move their cargo on the belt clock, in stepBelts —
+    // ejecting here as well would make them faster than the belts they sit in.
+    if (!isBeltLike(m)) tryEject(run, m);
     // `missing` (M-ONBOARD) is the input an assembler is short of, or null —
     // the one fault the status word cannot express, because a starving
     // assembler and a brand new one both read 'idle'.
@@ -656,17 +852,44 @@
       if (m.fuel <= 0 && (m.input.coal || 0) > 0) { m.input.coal--; m.fuel = B.coalTicks; }
       if (m.fuel > 0) { m.fuel--; working = true; }
       else nofuel = true;
+    } else if (m.type === 'crusher') {
+      // M-TIER2: the hazard, banked. Nearest rubble first (pure arithmetic on
+      // the grid — no roll, law 7), one grind per period, ore out the arrow.
+      if (m.out.length === 0 && !halfSkip(run, m)) {
+        const cell = crushTarget(run, m);
+        if (!cell) m.progress = 0;
+        else {
+          m.progress++;
+          working = true;
+          if (m.progress >= B.period) {
+            m.progress = 0;
+            crush(run, m, cell);
+            tryEject(run, m);
+          }
+        }
+      }
     }
-    m.status = depleted ? 'depleted'
+    // A belt-like structure holding cargo is not "blocked" — that is what a
+    // working one looks like on most ticks. It is blocked when the cargo has
+    // been sitting there longer than a belt step could explain.
+    const stuck = isBeltLike(m)
+      ? (m.out.length > 0 && run.t - (m.moveT || 0) > HZ)
+      : m.out.length > 0;
+    const lonely = m.type === 'tunnel' && !m.pair;
+    m.status = lonely ? 'unpaired'
+      : depleted ? 'depleted'
       : m.hp === 1 ? 'damaged'
       : nofuel ? 'nofuel'
-      : m.out.length ? 'blocked'
+      : stuck ? 'blocked'
+      : isBeltLike(m) ? (m.out.length ? 'ok' : 'idle')
       : (working || m.job) ? 'ok' : 'idle';
     // v1.1 (SPEC2 §B) debounce stamps: run.t of when the underlying condition
     // began, 0 while clear. Based on the raw condition (not display precedence)
     // so a damaged-but-jammed machine still reads as jammed.
-    if (m.out.length) { if (!m.blockedSince) m.blockedSince = run.t; }
+    if (stuck) { if (!m.blockedSince) m.blockedSince = run.t; }
     else m.blockedSince = 0;
+    if (lonely) { if (!m.lonelySince) m.lonelySince = run.t; }
+    else m.lonelySince = 0;
     if (nofuel) { if (!m.nofuelSince) m.nofuelSince = run.t; }
     else m.nofuelSince = 0;
     // M-ONBOARD: the same debounce shape for the starving assembler.
@@ -692,9 +915,56 @@
       diag(run, 'nofuel', { name: name });
     if (missing && m.starveSince && run.t - m.starveSince >= G.starveT * HZ)
       diag(run, 'starved', { id: missing, item: D.ITEMS[missing].name });
+    if (m.lonelySince && run.t - m.lonelySince >= G.blockedT * HZ)
+      diag(run, 'tunnel', { gap: tunnelGap(run) });
   }
 
   // ---------------- belts (§5.2) ----------------
+  // M-TIER2 widened this from "belt tiles" to "the logistics network": belt
+  // tiles AND the belt-like structures, moving on the same clock, compressed
+  // by the same multi-pass loop. The pass order is belts row-major first and
+  // then structures by ascending id, so a network with no tier-II structure in
+  // it steps exactly as it always did.
+  function pushDevice(run, m) {
+    const item = m.out[0];
+    if (m.type === 'splitter') {
+      const dirs = splitDirs(run, m);
+      for (let i = 0; i < dirs.length; i++) {
+        const k = (((m.side | 0) + i) % dirs.length);
+        const d = dirOf(dirs[k]);
+        if (giveTo(run, item, m.x + d.dx, m.y + d.dy)) {
+          m.out.shift();
+          // Alternation is state on the machine, never a roll (law 7). A
+          // blocked side is skipped rather than stalled on, so a splitter
+          // feeding one live line and one dead one is a line, not a jam.
+          m.side = (k + 1) % dirs.length;
+          return true;
+        }
+      }
+      return false;
+    }
+    if (m.type === 'tunnel') {
+      if (m.mode === 'in') {
+        const o = m.pair && run.machines[m.pair];
+        if (!o || o.out.length) return false;
+        o.out.push(item);
+        o.moved = true; o.moveT = run.t;
+        m.out.shift();
+        return true;
+      }
+    } else if (m.type === 'filter' && item !== filterItem(m)) {
+      // Only Sorting Gates ever hold cargo they do not pass; it goes right.
+      const d = dirOf(m.facing + 1);
+      if (!giveTo(run, item, m.x + d.dx, m.y + d.dy)) return false;
+      m.out.shift();
+      return true;
+    }
+    const d = dirOf(m.facing);
+    if (!giveTo(run, item, m.x + d.dx, m.y + d.dy)) return false;
+    m.out.shift();
+    return true;
+  }
+
   function stepBelts(run) {
     const W = D.MAP_W, H = D.MAP_H, g = run.grid;
     const belts = []; // row-major, loaded belts only
@@ -703,30 +973,34 @@
         const b = g[y][x].belt;
         if (b) { b.moved = false; if (b.item) belts.push({ x: x, y: y, b: b }); }
       }
+    const devs = [];
+    const dids = Object.keys(run.machines).map(Number).sort(function (a, b) { return a - b; });
+    for (const id of dids) {
+      const m = run.machines[id];
+      if (!isBeltLike(m)) continue;
+      m.moved = false;
+      // The loader's pull, once per belt step and from ONE tile: the machine
+      // its arrow points out of. Its cargo can then travel in this same step,
+      // so a loader is a belt's worth of throughput and not half of one.
+      if (m.type === 'loader' && !m.out.length) {
+        const src = loaderSource(run, m);
+        if (src && src.out.length) { m.out.push(src.out.shift()); m.moveT = run.t; }
+      }
+      devs.push(m);
+    }
     for (let pass = 0; pass < 60; pass++) {
       let moved = false;
       for (const e of belts) {
         const b = e.b;
         if (!b.item || b.moved) continue;
         const d = D.DIRS[b.dir];
-        const tx = e.x + d.dx, ty = e.y + d.dy;
-        if (tx < 0 || ty < 0 || tx >= W || ty >= H) continue;
-        const t = g[ty][tx];
-        if (t.machine !== null) {
-          const m = run.machines[t.machine];
-          if (!m) continue;
-          if (m.id === 0) {
-            deliver(run, b.item);
-            b.item = null; b.moved = true; moved = true;
-          } else if (machineAccepts(run, m, b.item)) {
-            add(m.input, b.item, 1);
-            b.item = null; b.moved = true; moved = true;
-          }
-        } else if (t.belt && t.belt.item === null) {
-          t.belt.item = b.item;
-          t.belt.moved = true;
-          b.item = null; b.moved = true; moved = true;
-        }
+        if (!giveTo(run, b.item, e.x + d.dx, e.y + d.dy)) continue;
+        b.item = null; b.moved = true; moved = true;
+      }
+      for (const m of devs) {
+        if (!m.out.length || m.moved) continue;
+        if (!pushDevice(run, m)) continue;
+        m.moved = true; m.moveT = run.t; moved = true;
       }
       if (!moved) break;
     }
@@ -852,6 +1126,18 @@
       const rec = D.RECIPES[m.recipe || 'gear'];
       return HZ / rec.ticks * dmg;
     }
+    // M-TIER2. A crusher with nothing to chew makes nothing, and says so —
+    // the same honesty a mined-out extractor gets. Rubble arrives in quakes,
+    // which is minutes apart, so this is a state and not a flicker.
+    if (m.type === 'crusher') {
+      if (!m.cell) return 0;             // the tick's own survey, read not redone
+      return HZ / B.period * B.yield * dmg;
+    }
+    // The routing layer carries; it does not make. Its rate is the belt's,
+    // which is what the CHAIN header prints beside the count — the number
+    // that says out loud why a line only ever jams when the player
+    // under-builds a MACHINE (SPEC §12).
+    if (isBeltLike(m)) return HZ / D.BELT_PERIOD;
     return 0;
   }
   // Which plate a smelter is making: the job it is running, else the ore it
@@ -866,9 +1152,11 @@
     const flow = {};                                   // itemId -> net per second
     const add2 = function (id, n) { if (id) flow[id] = (flow[id] || 0) + n; };
     let oreRate = 0, oreN = 0;                         // smeltable ore only
+    let crushN = 0;                                    // ...of which crushers
     let plateRate = 0, plateN = 0;
     let gearRate = 0, gearN = 0, gearIn = 0, gearOut = 0;
     let chargeRate = 0, chargeN = 0;
+    let routeN = 0, routeRate = 0, lonely = 0;
     let noCoal = false, blocked = false, starved = false, damaged = false;
     for (const id in run.machines) {
       const m = run.machines[id];
@@ -879,6 +1167,16 @@
         const ore = t && t.ore;
         add2(ore, r);
         if (ore === 'ironOre' || ore === 'copperOre') { oreRate += r; oreN++; }
+      } else if (m.type === 'crusher') {
+        // M-TIER2: a crusher is an ore machine, so it stands in the ore stage
+        // beside the extractors rather than in a row of its own — the panel
+        // teaches SUPPLY, and where the supply comes from is the tooltip's job.
+        add2('ironOre', r);
+        oreRate += r; oreN++; crushN++;
+      } else if (isBeltLike(m)) {
+        routeN++;
+        routeRate = Math.max(routeRate, r);
+        if (m.status === 'unpaired') lonely++;
       } else if (m.type === 'smelter') {
         const rec = D.RECIPES[smelterRecipe(m)];
         for (const k in rec.in) add2(k, -r * rec.in[k]);
@@ -920,6 +1218,13 @@
       { id: 'gear',  item: 'gear',      name: 'gear',  letter: 'A',
         n: gearN,  rate: gearRate,  gears: gearRate },
     ];
+    // The ore stage can be manned by two different machines. `parts` is what
+    // the panel prints when it is ('2E1C'); `n` stays the total, because every
+    // other reader of this model asks how many machines are on the stage.
+    stages[0].parts = crushN
+      ? [{ n: oreN - crushN, letter: 'E' }, { n: crushN, letter: 'C' }]
+        .filter(p => p.n > 0)
+      : [{ n: oreN, letter: 'E' }];
     if (req.charge > 0) {
       stages.push({ id: 'charge', item: 'charge', name: 'charge', letter: 'A',
         n: chargeN, rate: chargeRate, gears: Infinity });
@@ -947,7 +1252,7 @@
     }
     // A charge stage that cannot keep up is its own lesson, and charges gate
     // the breach from stratum 5 down, so it is flagged on its own terms.
-    const cs = stages[3];
+    const cs = stages.filter(s => s.id === 'charge')[0];
     if (cs) cs.flag = cs.n === 0 ? 'NONE' : (cs.rate <= 0 ? 'STALLED' : '');
     const gears = lim ? Math.max(0, lim.gears) : 0;
     return {
@@ -955,6 +1260,11 @@
       gearRate: gears, chargeRate: chargeRate, drillRate: drillRate,
       perGear: perGear, noCoal: noCoal, blocked: blocked,
       starved: starved, damaged: damaged,
+      // M-TIER2: the routing layer, counted and rated. It is never a stage —
+      // it makes nothing, and a row for it would push the LOG off the panel —
+      // so it rides the CHAIN header, where the count says what you built and
+      // the rate says why it is not your bottleneck (SPEC §12).
+      route: { n: routeN, rate: routeRate, lonely: lonely },
       breachSec: breachEta(run, gears, chargeRate, drillRate),
     };
   }
@@ -1062,6 +1372,7 @@
     }
   }
   function destroyMachine(run, m) {
+    unpairTunnel(run, m);        // M-TIER2: the far end goes back to lonely
     for (let y = m.y; y < m.y + m.h; y++)
       for (let x = m.x; x < m.x + m.w; x++) {
         const t = tileAt(run, x, y);
@@ -1199,6 +1510,10 @@
   function canPlace(run, type, x, y, facing) {
     const B = D.BUILDINGS[type];
     if (!B || type === 'hub') return { ok: false, reason: 'unknown structure' };
+    // M-TIER2: sealed until its stratum. The BUILD panel does not list a
+    // locked structure either, so this is the belt-and-braces half.
+    if (!unlocked(run, type))
+      return { ok: false, reason: 'no schematics until stratum ' + B.unlockDepth };
     for (let ty = y; ty < y + B.h; ty++)
       for (let tx = x; tx < x + B.w; tx++) {
         const t = tileAt(run, tx, ty);
@@ -1238,14 +1553,21 @@
       return true;
     }
     const id = run.nextId++;
-    run.machines[id] = {
+    const m = {
       id: id, type: type, x: x, y: y, w: B.w, h: B.h, facing: facing, hp: B.hp,
       progress: 0, recipe: type === 'assembler' ? 'gear' : null,
       input: {}, fuel: 0, status: 'idle', repairAt: 0,
       blockedSince: 0, nofuelSince: 0, starveSince: 0, out: [], job: null,
+      // M-TIER2: the tier-II state. `side` is the splitter's next preferred
+      // arrow, `filter` the gate's cargo, `mode`/`pair` the tunnel's two ends,
+      // `cell` the tile a crusher is chewing, `moveT` the last handoff.
+      side: 0, filter: type === 'filter' ? D.ITEM_ORDER[0] : null,
+      mode: null, pair: 0, cell: null, moved: false, moveT: 0, lonelySince: 0,
     };
+    run.machines[id] = m;
     for (let ty = y; ty < y + B.h; ty++)
       for (let tx = x; tx < x + B.w; tx++) run.grid[ty][tx].machine = id;
+    if (type === 'tunnel') pairTunnel(run, m);
     return true;
   }
 
@@ -1324,6 +1646,15 @@
       const out = Object.keys(D.RECIPES[m.recipe].out)[0];
       return { handled: true, msg: 'assembler → ' + D.ITEMS[out].name };
     }
+    // M-TIER2: the gate's whole interface. Cycling through ITEM_ORDER means
+    // the cargo you want is always the same number of clicks from the cargo
+    // beside it in the STOCK panel — one order, everywhere.
+    if (m.type === 'filter') {
+      const list = D.ITEM_ORDER;
+      m.filter = list[(list.indexOf(filterItem(m)) + 1) % list.length];
+      return { handled: true, kind: 'filter',
+               msg: 'filter → ' + D.ITEMS[m.filter].name };
+    }
     return { handled: false };
   }
 
@@ -1335,8 +1666,24 @@
   }
 
   // ---------------- descent (§5.9) ----------------
+  // M-TIER2: a schematic may be gated — to the floor its structures unlock on
+  // (`minDepth`, measured against the stratum the card will be USED on, which
+  // on a descent is the one below the one being left) and to having built one
+  // (`needs`). An ungated card is dealt exactly as it always was, and a deck
+  // with no gated card in it is byte-identical to the old deck: same members,
+  // same order, same number of draws out of run.rng. That is deliberate — a
+  // player who never touches tier II must get the run they would have got.
+  function schematicPool(run, depth) {
+    const built = (run.stats && run.stats.placed) || {};
+    return D.SCHEMATICS
+      .filter(s => (!s.minDepth || depth >= s.minDepth) &&
+                   (!s.needs || (built[s.needs] || 0) > 0))
+      .map(s => s.id)
+      .filter(id => run.schematics.indexOf(id) < 0);
+  }
+
   function offerSchematics(run) {
-    let pool = D.SCHEMATICS.map(s => s.id).filter(id => run.schematics.indexOf(id) < 0);
+    let pool = schematicPool(run, run.depth + 1);
     pool = U.shuffle(run.rng, pool);
     const offers = pool.slice(0, run.mods.offerCount);
     if (offers.length < run.mods.offerCount) {
@@ -1470,7 +1817,51 @@
     blocked:  'full — belt its output side',
     nofuel:   'out of coal — belt coal in',
     depleted: 'vein empty — (X) to clear',
+    // M-TIER2: the fourth thing the red '!' can mean.
+    unpaired: 'no far end — place its pair',
   };
+
+  // M-TIER2: what a tier-II structure is doing, in the 29 columns the panel
+  // clips at. Each one names the tiles its arrow chose, because "facing, not
+  // adjacency" is the rule these exist to conjugate and a tooltip that does
+  // not say which way a thing points teaches the wrong half of it.
+  function tier2Lines(run, m) {
+    const L = [];
+    if (m.type === 'splitter') {
+      L.push({ text: 'fans ' + splitDirs(run, m).map(k => D.ARROWS[k]).join(' '),
+               color: D.COLORS.cyan });
+    } else if (m.type === 'tunnel') {
+      const o = m.pair && run.machines[m.pair];
+      if (o) {
+        const d = Math.abs(o.x - m.x) + Math.abs(o.y - m.y);
+        L.push({ text: m.mode === 'in' ? 'entrance — far end ' + d + ' on'
+                                       : 'exit — cargo surfaces here',
+                 color: D.COLORS.cyan });
+      }
+    } else if (m.type === 'loader') {
+      const s = loaderSource(run, m);
+      L.push({ text: s ? 'empties the ' + D.BUILDINGS[s.type].name + ' behind'
+                       : 'no machine behind it',
+               color: s ? D.COLORS.cyan : D.COLORS.red });
+    } else if (m.type === 'filter') {
+      const it = D.ITEMS[filterItem(m)];
+      L.push({ text: 'passes ' + it.name + ' ' + it.glyph, color: it.color });
+      if (run.mods && run.mods.smartGate)
+        L.push({ text: 'the rest shunts ' + D.ARROWS[(m.facing + 1) % 4],
+                 color: D.COLORS.cyan });
+      L.push({ text: 'click: cycle the cargo', color: D.COLORS.amberDim });
+    } else if (m.type === 'crusher') {
+      const B = D.BUILDINGS.crusher;
+      L.push({ text: m.cell ? 'grinding — ' + B.yield + ' ore a go'
+                            : 'nothing to grind in ' + B.reach,
+               color: m.cell ? D.COLORS.steel : D.COLORS.gray });
+      if (run.mods && run.mods.crushRock)
+        L.push({ text: 'it eats the rock too', color: D.COLORS.steel });
+    }
+    if (isBeltLike(m) && m.out.length)
+      L.push({ text: 'holds ' + itemShort(m.out[0]), color: D.COLORS.gray });
+    return L;
+  }
 
   function describeTile(run, x, y) {
     const t = tileAt(run, x, y);
@@ -1512,6 +1903,7 @@
         if (ot && ot.ore)
           L.push({ text: D.ITEMS[ot.ore].name + ' — ' + ot.oreAmt + ' left', color: D.ORE_GLYPHS[ot.ore].color });
       }
+      for (const l of tier2Lines(run, m)) L.push(l);   // M-TIER2
       // coal is already reported by the fuel line on the machines that burn it
       const buf = bufferLine(m, (m.type === 'smelter' || m.type === 'damper') ? 'coal' : null);
       if (buf) L.push({ text: buf, color: D.COLORS.gray });
@@ -1577,6 +1969,11 @@
     // this tile for the beat that teaches R, and render.js draws the same tile
     // under the placement ghost — one formula, not three copies of it.
     outputTile: outputTile,
+    // M-TIER2: the plural of it (a splitter has two arrows, three with
+    // s_yoke; a tunnel entrance's is its far end), whether a structure is
+    // sealed on this floor, and whether it moves cargo rather than making it.
+    outputTiles: outputTiles, unlocked: unlocked, beltLike: isBeltLike,
+    tunnelGap: tunnelGap, filterItem: filterItem, loaderSource: loaderSource,
     // M-ONBOARD: the diagnostics. diagLines() is every sentence they can emit
     // (worst case filled in) so the suites can hold the lot to the LOG panel;
     // STATUS_HINT is the '!' legend the SCAN panel draws.

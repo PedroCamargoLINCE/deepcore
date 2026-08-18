@@ -715,6 +715,11 @@
     s_over: "Overdrive coupling. Redline's cheaper now. My kind of discount.",
     s_veins: "Rich veins ahead. The planet's wallet is open, kid. Reach in.",
     s_gear: "Bronze gearworks. Two metals, one gear, zero patents. Beautiful.",
+    // M-TIER2
+    s_conduit: "Deep conduits. Twice the reach under the floor. Mind the pipes.",
+    s_yoke: "Trident yokes. One line in, three out. Greedy little fork.",
+    s_gate: "Sorting gates. Now the junk goes right instead of nowhere.",
+    s_grind: "Rock grinders. We eat the walls now. The walls started it.",
   };
 
   // Bespoke line per Foundry meta upgrade id (9).

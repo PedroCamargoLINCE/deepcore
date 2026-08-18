@@ -189,11 +189,59 @@
                  cost: { ironPlate: 8, copperPlate: 2 }, color: D.COLORS.green,
                  coalTicks: 40, calm: 0.25,
                  desc: 'Burns 1 coal / 5s to vent pressure: −25% instability rate each (max 3).' },
+    // ---------------- M-TIER2: Logistics II (SPEC3) ----------------
+    // Five structures that are all the SAME LESSON as the belt: a thing hands
+    // its cargo to the tile its arrow points at, and to no other. The splitter
+    // has two arrows, the tunnel's second arrow is four tiles away and the
+    // loader's points out of a machine instead of into one — but not one of
+    // them takes cargo from a neighbour just for standing there. That rule is
+    // the game's whole logistics grammar (test/headless.js checkRigOutput), so
+    // tier II conjugates it rather than adding exceptions to it.
+    //
+    // `unlockDepth` seals them until the stratum named: the first two floors
+    // are where a player learns extractor → belt → smelter → assembler, and a
+    // build list of ten on stratum 1 teaches nothing but hesitation (§0 law 6).
+    // canPlace refuses them above it and the BUILD panel does not list them.
+    //
+    // Letters are ASCII capitals in the belt's cyan — the colour says "cargo
+    // moves through this", the letter says which one — except the crusher,
+    // which makes a material and wears that material's colour like the
+    // smelter does. All six glyphs are checked against the map's existing
+    // inventory (▓ ▒ ░ · ≡ ♠ ¢ ♦ ☼ ≈ E S A V D and the belt arrows) and
+    // against vendor/deepcore-mono.woff2 by node tools/glyphs.js.
+    splitter:  { name: 'splitter',  key: '6', letter: 'Y', w: 1, h: 1, hp: 2,
+                 cost: { ironPlate: 4 }, color: D.COLORS.cyan, unlockDepth: 3,
+                 desc: 'Fans one line into two: cargo alternates left and right of its arrow.' },
+    // 'U' dives, '∩' surfaces — the two glyphs are mirrors of each other, so
+    // an end that swallows and an end that spits can never be confused.
+    tunnel:    { name: 'tunnel',    key: '7', letter: 'U', letterOut: '∩',
+                 w: 1, h: 1, hp: 2,
+                 cost: { ironPlate: 3 }, color: D.COLORS.cyan, unlockDepth: 3,
+                 gap: 4,
+                 desc: 'Two of them, same arrow, up to 4 tiles apart: cargo runs under anything.' },
+    loader:    { name: 'loader',    key: '8', letter: 'L', w: 1, h: 1, hp: 2,
+                 cost: { ironPlate: 5 }, color: D.COLORS.cyan, unlockDepth: 3,
+                 desc: 'Empties the machine behind it out its own arrow — a second output side.' },
+    // The hazard, banked. Quakes bury a base in rubble the player then digs by
+    // hand; a crusher standing in the mess clears it AND pays for it, so the
+    // deep strata's worst habit becomes the deep strata's supply line.
+    crusher:   { name: 'crusher',   key: '9', letter: 'C', w: 2, h: 2, hp: 2,
+                 cost: { ironPlate: 14 }, color: D.COLORS.steel, unlockDepth: 3,
+                 period: 24, reach: 6, yield: 2, rockYield: 1,
+                 desc: 'Grinds rubble within 6 tiles into 2 iron ore each. Quakes become supply.' },
+    filter:    { name: 'filter',    key: '0', letter: 'F', w: 1, h: 1, hp: 2,
+                 cost: { ironPlate: 2, copperPlate: 1 }, color: D.COLORS.cyan,
+                 unlockDepth: 3,
+                 desc: 'A gate one cargo passes. Click it to choose which. The rest waits.' },
     hub:       { name: 'drill rig', letter: 'D', w: 3, h: 3, hp: Infinity,
                  cost: {}, color: D.COLORS.amber,
                  desc: 'The rig. Feed it drill gears & core charges by belt to breach.' },
   };
-  D.BUILD_ORDER = ['belt', 'extractor', 'smelter', 'assembler', 'damper'];
+  // Order IS the hotkey: engine.js binds '1'..'9' then '0' by index, and the
+  // manual and the tutorial both compose their keycaps from this list, so the
+  // five tier-I entries stay exactly where they were.
+  D.BUILD_ORDER = ['belt', 'extractor', 'smelter', 'assembler', 'damper',
+                   'splitter', 'tunnel', 'loader', 'crusher', 'filter'];
   D.DAMPER_MAX = 3;          // max stacking dampers
   D.REPAIR_COST = 2;         // ironPlate per repair (meta m_fix lowers to 1)
   D.DEMOLISH_REFUND = 0.5;   // fraction of cost refunded
@@ -336,6 +384,28 @@
     { id: 's_over',     name: 'Overdrive Coupling',   desc: 'Overdrive instability penalty halved.' },
     { id: 's_veins',    name: 'Rich Veins',           desc: 'Ore veins in new strata are 50% richer.' },
     { id: 's_gear',     name: 'Bronze Gearworks',     desc: 'Unlock: 1 iron + 1 copper plate → 2 gears.' },
+    // M-TIER2: four picks that multiply a structure rather than the rig, so
+    // each is dealt only to a player who is RUNNING that structure. Two gates,
+    // and the second is the one that matters:
+    //
+    //   `minDepth` — the floor the card is used on must have unlocked its
+    //   structure at all (offerSchematics measures against the floor you are
+    //   about to land on, not the one you are leaving).
+    //   `needs`    — you have built one this run.
+    //
+    // A card that multiplies splitters is a dead pick to someone with no
+    // splitters, and a breach pays exactly one pick. It also keeps the deck
+    // the same 14 cards for a player who never touches tier II, which is why
+    // the balance sweep does not drift a single number for the runs that do
+    // not use this layer.
+    { id: 's_conduit',  name: 'Deep Conduits',        minDepth: 3, needs: 'tunnel',
+      desc: 'Underground belts reach twice as far.' },
+    { id: 's_yoke',     name: 'Trident Yokes',        minDepth: 3, needs: 'splitter',
+      desc: 'Splitters feed a third line straight ahead.' },
+    { id: 's_gate',     name: 'Sorting Gates',        minDepth: 3, needs: 'filter',
+      desc: 'Filters shunt what they do not pass to their right.' },
+    { id: 's_grind',    name: 'Rock Grinders',        minDepth: 3, needs: 'crusher',
+      desc: 'Crushers chew rock as well as rubble.' },
   ];
 
   // ---------------- meta upgrades (Foundry) ----------------
