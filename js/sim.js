@@ -214,7 +214,7 @@
       // exists — the forge check above all (M-MANTLE built it, this switches
       // it on as a reward instead of a rule).
       magmaBoiler: false, echoCharge: false, juryRig: false, insurance: false,
-      closedLoop: false,
+      closedLoop: false, wormBeacon: false,
       // Gravity Chute raises this; everything demolished reads it.
       refund: D.DEMOLISH_REFUND,
     };
@@ -263,6 +263,8 @@
       case 's_jury': m.juryRig = true; break;
       case 's_insure': m.insurance = true; break;
       case 's_loop': m.closedLoop = true; break;
+      // Written for M-WORMS: that module reads the flag; nothing here does.
+      case 's_whisper': m.wormBeacon = true; break;
     }
   }
 
@@ -1958,9 +1960,13 @@
   // player who never touches tier II must get the run they would have got.
   function schematicPool(run, depth) {
     const built = (run.stats && run.stats.placed) || {};
+    // M-SCHEMS2: `needsModule` is the mutator table's contract, on the deck —
+    // a card whose module is absent is not dealt, not a dead pick (that is
+    // the Worm Whisperer while M-WORMS has not landed).
     return D.SCHEMATICS
       .filter(s => (!s.minDepth || depth >= s.minDepth) &&
-                   (!s.needs || (built[s.needs] || 0) > 0))
+                   (!s.needs || (built[s.needs] || 0) > 0) &&
+                   (!s.needsModule || !!DC[s.needsModule]))
       .map(s => s.id)
       .filter(id => run.schematics.indexOf(id) < 0);
   }
@@ -2278,6 +2284,10 @@
     // Nothing here rolls: `mutatorOf` is a lookup, and the ONE draw lives in
     // startStratum (§0 law 7).
     mutatorOf: mutDef, mutatorTable: mutatorTable,
+    // M-SCHEMS2: the deck as this run would be dealt it, exported for the
+    // same reason as the mutator table — so a suite can assert that a card
+    // whose module is absent is absent from the deck, not a dead pick.
+    schematicPool: schematicPool,
     // The two questions the forge answers, exported because the tooltip, the
     // CHAIN panel and the suites all have to ask them and must not each grow
     // their own idea of "beside the magma" (M-MANTLE / M-SCHEMS2).

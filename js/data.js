@@ -425,6 +425,12 @@
       desc: 'The first killing blow leaves 1 integrity instead. Once.' },
     { id: 's_loop',     name: 'Closed Loop',
       desc: 'Dampers burn no coal, but calm half as much.' },
+    // `needsModule` names a DC module that must be LOADED for the card to be
+    // in the deck at all — the schematic deck's copy of the mutator table's
+    // `needs` contract. This is 'worm season' again: M-WORMS has not landed,
+    // the card is written, and the day `DC.Worms` loads it deals itself.
+    { id: 's_whisper',  name: 'Worm Whisperer',       needsModule: 'Worms',
+      desc: 'Vein worms also come when the cursor calls.' },
   ];
 
   // ---------------- meta upgrades (Foundry) ----------------

@@ -743,6 +743,9 @@
     s_jury: "Jury rig. Broken means faster now. The hull disagrees. Loudly.",
     s_insure: "Deep insurance. One free miracle per shift. Don't schedule it.",
     s_loop: "Closed loop. She vents on her own exhaust now. Coal's off the menu.",
+    // Written for the day M-WORMS lands and the card deals itself (the deck
+    // gates it on DC.Worms the way the mutator table gates 'worm season').
+    s_whisper: "Worm whisperer. They come when you point now. I hate it. Useful.",
     // M-TIER2
     s_conduit: "Deep conduits. Twice the reach under the floor. Mind the pipes.",
     s_yoke: "Trident yokes. One line in, three out. Greedy little fork.",

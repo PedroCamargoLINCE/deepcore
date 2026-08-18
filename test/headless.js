@@ -2718,6 +2718,29 @@ function checkSchems2() {
     cards++;
   }
 
+  // ---- Worm Whisperer --------------------------------------------------
+  // The deck's copy of the mutator table's contract: a card whose module has
+  // not landed is NOT DEALT — it is not a dead pick a breach can waste its
+  // one choice on. Everything else about the card already exists (line, art,
+  // mods flag), so the day DC.Worms loads, nothing here needs touching.
+  {
+    const r = S.newRun(eff, 31337);
+    r.depth = D.MUTATOR_DEPTH;                 // every minDepth gate is open
+    r.stats.placed = { splitter: 1, tunnel: 1, filter: 1, crusher: 1 };
+    const pool = S.schematicPool(r, r.depth);
+    assert(pool.indexOf('s_boiler') >= 0 && pool.indexOf('s_loop') >= 0,
+      'the rest of the batch is in the deck down here');
+    assertEq(pool.indexOf('s_whisper'), -1,
+      'the Worm Whisperer is not dealt while M-WORMS is absent');
+    const gated = D.SCHEMATICS.filter((s) => s.needsModule && !DC[s.needsModule]);
+    assert(gated.length > 0,
+      'the whisperer is still gated (if M-WORMS landed, retire this line deliberately)');
+    assertEq(S.installSchematic(r, 's_whisper'), 's_whisper',
+      'installed by hand it still wires its flag...');
+    assertEq(r.mods.wormBeacon, true, '...for the module that will read it');
+    cards++;
+  }
+
   return cards;
 }
 
