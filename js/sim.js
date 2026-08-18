@@ -213,7 +213,7 @@
       // M-SCHEMS2: the second batch. Flags read by machinery that already
       // exists — the forge check above all (M-MANTLE built it, this switches
       // it on as a reward instead of a rule).
-      magmaBoiler: false, echoCharge: false, juryRig: false,
+      magmaBoiler: false, echoCharge: false, juryRig: false, insurance: false,
       // Gravity Chute raises this; everything demolished reads it.
       refund: D.DEMOLISH_REFUND,
     };
@@ -260,6 +260,7 @@
       case 's_echo': m.echoCharge = true; break;
       case 's_chute': m.refund = D.CHUTE_REFUND; break;
       case 's_jury': m.juryRig = true; break;
+      case 's_insure': m.insurance = true; break;
     }
   }
 
@@ -274,7 +275,8 @@
       inv: {}, gearsFed: 0, chargesFed: 0,
       // M-SCHEMS2/Echo Charges: charges assembled this run. A counter and not
       // a roll (law 7): the fifth is free because it is the fifth, every time.
-      echoN: 0,
+      // `insured` is Deep Insurance's one payout, spent.
+      echoN: 0, insured: false,
       breachReq: { gear: 0, charge: 0 },
       integrity: 0, maxIntegrity: 0,
       instability: 0, quakeAt: 0, overdrive: false,
@@ -652,11 +654,21 @@
       pushEvent(run, 'breachReady', { depth: run.depth });
     }
     if (run.integrity <= 0) {
-      run.integrity = 0;
-      run.status = 'dead';
-      setResult(run, false);
-      msg(run, 'The rig gives way. The depth keeps it.', D.COLORS.red);
-      pushEvent(run, 'death', { depth: run.depth, cause: 'integrity' });
+      // M-SCHEMS2/Deep Insurance: the one blow the paperwork takes for you.
+      // However far past zero the hit drove the hull, the policy pays back to
+      // exactly 1 — once per run, and the second lethal hit is simply lethal.
+      if (run.mods.insurance && !run.insured) {
+        run.insured = true;
+        run.integrity = 1;
+        msg(run, '»» THE POLICY PAYS OUT — integrity 1. Once. ««', D.COLORS.cyan);
+        pushEvent(run, 'insurance', { depth: run.depth });
+      } else {
+        run.integrity = 0;
+        run.status = 'dead';
+        setResult(run, false);
+        msg(run, 'The rig gives way. The depth keeps it.', D.COLORS.red);
+        pushEvent(run, 'death', { depth: run.depth, cause: 'integrity' });
+      }
     }
   }
 

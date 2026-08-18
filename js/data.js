@@ -421,6 +421,8 @@
       desc: 'Demolished machines refund 75% of their cost.' },
     { id: 's_jury',     name: 'Jury Rig',
       desc: 'Damaged machines run full speed. Each costs 1 hull a minute.' },
+    { id: 's_insure',   name: 'Deep Insurance',
+      desc: 'The first killing blow leaves 1 integrity instead. Once.' },
   ];
 
   // ---------------- meta upgrades (Foundry) ----------------

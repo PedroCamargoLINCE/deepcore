@@ -2646,6 +2646,31 @@ function checkSchems2() {
     cards++;
   }
 
+  // ---- Deep Insurance --------------------------------------------------
+  // However far past zero the blow drove the hull, the policy pays back to
+  // exactly 1 — once. The second lethal hit is simply lethal, and a run
+  // without the card never sees the payout at all.
+  {
+    const r = S.newRun(eff, 2024);
+    assertEq(S.installSchematic(r, 's_insure'), 's_insure', 'the card installs');
+    r.integrity = -7;                          // a quake can overshoot zero
+    S.tick(r);
+    assertEq(r.integrity, 1, 'the payout leaves exactly 1, not a refund of 7');
+    assertEq(r.status, 'active', 'and the run is still a run');
+    assertEq(r.insured, true, 'the policy is spent');
+    assert(r.events.some((e) => e.type === 'insurance'),
+      'the sim announced it (GRIT needs his heart attack)');
+    assert(!r.events.some((e) => e.type === 'death'), 'and no death event fired');
+    r.integrity = -1;
+    S.tick(r);
+    assertEq(r.status, 'dead', 'the second killing blow kills');
+    const plain = S.newRun(eff, 2024);
+    plain.integrity = -1;
+    S.tick(plain);
+    assertEq(plain.status, 'dead', 'no card, no miracle');
+    cards++;
+  }
+
   return cards;
 }
 

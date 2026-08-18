@@ -109,7 +109,7 @@ for (const id of metaIds) {
 
 // -------------------------------- schematic icons / badges / colors (all 14)
 const schemIds = D.SCHEMATICS.map(function (s) { return s.id; });
-assert(schemIds.length === 22, 'expected 22 schematic ids in data.js');
+assert(schemIds.length === 23, 'expected 23 schematic ids in data.js');
 for (const id of schemIds) {
   const ic = A.schemIcons && A.schemIcons[id];
   assert(Array.isArray(ic), 'schemIcons missing ' + id);

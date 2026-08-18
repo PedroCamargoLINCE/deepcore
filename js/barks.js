@@ -24,7 +24,10 @@
   const D = DC.DATA;
   const HZ = D.TICK_HZ;
   const COOLDOWN = 6 * HZ;
-  const PRIORITY = { death: 1, victory: 1, breachReady: 1, collapse: 1 };
+  // M-SCHEMS2: 'insurance' is Deep Insurance paying out — the rig refusing to
+  // die is the one moment nothing else on the bar is allowed to outrank.
+  const PRIORITY = { death: 1, victory: 1, breachReady: 1, collapse: 1,
+                     insurance: 1 };
 
   // ---------------- line pools (≤70 chars each) ----------------
   const POOLS = {
@@ -183,6 +186,15 @@
       "Something's off down here. Read the banner. I'm not reading it twice.",
       "Every floor past eight has a rule. Learn it or wear it, kid.",
       "The Mantle's dealing again. Check what it dealt us.",
+    ],
+    // M-SCHEMS2/Deep Insurance: the payout. GRIT watched the killing blow
+    // land and then not count, and he is NOT taking it well.
+    insurance: [
+      "WE'RE DEAD— we're not dead?! The POLICY held?! I need to sit down.",
+      "That was the killing blow, kid. The paperwork took it for us. ONCE.",
+      "I saw the light. It was the insurance clause. Ugliest angel I know.",
+      "One integrity. That's not a hull, that's a rumor of one. MOVE, kid.",
+      "My heart stopped before the rig did. Neither of us gets a second one.",
     ],
     jam: [
       "Line's backed up worse than the site latrine on chili night.",
@@ -729,6 +741,7 @@
     s_echo: "Echo charges. Every fifth one's on the house. Whose house? Shh.",
     s_chute: "Gravity chute. Tear it down and most of it walks home. Tidy.",
     s_jury: "Jury rig. Broken means faster now. The hull disagrees. Loudly.",
+    s_insure: "Deep insurance. One free miracle per shift. Don't schedule it.",
     // M-TIER2
     s_conduit: "Deep conduits. Twice the reach under the floor. Mind the pipes.",
     s_yoke: "Trident yokes. One line in, three out. Greedy little fork.",

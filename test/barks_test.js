@@ -95,6 +95,15 @@ for (const t of EVENT_POOLS) {
   assert(pool.length >= 4 && pool.length <= 8,
     'pool "mutator" has 4-8 lines (got ' + pool.length + ')');
 }
+// M-SCHEMS2 adds one more: Deep Insurance's payout. It must also be PRIORITY
+// — the rig refusing to die is not a moment the cooldown gets to swallow.
+{
+  const pool = B.POOLS.insurance;
+  assert(Array.isArray(pool), 'M-SCHEMS2 trigger "insurance" has a pool');
+  assert(pool.length >= 4 && pool.length <= 8,
+    'pool "insurance" has 4-8 lines (got ' + pool.length + ')');
+  assert(B.PRIORITY.insurance === 1, 'the payout cuts through the cooldown');
+}
 
 // The one line that is deliberately NOT a pool: the cat's ending is a
 // punchline, and a punchline that rotates is one nobody can quote back.
@@ -108,8 +117,8 @@ for (let d = 1; d <= D.STRATA_COUNT; d++)
 assertEq(typeof B.STRATUM_LINES.mantle, 'string', 'bespoke line for the mantle');
 for (const s of D.SCHEMATICS)
   assertEq(typeof B.SCHEM_LINES[s.id], 'string', 'bespoke line for schematic ' + s.id);
-assertEq(D.SCHEMATICS.length, 22,
-  'all 22 schematics covered (14 + M-TIER2 four + M-SCHEMS2 so far)');
+assertEq(D.SCHEMATICS.length, 23,
+  'all 23 schematics covered (14 + M-TIER2 four + M-SCHEMS2 so far)');
 // M-TIER2: a schematic gated to a stratum must name a real one, or it is a
 // card the deck can never deal.
 for (const s of D.SCHEMATICS) {

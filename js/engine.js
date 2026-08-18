@@ -201,6 +201,9 @@
       if (ev.type === 'quake' && ev.data && ev.data.dmg >= 8) bark('bigQuake', ev.data);
       else if (ev.type === 'magma') bark('magmaSpread');
       else if (ev.type === 'depleted') bark('veinDepleted');
+      // M-SCHEMS2/Deep Insurance: the rig just refused to die. GRIT's heart
+      // attack is a PRIORITY trigger — nothing on the bar outranks this.
+      else if (ev.type === 'insurance') bark('insurance');
       // M-CORELORE: the Core Gate. sim.js says WHEN (breach fractions at s8);
       // barks.js says what, and answers itself in GRIT's voice a beat later.
       else if (ev.type === 'core') coreBeat(run, ev.data);
