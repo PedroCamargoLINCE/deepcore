@@ -4695,6 +4695,29 @@ function wideSection(seed) {
   assert(cards[cards.length - 1].col + cards[cards.length - 1].w <= D.COLS,
     'the last card fits on the screen');
 
+  // ---- M-SCHEMS2: every card's text survives the card ---------------------
+  // A pick screen that clips its own rule teaches nothing, and this batch
+  // carries the longest descs in the deck — Jury Rig's is 60 characters
+  // against Rich Veins' 26, and the desc slot is four wrapped rows of twenty
+  // columns. So every schematic is DEALT here, at the real 112, and held to
+  // the one bar that matters: its name and every word of its rule on screen,
+  // whole, inside the card that drew them.
+  for (const sc of D.SCHEMATICS) {
+    const rest = D.SCHEMATICS.filter((s) => s.id !== sc.id).slice(0, 2);
+    run.pendingOffers = [sc.id].concat(rest.map((s) => s.id));
+    const rws = frame(state);
+    const card = DC.Render.layout.cards[0];
+    assert(card && card.id === sc.id, sc.id + ': dealt onto the first card');
+    let txt = '';
+    for (let r = card.row; r < card.row + card.h; r++)
+      txt += rws[r].slice(card.col, card.col + card.w) + ' ';
+    for (const w of (sc.name + ' ' + sc.desc).split(/\s+/))
+      assert(txt.indexOf(w) >= 0,
+        sc.id + ': the card lost "' + w + '" from its own rule');
+  }
+  run.pendingOffers = ['s_drill', 's_coal', 's_veins'];
+  rows = frame(state);
+
   SCREEN = 'help p1';
   state.screen = 'help';
   state.ui.helpPage = 0;
