@@ -128,6 +128,39 @@ logistics layer every other system feeds through. The master session stays on
 whatever the director sets it to (currently Fable 5); this default is for
 WORKERS.
 
+### Running a brief LOCALLY, watchable from the phone (the standard way)
+
+The canonical worker launch, learned the expensive way on 2026-08-18:
+
+```bash
+tmux new-session -d -s laborer -c <worktree-path> \
+  'claude --remote-control "THE-LABORER-<BRIEF>" \
+     --model "claude-opus-5[1m]" --effort high \
+     --permission-mode bypassPermissions "<prompt or continuation kick>"'
+```
+
+Three rules, each paid for:
+
+1. **The `--remote-control` FLAG, never the `claude remote-control` server
+   subcommand, for workers.** The subcommand has NO --model option — its
+   sessions silently inherit the account's default model, and on the day the
+   director's default was Fable it burned 233 turns of his Fable limit on a
+   worker that was ordered to be Opus. The flag variant pins --model and
+   --effort on the command line, and a pinned model survives --resume (proven:
+   a session resumed with the flag stamped opus 210/210).
+2. **Inside tmux, never headless.** --remote-control asks "Enable Remote
+   Control? (y/n)" interactively; headless (stdin /dev/null) that prompt can
+   never be answered, the session never registers with the server, it is
+   invisible on the phone, and later --session-id reattachment fails because
+   the server has never heard of it. tmux gives it a real TTY; answer prompts
+   with `tmux send-keys -t laborer 'y'`.
+3. **Verify, don't assume.** After launch, the session's model is provable:
+   grep the newest .jsonl under ~/.claude/projects/<worktree-slug>/ for
+   '"model":"claude-...' stamps — the newest turns must stamp the intended
+   model. The in-session Agent tool's `model` parameter was also observed NOT
+   to hold for background workers; agents are for small errands where the
+   model does not matter.
+
 ### Running a brief in a CLOUD session (laptop closed)
 
 `claude --cloud "M-WONDERS: stratum landmarks"` runs the session on Anthropic's
