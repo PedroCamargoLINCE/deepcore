@@ -55,7 +55,7 @@ with `git add -A`).
 | 4.5 | ~~M-ONBOARD Part 1 (diagnostics)~~ ✅ **merged 2026-08-14** (rescued by patch) | — | — |
 | 4.6 | ~~M-WIDE (alone; changed COLS 80→112)~~ ✅ **merged 2026-08-17** | — | — |
 | 4.7 | ~~M-ONBOARD Part 2 (the tutorial)~~ ✅ **merged 2026-08-17** | — | — |
-| 5 | ~~M-TIER2 (alone)~~ ✅ **merged 2026-08-18** — worker died at its session limit with all checkpoints pushed; rescued from its worktree, one finished diff committed for it | **next: M-MANTLE + M-SCHEMS2** (one session; Ghost Belts are CUT — underground belts won) | — |
+| 5 | ~~M-TIER2 (alone)~~ ✅ **merged 2026-08-18** — worker died at its session limit with all checkpoints pushed; rescued from its worktree, one finished diff committed for it | ~~M-MANTLE + M-SCHEMS2~~ ✅ **merged 2026-08-19** — survived THREE worker deaths (ECONNRESET, connection drop, rate limit-on-wrong-model) with zero pushed work lost | — |
 | 6 | M-WORMS | M-ACHIEVE + M-RIGSKINS | M-SOUND |
 | 7 | **M-HUMANBAL — alone, LAST** (SPEC3 §M-HUMANBAL) — the director's playtest ledger | — | — |
 
