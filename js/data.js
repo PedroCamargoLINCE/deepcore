@@ -406,6 +406,31 @@
       desc: 'Filters shunt what they do not pass to their right.' },
     { id: 's_grind',    name: 'Rock Grinders',        minDepth: 3, needs: 'crusher',
       desc: 'Crushers chew rock as well as rubble.' },
+    // M-SCHEMS2: the second batch. Same Balatro grammar as the first fourteen
+    // — a name and ONE consequence — and the same gating grammar as M-TIER2
+    // where an ungated card would be a dead pick: `minDepth` measures the
+    // floor the card is USED on, so the Magma Boiler is only dealt going down
+    // to ground that has magma at all.
+    { id: 's_boiler',   name: 'Magma Boiler',         minDepth: 6,
+      desc: 'Smelters beside magma burn no coal.' },
+    // Charges gate the breach from stratum 5 down; above that the card would
+    // discount a recipe nothing is running.
+    { id: 's_echo',     name: 'Echo Charges',         minDepth: 5,
+      desc: 'Every fifth core charge assembles free.' },
+    { id: 's_chute',    name: 'Gravity Chute',
+      desc: 'Demolished machines refund 75% of their cost.' },
+    { id: 's_jury',     name: 'Jury Rig',
+      desc: 'Damaged machines run full speed. Each costs 1 hull a minute.' },
+    { id: 's_insure',   name: 'Deep Insurance',
+      desc: 'The first killing blow leaves 1 integrity instead. Once.' },
+    { id: 's_loop',     name: 'Closed Loop',
+      desc: 'Dampers burn no coal, but calm half as much.' },
+    // `needsModule` names a DC module that must be LOADED for the card to be
+    // in the deck at all — the schematic deck's copy of the mutator table's
+    // `needs` contract. This is 'worm season' again: M-WORMS has not landed,
+    // the card is written, and the day `DC.Worms` loads it deals itself.
+    { id: 's_whisper',  name: 'Worm Whisperer',       needsModule: 'Worms',
+      desc: 'Vein worms also come when the cursor calls.' },
   ];
 
   // ---------------- meta upgrades (Foundry) ----------------
@@ -581,6 +606,77 @@
     { id: 'shaft',    w: 10, bark: 'oldShaft' },
     { id: 'rig',      w: 6,  plates: 12, bark: 'deadRig' },
   ];
+
+  // ---------------- M-MANTLE: mutators for the deep ----------------
+  // From stratum 9 down, every floor rolls ONE mutator and wears it on the
+  // banner. This is the Balatro half of the lineage note (§0): a pick with a
+  // name and a single consequence a player can hold in their head, never a
+  // sheet of modifiers. Seven of them, one per floor, rolled from `run.rng` at
+  // exactly one site (sim.js startStratum) and stored on the run — law 7 means
+  // a re-render must never re-roll, so nothing else in the tree may draw here.
+  //
+  // WHY 9 AND NOT EARLIER. Strata 1-8 are the game's argument, and it is the
+  // same argument every run: the chain, the pressure, the descent. The Mantle
+  // is where a player who has already won comes back for variety, and variety
+  // that arrives before mastery is just noise (§0 law 4 — pressure forward,
+  // never grind).
+  //
+  // `name` + `tag` are BOTH drawn, together, on the rule under the header —
+  // 47 columns for the pair plus its furniture, which is why neither is prose.
+  // The tag is the whole rule: if a mutator needs two sentences it is two
+  // mutators, or it is the wrong mutator.
+  //
+  // `needs` names a DC module that must be LOADED for the mutator to be dealt
+  // at all. An absent module is not an error and not a half-mutator: the entry
+  // simply is not in the roll table, and the floor rolls one of the others.
+  // That is how 'worm season' ships today — M-WORMS does not exist yet, the
+  // line is written, and the day `DC.Worms` loads it deals itself.
+  D.MUTATOR_DEPTH = D.STRATA_COUNT + 1;   // first floor that rolls one (9)
+  D.MUTATORS = [
+    // Inverts the reveal: the whole floor is handed to you and then taken
+    // back, ring by ring from the edges, and the scan disc stops growing.
+    // Everything it costs is arithmetic the reveal math already did.
+    { id: 'dark', name: 'THE DARK RISES', tag: 'the map forgets',
+      ringT: 20 },
+    // A throughput question with a knife in it: the drill bites 1.7x as often
+    // and swallows two gears a bite, so a base that was exactly keeping up is
+    // now 15% short and a base with slack is a floor faster.
+    { id: 'hungry', name: 'HUNGRY DRILL', tag: 'two gears a bite',
+      gearCost: 2, drillMult: 1.7 },
+    // A placement puzzle. No coal in the rock at all, and a smelter only works
+    // where it can reach the planet's own furnace — which is out at the map's
+    // edge, a long belt from the rig, and does not burn its smith.
+    { id: 'coldseam', name: 'COLD SEAM', tag: 'smelt beside magma',
+      magma: 2 },
+    // M-WORMS. Written, gated, and dealt the day that module loads.
+    { id: 'worms', name: 'WORM SEASON', tag: 'three of them, hungry',
+      needs: 'Worms', count: 3 },
+    // The floor erodes under the base: a quake that lands on ground it has
+    // already buried opens it instead. Camping a rubble field stops working.
+    { id: 'glass', name: 'GLASS FLOORS', tag: 'rubble becomes hole' },
+    // Pure barks, and the cheapest dread in the game: the Core repeats the
+    // foreman back at him, wrong.
+    { id: 'echo', name: 'ECHO CHAMBER', tag: 'something repeats you' },
+    // The sprint. Cheaper to leave, far more expensive to stay.
+    { id: 'seal', name: 'THE SEAL', tag: 'breach -30%, pressure +50%',
+      breachMult: 0.7, instMult: 1.5 },
+  ];
+  D.MUTATOR_BY_ID = {};
+  for (const M of D.MUTATORS) D.MUTATOR_BY_ID[M.id] = M;
+
+  // ---------------- M-SCHEMS2 tuning ----------------
+  // Echo Charges: one charge in this many is free. Five is the number the
+  // brief names; it lives here because sim.js spends it AND Sim.chain divides
+  // by it to keep the CHAIN panel's crystal draw honest, and CX-02 is what
+  // happens when one number is typed in two places.
+  D.ECHO_EVERY = 5;
+  // Gravity Chute's refund, against D.DEMOLISH_REFUND's half.
+  D.CHUTE_REFUND = 0.75;
+  // Jury Rig: integrity a damaged machine costs per minute while it is being
+  // run flat out. Per MACHINE — three broken machines is three a minute.
+  D.JURY_DRAIN = 1;
+  // Closed Loop: dampers stop burning coal and calm half as much.
+  D.CLOSED_LOOP_CALM = 0.5;
 
   D.SAVE_KEY = 'deepcore_save_v1';
   // Display only (title-screen corner). v1.1 is the shipped feature set —

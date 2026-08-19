@@ -1161,10 +1161,21 @@ const BOT = {
   // (see installUnderpass for the one exception), so taking one over Hull
   // Plating would be the harness measuring its own blind spot and calling it a
   // balance number. A human on stratum 3+ reads that list the other way round.
-  pickOrder: ['s_plate', 's_damp', 's_drill', 's_charge', 's_extract', 's_smelt',
+  // M-SCHEMS2 added seven cards, and a fixed priority list is exactly the
+  // thing a bigger deck punishes: every id missing from this list is one the
+  // bot cannot recognise when it is offered, so it falls through to
+  // pendingOffers[0] and spends its one pick at random. Ranked for THIS bot,
+  // which scraps its whole base before every descent (Gravity Chute pays it
+  // directly), runs dampers from stratum 2 (Closed Loop keeps them venting
+  // when its coal line stalls) and dies to quakes at s5 (Deep Insurance is a
+  // free extra life). Magma Boiler and Jury Rig sit last: it never sites a
+  // smelter on lava, and it never repairs, so a hull drain is pure cost.
+  pickOrder: ['s_plate', 's_damp', 's_insure', 's_drill', 's_charge', 's_echo',
+              's_chute', 's_loop', 's_extract', 's_smelt',
               's_veins', 's_salvage', 's_coal', 's_survey', 's_over',
               's_beltfree', 's_repair', 's_gear',
-              's_conduit', 's_yoke', 's_gate', 's_grind'],
+              's_conduit', 's_yoke', 's_gate', 's_grind',
+              's_boiler', 's_jury'],
 };
 function pickSchematic(run) {
   for (const id of BOT.pickOrder) if (run.pendingOffers.indexOf(id) >= 0) return id;
@@ -1362,9 +1373,9 @@ console.log(`
   ---------------------------------------------------------------------------
   s1 breach 90-150s +~40s build    naked, standard       med 137s      OK
   first runs bank 2-5 cores        naked                 med 3         OK
-  survive stratum 2 >= 80%         naked                 93% / 86%     OK
-  full win in 15-25 min            full Foundry, std     10/14 @ 22.9m OK
-  camping ~1.5x pace dies s6-s7    full Foundry, camper  med 8   DRIFTED
+  survive stratum 2 >= 80%         naked                 100% / 93%    OK
+  full win in 15-25 min            full Foundry, std     2/14 @ 21.7m DILUTED
+  camping ~1.5x pace dies s6-s7    full Foundry, camper  med 5   DRIFTED
 
   The win target is deliberately NOT checked on a naked rig. SPEC §12 scopes it
   to "competent play", and the Foundry is the game's answer to a first run that
@@ -1381,12 +1392,36 @@ console.log(`
   it cannot site next to a charge assembler out on the crystals. That is the
   next piece of bot, not the next piece of tuning.
 
-  DRIFTED (camper): the same router carries the camper DEEPER before the
-  planet collects — canonical 14 seeds went med 7 -> med 8, one past the
-  target band, and its wins went 3 -> 0. Zero wins is more on-message than
-  three (overstaying should not pay), but the band says the debt should be
-  collected at s6-s7. No data.js value moved; the measuring stick got
-  smarter. Logged for M-HUMANBAL's tuning pass rather than patched, per
-  that ledger's standing rule.`);
+  DILUTED (win count): M-SCHEMS2 took the deck from 18 cards to 25, and a
+  bot that picks off a FIXED PRIORITY LIST is exactly what a bigger deck
+  punishes — its survival cards (Hull Plating, Seismic Dampers) are offered
+  far less often, and every id it does not recognise is a pick spent at
+  random. Canonical 14 seeds went 10/14 @ 22.9m to 2/14 @ 21.7m.
+
+  This was ISOLATED rather than assumed, and the experiment is worth
+  repeating if the number moves again:
+
+    node tools/ab.js "D.SCHEMATICS = D.SCHEMATICS.filter(s =>
+      ['s_boiler','s_echo','s_chute','s_jury','s_insure','s_loop',
+       's_whisper'].indexOf(s.id) < 0)"          -> 10/14 @ 22.9m, restored
+
+    node tools/ab.js "D.SCHEMATICS.forEach(s => { if ([...same...]
+      .indexOf(s.id) >= 0) s.id = 'x' + s.id; })" -> 0/14, deaths at the
+                                                     IDENTICAL depths
+
+  The second one is the answer: the seven cards DEALT BUT INERT cost exactly
+  as much as the seven cards working. So the drop is the deck's size against
+  this bot's policy, not the cards' effects — the shape the footer's KNOWN
+  CEILING paragraph has always described. 'pickOrder' was extended to rank
+  the new batch (that is the sanctioned fix, and it bought back 2 wins); the
+  rest is the bot needing to read an offer instead of a list, which is the
+  next piece of bot. A human picking knowingly is not diluted by variety —
+  that is what the batch is FOR. No data.js value moved.
+
+  DRIFTED (camper): superseded, and in the other direction. The med 8 logged
+  last wave (one PAST the s6-s7 band) is now med 5, one short of it, on the
+  same deck-dilution mechanism. Still logged for M-HUMANBAL rather than
+  patched, per that ledger's standing rule — with the note that the camper
+  band should be re-measured against a bot that picks, not one that lists.`);
 console.log('─'.repeat(78));
 console.log('\ndone in ' + Math.round(elapsed()) + 's wall');

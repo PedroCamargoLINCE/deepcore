@@ -150,6 +150,46 @@
     return out;
   }
 
+  // ---------------- M-MANTLE: the deep's one rule per floor ----------------
+  // ONE ROLL, AT ONE SITE, STORED ON THE RUN (§0 law 7). `rollMutator` is
+  // called from startStratum and from nowhere else; every consumer below reads
+  // `run.mutator` and never draws. A re-render cannot re-roll it, a tooltip
+  // cannot re-roll it, and the balance sweep's numbers move only when the
+  // tuning moves — which is the whole point of the law.
+  //
+  // The table is filtered by what is LOADED, not by what is written. A mutator
+  // whose `needs` module is absent is not in the deck at all: it is not dealt,
+  // it is not a silent no-op floor, and the roll picks among the rest. That is
+  // 'worm season' today (M-WORMS has not landed), and it is how any future
+  // module-gated floor rule should arrive.
+  function mutatorTable() {
+    return (D.MUTATORS || []).filter(function (m) {
+      return !m.needs || !!DC[m.needs];
+    });
+  }
+  function rollMutator(run) {
+    run.mutator = null;
+    run.dark = 0;
+    const first = D.MUTATOR_DEPTH || (D.STRATA_COUNT + 1);
+    if (run.depth < first) return;
+    const table = mutatorTable();
+    if (!table.length) return;
+    run.mutator = table[Math.floor(run.rng() * table.length)].id;
+  }
+  function mutDef(run) {
+    const id = run && run.mutator;
+    return id ? (D.MUTATOR_BY_ID || {})[id] || null : null;
+  }
+  function isMut(run, id) { return !!run && run.mutator === id; }
+  // The tuning field of the ACTIVE mutator, or the neutral value. Every site
+  // below reads its number through this rather than typing it, so a mutator's
+  // strength lives in data.js beside its name and its one-line consequence.
+  function mutVal(run, id, key, dflt) {
+    const def = isMut(run, id) ? mutDef(run) : null;
+    const v = def ? def[key] : undefined;
+    return v === undefined ? dflt : v;
+  }
+
   function setResult(run, won) {
     run.result = {
       depth: run.depth, breaches: run.breaches,
@@ -170,6 +210,13 @@
       // fields rather than new mechanics, so a tier-II schematic can never
       // teach a rule the plain structure does not already teach.
       tunnelMult: 1, split3: false, smartGate: false, crushRock: false,
+      // M-SCHEMS2: the second batch. Flags read by machinery that already
+      // exists — the forge check above all (M-MANTLE built it, this switches
+      // it on as a reward instead of a rule).
+      magmaBoiler: false, echoCharge: false, juryRig: false, insurance: false,
+      closedLoop: false, wormBeacon: false,
+      // Gravity Chute raises this; everything demolished reads it.
+      refund: D.DEMOLISH_REFUND,
     };
   }
   function applyMeta(mods, fx) {
@@ -209,6 +256,15 @@
       case 's_yoke': m.split3 = true; break;
       case 's_gate': m.smartGate = true; break;
       case 's_grind': m.crushRock = true; break;
+      // M-SCHEMS2
+      case 's_boiler': m.magmaBoiler = true; break;
+      case 's_echo': m.echoCharge = true; break;
+      case 's_chute': m.refund = D.CHUTE_REFUND; break;
+      case 's_jury': m.juryRig = true; break;
+      case 's_insure': m.insurance = true; break;
+      case 's_loop': m.closedLoop = true; break;
+      // Written for M-WORMS: that module reads the flag; nothing here does.
+      case 's_whisper': m.wormBeacon = true; break;
     }
   }
 
@@ -221,6 +277,10 @@
       depth: 1, status: 'active', t: 0, totalT: 0,
       grid: null, hub: null, machines: {}, nextId: 1,
       inv: {}, gearsFed: 0, chargesFed: 0,
+      // M-SCHEMS2/Echo Charges: charges assembled this run. A counter and not
+      // a roll (law 7): the fifth is free because it is the fifth, every time.
+      // `insured` is Deep Insurance's one payout, spent.
+      echoN: 0, insured: false,
       breachReq: { gear: 0, charge: 0 },
       integrity: 0, maxIntegrity: 0,
       instability: 0, quakeAt: 0, overdrive: false,
@@ -242,6 +302,9 @@
       // M-WONDERS: this stratum's landmark (mapgen decides which and where;
       // everything below `cells` is the state a player's clicks write).
       landmark: null,
+      // M-MANTLE: this floor's rule (null on strata 1-8) and, for 'the dark
+      // rises', how many rings of the edge it has already taken back.
+      mutator: null, dark: 0,
       _feed: [], _lastRevealR: -1,
     };
     for (const k in D.START_STOCK) add(run.inv, k, D.START_STOCK[k]);
@@ -255,7 +318,12 @@
 
   function startStratum(run) {
     const S = stratumOf(run);
-    const gen = DC.MapGen.generate(run.depth, run.rng, run.mods);
+    // M-MANTLE: the floor's rule is decided BEFORE its ground is, because one
+    // of them ('cold seam') is a mapgen instruction — no coal in the rock and
+    // a guaranteed pair of magma pools to smelt at. Rolling after the map
+    // would mean either a second map or a mutator that lies.
+    rollMutator(run);
+    const gen = DC.MapGen.generate(run.depth, run.rng, run.mods, run.mutator);
     run.grid = gen.grid;
     run.hub = gen.hub;
     // M-WONDERS: mapgen may legally return no landmark (a map that could not
@@ -270,9 +338,11 @@
     run.instability = Math.max(0, run.instability - D.DESCEND_VENT);
     run.gearsFed = 0;
     run.chargesFed = 0;
+    // M-MANTLE/'the seal': the floor is thinner and the planet minds more.
+    const seal = mutVal(run, 'seal', 'breachMult', 1);
     run.breachReq = {
-      gear: Math.ceil(S.breach.gear * run.mods.breachMult),
-      charge: Math.ceil(S.breach.charge * run.mods.breachMult),
+      gear: Math.ceil(S.breach.gear * run.mods.breachMult * seal),
+      charge: Math.ceil(S.breach.charge * run.mods.breachMult * seal),
     };
     run.machines = {
       0: { id: 0, type: 'hub', x: run.hub.x, y: run.hub.y, w: 3, h: 3, facing: 0,
@@ -292,12 +362,17 @@
     run.magmaCap = Math.floor(magma * D.MAGMA.growthCap);
     run._feed = [];
     run._lastRevealR = -1;
-    if (run.mods.fullReveal) {
+    // M-MANTLE/'the dark rises' hands you the whole floor exactly once, the
+    // way Deep Sonar does — and then spends the stratum taking it back.
+    if (run.mods.fullReveal || isMut(run, 'dark')) {
       for (let y = 0; y < D.MAP_H; y++)
         for (let x = 0; x < D.MAP_W; x++) run.grid[y][x].revealed = true;
       run._lastRevealR = 9999;
     }
     updateReveal(run);
+    // ...and the floor announces its rule. Only when it HAS one: strata 1-8
+    // push nothing, so no consumer has to learn to ignore an empty event.
+    if (run.mutator) pushEvent(run, 'mutator', { id: run.mutator, depth: run.depth });
   }
 
   // ---------------- M-WONDERS: stratum landmarks (SPEC3) ----------------
@@ -453,8 +528,21 @@
   }
 
   // ---------------- reveal (§5.6) ----------------
+  // The sweep's radius. Ordinarily it grows a ring every REVEAL_TICKS and
+  // never stops, which is why a stratum is fully drawn about a minute in.
+  //
+  // M-MANTLE/'the dark rises' FREEZES it at the starting disc, and that is the
+  // whole mutator: the brief calls the scan radius "your only lantern", and a
+  // lantern that grows to 33 tiles inside a minute is a floodlight. What the
+  // rig can see is what it could see when it landed (plus m_scan's eight
+  // tiles, which is exactly the upgrade you want on this floor).
+  function revealRadius(run) {
+    const base = D.REVEAL_R0 + run.mods.scanBonus;
+    if (isMut(run, 'dark')) return base;
+    return base + Math.floor(run.t / D.REVEAL_TICKS);
+  }
   function updateReveal(run) {
-    const r = D.REVEAL_R0 + run.mods.scanBonus + Math.floor(run.t / D.REVEAL_TICKS);
+    const r = revealRadius(run);
     if (r <= run._lastRevealR) return;
     run._lastRevealR = r;
     const cx = run.hub.x + 1, cy = run.hub.y + 1, r2 = r * r;
@@ -466,12 +554,41 @@
       }
   }
 
+  // M-MANTLE/'the dark rises': one ring of the map's edge is un-drawn every
+  // `ringT` seconds, and the lantern is relit inside the same step — so the
+  // disc around the rig stays lit and everything past it goes back to being
+  // rumour. It costs no roll (a tick count decides it) and it walks inward
+  // until the whole board is dark but the lamp, which takes about four
+  // minutes: longer than a Mantle floor should take, shorter than one you are
+  // losing. Un-revealed ground is un-BUILDABLE ground (canPlace), so this is
+  // pressure on where the base can grow and not merely on what you can see.
+  function stepDark(run) {
+    if (!isMut(run, 'dark')) return;
+    const per = Math.max(1, Math.round(mutVal(run, 'dark', 'ringT', 20) * HZ));
+    if (run.t <= 0 || run.t % per !== 0) return;
+    const maxRing = Math.ceil(Math.min(D.MAP_W, D.MAP_H) / 2);
+    if ((run.dark || 0) >= maxRing) return;
+    const r = run.dark = (run.dark || 0) + 1;
+    for (let y = 0; y < D.MAP_H; y++)
+      for (let x = 0; x < D.MAP_W; x++)
+        if (Math.min(x, y, D.MAP_W - 1 - x, D.MAP_H - 1 - y) < r)
+          run.grid[y][x].revealed = false;
+    run._lastRevealR = -1;
+    updateReveal(run);
+    // Said once, on the first ring. After that the map is saying it, every
+    // second, in the only language this game has (§0 law 6 beats a reminder).
+    if (r === 1)
+      msg(run, 'The dark comes in from the walls. The lamp is all you have.',
+          D.COLORS.gray);
+  }
+
   // ---------------- tick (§5.1) ----------------
   function tick(run) {
     if (run.status !== 'active' && run.status !== 'breachReady') return;
     run.t++;
     run.totalT++;
     updateReveal(run);
+    stepDark(run);        // M-MANTLE: ...and then takes a ring of it back
     for (let y = 0; y < D.MAP_H; y++)
       for (let x = 0; x < D.MAP_W; x++) {
         const t = run.grid[y][x];
@@ -514,6 +631,17 @@
     // every run a returning player starts is arithmetically untouched.
     if (!run.instHold)
       run.instability = U.clamp(run.instability + instRate(run) / HZ, 0, 100);
+    // M-SCHEMS2/Jury Rig: every damaged machine runs whole and bills the hull
+    // for the privilege — working or idle, because it is the patch cable that
+    // costs, not the work. Repair it and the bleeding stops.
+    if (run.mods.juryRig) {
+      let patched = 0;
+      for (const id in run.machines) {
+        const m = run.machines[id];
+        if (m && m.id !== 0 && m.hp === 1) patched++;
+      }
+      if (patched > 0) run.integrity -= patched * D.JURY_DRAIN / (60 * HZ);
+    }
     stepLandmark(run);
     stepEgg(run);
     stepCoreGate(run);
@@ -530,16 +658,31 @@
       pushEvent(run, 'breachReady', { depth: run.depth });
     }
     if (run.integrity <= 0) {
-      run.integrity = 0;
-      run.status = 'dead';
-      setResult(run, false);
-      msg(run, 'The rig gives way. The depth keeps it.', D.COLORS.red);
-      pushEvent(run, 'death', { depth: run.depth, cause: 'integrity' });
+      // M-SCHEMS2/Deep Insurance: the one blow the paperwork takes for you.
+      // However far past zero the hit drove the hull, the policy pays back to
+      // exactly 1 — once per run, and the second lethal hit is simply lethal.
+      if (run.mods.insurance && !run.insured) {
+        run.insured = true;
+        run.integrity = 1;
+        msg(run, '»» THE POLICY PAYS OUT — integrity 1. Once. ««', D.COLORS.cyan);
+        pushEvent(run, 'insurance', { depth: run.depth });
+      } else {
+        run.integrity = 0;
+        run.status = 'dead';
+        setResult(run, false);
+        msg(run, 'The rig gives way. The depth keeps it.', D.COLORS.red);
+        pushEvent(run, 'death', { depth: run.depth, cause: 'integrity' });
+      }
     }
   }
 
   // ---------------- machines (§5.3) ----------------
-  function halfSkip(run, m) { return m.hp === 1 && run.t % 2 === 1; }
+  // M-SCHEMS2/Jury Rig: a damaged machine ordinarily works every other tick.
+  // With the card it works every tick and the drain in tick() bills the hull
+  // instead — speed bought with the one resource the planet is already taking.
+  function halfSkip(run, m) {
+    return m.hp === 1 && !run.mods.juryRig && run.t % 2 === 1;
+  }
 
   function outputTile(m) {
     if (m.facing === 0) return { x: m.x + ((m.w - 1) >> 1), y: m.y - 1 };
@@ -765,6 +908,49 @@
     for (let i = 0; i < n; i++) m.out.push('ironOre');
   }
 
+  // ---------------- the planet's forge (M-MANTLE + M-SCHEMS2) ----------------
+  // ONE ADJACENCY CHECK, TWO CONSUMERS, ON PURPOSE. 'cold seam' (no coal in
+  // the rock; a smelter only works beside magma) and the Magma Boiler
+  // schematic (a smelter beside magma needs no coal) are the same idea read
+  // from opposite ends — the mutator makes it compulsory, the card makes it a
+  // reward — so they are the same code. Two separate implementations of "is
+  // this smelter touching lava" is exactly how a rule ends up meaning two
+  // different things on two different tiles.
+  //
+  // BURN IMMUNITY IS PART OF THE ENGINE, not a courtesy. D.MAGMA.burnPeriod
+  // damages every machine adjacent to magma every 5 seconds, and a smelter has
+  // 2 hp: without this, "put your smelter next to the lava" would be an
+  // instruction to destroy it inside ten seconds, and the card would be a trap
+  // rather than a pick. A smelter working the forge is not standing too close
+  // to the fire; it IS the fire's chimney.
+  function adjMagma(run, x, y) {
+    for (const d of D.DIRS) {
+      const t = tileAt(run, x + d.dx, y + d.dy);
+      if (t && t.t === 'magma') return true;
+    }
+    return false;
+  }
+  function touchesMagma(run, m) {
+    for (let y = m.y; y < m.y + m.h; y++)
+      for (let x = m.x; x < m.x + m.w; x++)
+        if (adjMagma(run, x, y)) return true;
+    return false;
+  }
+  // The forge is live for this smelter: free heat, and the lava leaves it be.
+  function forgeSmelter(run, m) {
+    if (!m || m.type !== 'smelter') return false;
+    if (!isMut(run, 'coldseam') && !(run.mods && run.mods.magmaBoiler)) return false;
+    return touchesMagma(run, m);
+  }
+  // Cold seam ONLY: away from the magma there is nothing to burn and nothing
+  // to burn it with, so the smelter is a cold box. The Magma Boiler never does
+  // this — a card that switched off the smelters you already had would be a
+  // punishment dealt as a reward.
+  function coldSmelter(run, m) {
+    return !!m && m.type === 'smelter' && isMut(run, 'coldseam') &&
+           !touchesMagma(run, m);
+  }
+
   function stepMachine(run, m) {
     const B = D.BUILDINGS[m.type];
     const wasDepleted = m.status === 'depleted';
@@ -778,7 +964,10 @@
     // `missing` (M-ONBOARD) is the input an assembler is short of, or null —
     // the one fault the status word cannot express, because a starving
     // assembler and a brand new one both read 'idle'.
+    // `cold` (M-MANTLE) is the fifth fault: a smelter on a cold seam floor,
+    // standing nowhere near the only heat the floor has.
     let working = false, nofuel = false, depleted = false, missing = null;
+    let cold = false;
     if (m.type === 'extractor') {
       const t = tileAt(run, m.x, m.y);
       if (!t || !t.ore || t.oreAmt <= 0) depleted = true;
@@ -794,17 +983,22 @@
         }
       }
     } else if (m.type === 'smelter') {
-      if (!m.job && m.out.length === 0) {
+      // M-MANTLE/'cold seam' + M-SCHEMS2/Magma Boiler: at the forge the heat
+      // is the planet's, so no fuel is drawn and none is missed. Under cold
+      // seam a smelter anywhere else does not start a job at all.
+      const forge = forgeSmelter(run, m);
+      cold = coldSmelter(run, m);
+      if (!cold && !m.job && m.out.length === 0) {
         let r = null;
         if ((m.input.ironOre || 0) >= 1) r = 'smeltIron';
         else if ((m.input.copperOre || 0) >= 1) r = 'smeltCopper';
         if (r) {
-          if (m.fuel <= 0 && (m.input.coal || 0) > 0) {
+          if (!forge && m.fuel <= 0 && (m.input.coal || 0) > 0) {
             m.input.coal--;
             m.fuel = D.FUEL_PER * (run.mods.coalX2 ? 2 : 1);
           }
-          if (m.fuel > 0) {
-            m.fuel--; // one smelt per fuel unit
+          if (forge || m.fuel > 0) {
+            if (!forge) m.fuel--; // one smelt per fuel unit
             const rec = D.RECIPES[r];
             for (const k in rec.in) m.input[k] -= rec.in[k];
             m.job = r;
@@ -828,11 +1022,20 @@
       if (!m.recipe) m.recipe = 'gear';
       if (!m.job && m.out.length === 0) {
         const rec = D.RECIPES[m.recipe];
+        // M-SCHEMS2/Echo Charges: the fifth charge needs nothing at all — not
+        // a discount on the recipe but a job that starts with the buffer as it
+        // is, so a line four charges deep gets its fifth even while the
+        // crystal run is still arriving.
+        const free = m.recipe === 'charge' && run.mods.echoCharge &&
+                     ((run.echoN || 0) + 1) % D.ECHO_EVERY === 0;
         let can = true;
-        for (const k in rec.in)
-          if ((m.input[k] || 0) < rec.in[k]) { can = false; missing = k; break; }
+        if (!free)
+          for (const k in rec.in)
+            if ((m.input[k] || 0) < rec.in[k]) { can = false; missing = k; break; }
         if (can) {
-          for (const k in rec.in) m.input[k] -= rec.in[k];
+          if (!free) for (const k in rec.in) m.input[k] -= rec.in[k];
+          if (m.recipe === 'charge' && run.mods.echoCharge)
+            run.echoN = (run.echoN || 0) + 1;
           m.job = m.recipe;
           m.progress = 0;
         }
@@ -849,9 +1052,14 @@
         }
       }
     } else if (m.type === 'damper') {
-      if (m.fuel <= 0 && (m.input.coal || 0) > 0) { m.input.coal--; m.fuel = B.coalTicks; }
-      if (m.fuel > 0) { m.fuel--; working = true; }
-      else nofuel = true;
+      // M-SCHEMS2/Closed Loop: it just runs. No coal drawn, none missed —
+      // instRate reads the card and halves the calm instead.
+      if (run.mods.closedLoop) working = true;
+      else {
+        if (m.fuel <= 0 && (m.input.coal || 0) > 0) { m.input.coal--; m.fuel = B.coalTicks; }
+        if (m.fuel > 0) { m.fuel--; working = true; }
+        else nofuel = true;
+      }
     } else if (m.type === 'crusher') {
       // M-TIER2: the hazard, banked. Nearest rubble first (pure arithmetic on
       // the grid — no roll, law 7), one grind per period, ore out the arrow.
@@ -879,6 +1087,7 @@
     m.status = lonely ? 'unpaired'
       : depleted ? 'depleted'
       : m.hp === 1 ? 'damaged'
+      : cold ? 'cold'
       : nofuel ? 'nofuel'
       : stuck ? 'blocked'
       : isBeltLike(m) ? (m.out.length ? 'ok' : 'idle')
@@ -1052,13 +1261,23 @@
   }
 
   // ---------------- drill (§5.7) ----------------
+  // M-MANTLE/'hungry drill': she bites 1.7x as often and takes two gears a
+  // bite. That is a THROUGHPUT question and not a nerf — the same base makes
+  // the same gears per second, and whether the floor is faster or slower than
+  // it was depends entirely on whether that number was above 2x the feed rate
+  // or below it. A base with slack gets a floor 70% quicker; a base that was
+  // exactly keeping up starves. Charges are untouched: the drill is hungry for
+  // gears, and two hungers would be two mutators.
+  function drillCost(run) { return mutVal(run, 'hungry', 'gearCost', 1); }
   function drillPeriod(run) {
     return Math.max(1, Math.round(D.DRILL_PERIOD / run.mods.drillMult /
+      mutVal(run, 'hungry', 'drillMult', 1) /
       (run.overdrive ? D.OVERDRIVE.drillMult : 1)));
   }
   function stepDrill(run) {
-    if (run.gearsFed < run.breachReq.gear && (run.inv.gear || 0) > 0) {
-      run.inv.gear--;
+    const cost = drillCost(run);
+    if (run.gearsFed < run.breachReq.gear && (run.inv.gear || 0) >= cost) {
+      run.inv.gear -= cost;
       run.gearsFed++;
       run._feed.push({ t: run.t, item: 'gear' });
       if (run.stats) run.stats.lastFeedT = run.totalT;
@@ -1080,7 +1299,9 @@
   function diagDrill(run) {
     if (run.t < D.DIAG.stallT * HZ) return;
     if (run.gearsFed < run.breachReq.gear) {
-      if (!(run.inv.gear > 0)) diag(run, 'stallGear', {});
+      // ...and 'a gear' means a bite's worth: a hungry drill with one gear in
+      // the crate is as stalled as one with none (M-MANTLE).
+      if (!((run.inv.gear || 0) >= drillCost(run))) diag(run, 'stallGear', {});
       return;                       // gears gate the breach first: one lesson at a time
     }
     if (run.chargesFed < run.breachReq.charge && !(run.inv.charge > 0))
@@ -1113,12 +1334,17 @@
   // number in test/balance.js depend on the shape of the base).
   function machineRate(run, m) {
     const B = D.BUILDINGS[m.type];
-    const dmg = m.hp === 1 ? 0.5 : 1;                 // halfSkip: every other tick
+    // halfSkip: every other tick — unless Jury Rig is paying the hull for it.
+    const dmg = m.hp === 1 && !(run.mods && run.mods.juryRig) ? 0.5 : 1;
     if (m.type === 'extractor') {
       if (m.status === 'depleted') return 0;
       return HZ * run.mods.extractMult * auraMult(run, 'extract', m.x, m.y) / B.period * dmg;
     }
     if (m.type === 'smelter') {
+      // M-MANTLE/'cold seam': a smelter off the magma makes nothing, and the
+      // panel says nothing rather than a rate it will never reach — the same
+      // honesty a mined-out extractor and an unfed crusher already get.
+      if (coldSmelter(run, m)) return 0;
       return HZ * run.mods.smeltMult * auraMult(run, 'smelt', m.x, m.y) /
              D.RECIPES.smeltIron.ticks * dmg;
     }
@@ -1157,6 +1383,7 @@
     let gearRate = 0, gearN = 0, gearIn = 0, gearOut = 0;
     let chargeRate = 0, chargeN = 0;
     let routeN = 0, routeRate = 0, lonely = 0;
+    let coldN = 0;                                     // M-MANTLE/'cold seam'
     let noCoal = false, blocked = false, starved = false, damaged = false;
     for (const id in run.machines) {
       const m = run.machines[id];
@@ -1181,12 +1408,21 @@
         const rec = D.RECIPES[smelterRecipe(m)];
         for (const k in rec.in) add2(k, -r * rec.in[k]);
         for (const k in rec.out) add2(k, r * rec.out[k]);
-        add2('coal', -r / (D.FUEL_PER * (run.mods.coalX2 ? 2 : 1)));
+        // The forge burns the planet's coal, not yours. A CHAIN panel still
+        // drawing a coal drain for a Magma Boiler smelter would send the
+        // player mining a vein they do not need (M-MANTLE / M-SCHEMS2).
+        if (!forgeSmelter(run, m))
+          add2('coal', -r / (D.FUEL_PER * (run.mods.coalX2 ? 2 : 1)));
         plateRate += r; plateN++;
         if (m.status === 'nofuel') noCoal = true;
+        if (m.status === 'cold') coldN++;
       } else if (m.type === 'assembler') {
         const rec = D.RECIPES[m.recipe || 'gear'];
-        for (const k in rec.in) add2(k, -r * rec.in[k]);
+        // M-SCHEMS2/Echo Charges: one charge in five costs nothing, so the
+        // whole recipe draws four fifths of what it reads on the card.
+        const inMult = (m.recipe === 'charge' && run.mods && run.mods.echoCharge)
+          ? 1 - 1 / D.ECHO_EVERY : 1;
+        for (const k in rec.in) add2(k, -r * rec.in[k] * inMult);
         for (const k in rec.out) add2(k, r * rec.out[k]);
         if (m.recipe === 'charge') { chargeRate += r * (rec.out.charge || 1); chargeN++; }
         else {
@@ -1198,7 +1434,10 @@
           if (m.starveSince) starved = true;
         }
       } else if (m.type === 'damper') {
-        add2('coal', -HZ / D.BUILDINGS.damper.coalTicks);
+        // Closed Loop dampers draw nothing, and the panel must not send the
+        // player mining coal for them (same honesty as the forge above).
+        if (!(run.mods && run.mods.closedLoop))
+          add2('coal', -HZ / D.BUILDINGS.damper.coalTicks);
       }
       if (m.status === 'blocked') blocked = true;
       if (m.hp === 1) damaged = true;
@@ -1246,6 +1485,10 @@
       if (s.n === 0) {
         s.flag = namedNone ? '' : 'NONE';
         namedNone = true;
+      } else if (s.id === 'plate' && coldN) {
+        // A cold smelter is not starved and it is not out of coal — it is in
+        // the wrong place, and that is the only sentence that helps.
+        s.flag = 'COLD';
       } else {
         s.flag = (s.id === 'plate' && noCoal) ? 'NO COAL' : s.limiting ? 'STARVED' : '';
       }
@@ -1265,6 +1508,10 @@
       // so it rides the CHAIN header, where the count says what you built and
       // the rate says why it is not your bottleneck (SPEC §12).
       route: { n: routeN, rate: routeRate, lonely: lonely },
+      // M-MANTLE: gears per bite (1, or 2 under 'hungry drill') and how many
+      // smelters this floor has frozen out. Both are read by the panel and
+      // both are what makes the projection below true rather than optimistic.
+      drillCost: drillCost(run), cold: coldN,
       breachSec: breachEta(run, gears, chargeRate, drillRate),
     };
   }
@@ -1287,7 +1534,13 @@
       }
       return s;
     };
-    const g = leg(req.gear - run.gearsFed, run.inv.gear || 0, gearsPerSec);
+    // M-MANTLE/'hungry drill': the leg is measured in BITES, not gears, so a
+    // crate of 40 with a two-gear bite is twenty bites and a line making 1
+    // gear/s feeds half a bite a second. Divide both by the cost and the rest
+    // of the arithmetic is unchanged — which is the whole reason the mutator
+    // is expressed as a cost rather than as a second kind of feed.
+    const gc = drillCost(run);
+    const g = leg(req.gear - run.gearsFed, (run.inv.gear || 0) / gc, gearsPerSec / gc);
     if (g === null) return null;
     t += g;
     const perCharge = run.mods.chargeX2 ? 2 : 1;
@@ -1341,6 +1594,9 @@
   // ---------------- instability & quakes (§5.5) ----------------
   function instRate(run) {
     let rate = stratumOf(run).instabRate * run.mods.instMult;
+    // M-MANTLE/'the seal': the other half of the sprint. The floor is 30%
+    // cheaper to leave and half again as expensive to stand on.
+    rate *= mutVal(run, 'seal', 'instMult', 1);
     if (eggActive(run)) rate *= D.EGG420.instMult;   // the stratum relaxes too
     if (run.overdrive)
       rate *= run.mods.overCheap ? 1 + (D.OVERDRIVE.instMult - 1) / 2 : D.OVERDRIVE.instMult;
@@ -1351,10 +1607,15 @@
     let dampers = 0;
     for (const id in run.machines) {
       const m = run.machines[id];
-      if (m.type === 'damper' && m.fuel > 0 && dampers < D.DAMPER_MAX) {
+      // M-SCHEMS2/Closed Loop: a looped damper is always venting (no coal to
+      // run out of) and vents half as hard — the card's whole trade.
+      if (m.type === 'damper' && (run.mods.closedLoop || m.fuel > 0) &&
+          dampers < D.DAMPER_MAX) {
         dampers++;
         const calm = Math.min(0.9,
-          D.BUILDINGS.damper.calm * auraMult(run, 'damper', m.x, m.y));
+          D.BUILDINGS.damper.calm *
+          (run.mods.closedLoop ? D.CLOSED_LOOP_CALM : 1) *
+          auraMult(run, 'damper', m.x, m.y));
         rate *= 1 - calm;
       }
     }
@@ -1398,6 +1659,7 @@
     const Q = D.QUAKE;
     const n = Q.tiles(run.instability, run.depth);
     const built = [], floors = [];
+    let glassOpened = 0;                        // M-MANTLE/'glass floors'
     for (let y = 0; y < D.MAP_H; y++)
       for (let x = 0; x < D.MAP_W; x++) {
         // M-WONDERS/The Warm Spot: a tile inside the zone is never a candidate,
@@ -1421,8 +1683,26 @@
         const c = U.pick(run.rng, floors);
         const t = run.grid[c.y][c.x];
         if (t.machine !== null) damageMachine(run, run.machines[t.machine]);
-        else { t.rubble = true; t.belt = null; }
+        // M-MANTLE/'glass floors': ground the planet has already buried once
+        // does not survive being hit twice — it opens. A rubble field used to
+        // be a nuisance you dug through at leisure (and, since M-TIER2, a
+        // supply line you parked a crusher in); here it is the map wearing
+        // through, and the hole it leaves is permanent. Chasm is not
+        // diggable, not buildable and not bridgeable except by a tunnel, so
+        // an eroding floor is a base that has to keep moving.
+        else if (t.rubble && isMut(run, 'glass')) {
+          t.rubble = false; t.belt = null; t.digT = 0;
+          t.ore = null; t.oreAmt = 0;
+          t.t = 'chasm';
+          glassOpened++;
+        } else { t.rubble = true; t.belt = null; }
       }
+    }
+    if (glassOpened > 0) {
+      msg(run, 'The glass floor gives — ' + glassOpened +
+          (glassOpened === 1 ? ' tile' : ' tiles') + ' opened onto nothing.',
+          D.COLORS.blue);
+      pushEvent(run, 'glass', { tiles: glassOpened });
     }
     const dmg = Q.integrityDmg(run.instability, run.depth);
     run.integrity -= dmg;
@@ -1442,13 +1722,10 @@
   function stepMagma(run) {
     if (run.magmaCap <= 0) return;
     const M = D.MAGMA, W = D.MAP_W, H = D.MAP_H, g = run.grid;
-    function adjMagma(x, y) {
-      for (const d of D.DIRS) {
-        const nx = x + d.dx, ny = y + d.dy;
-        if (nx >= 0 && ny >= 0 && nx < W && ny < H && g[ny][nx].t === 'magma') return true;
-      }
-      return false;
-    }
+    // The adjacency test used to be a closure here. It is `adjMagma(run,x,y)`
+    // up by the forge helpers now, because M-MANTLE's cold seam asks the same
+    // question of the same tiles and two answers to "is this touching lava"
+    // is precisely the divergence this file keeps warning about.
     if (run.t % M.period === 0) {
       let count = 0;
       for (let y = 0; y < H; y++)
@@ -1461,7 +1738,12 @@
           // marker is floor at all, but a tile whose terrain said 'magma'
           // while its flag still said 'landmark' would render as a wonder,
           // describe as a wonder and behave as lava.
-          if (t.t === 'floor' && t.machine !== 0 && !t.lm && adjMagma(x, y))
+          // ...and neither is the smith. A smelter working the forge is the
+          // one machine the lava does not take — otherwise 'build beside the
+          // magma' would be an instruction that destroys what it built, and
+          // both the mutator and the card would read as bugs.
+          if (t.t === 'floor' && t.machine !== 0 && !t.lm && adjMagma(run, x, y) &&
+              !(t.machine !== null && forgeSmelter(run, run.machines[t.machine])))
             cand.push({ x: x, y: y });
         }
       let spread = 0;
@@ -1487,16 +1769,17 @@
       for (let y = 0; y < H; y++)
         for (let x = 0; x < W; x++) {
           const t = g[y][x];
-          if (t.belt && adjMagma(x, y)) t.belt = null;
+          if (t.belt && adjMagma(run, x, y)) t.belt = null;
         }
       const ids = Object.keys(run.machines).map(Number).sort((a, b) => a - b);
       for (const id of ids) {
         const m = run.machines[id];
         if (!m) continue;
+        if (forgeSmelter(run, m)) continue;      // the chimney does not burn
         let adj = false;
         for (let y = m.y; y < m.y + m.h && !adj; y++)
           for (let x = m.x; x < m.x + m.w && !adj; x++)
-            if (adjMagma(x, y)) adj = true;
+            if (adjMagma(run, x, y)) adj = true;
         if (!adj) continue;
         if (id === 0) {
           run.integrity -= M.hubBurn;
@@ -1578,7 +1861,9 @@
       if (t.machine === 0) return { ok: false, reason: 'the rig is not yours to scrap' };
       const m = run.machines[t.machine];
       const B = D.BUILDINGS[m.type];
-      for (const k in B.cost) add(run.inv, k, Math.floor(B.cost[k] * D.DEMOLISH_REFUND));
+      // M-SCHEMS2/Gravity Chute: the refund fraction lives on the mods now.
+      const refund = (run.mods && run.mods.refund) || D.DEMOLISH_REFUND;
+      for (const k in B.cost) add(run.inv, k, Math.floor(B.cost[k] * refund));
       for (const k in m.input) if (m.input[k] > 0) add(run.inv, k, m.input[k]);
       destroyMachine(run, m);
       return { ok: true };
@@ -1675,9 +1960,13 @@
   // player who never touches tier II must get the run they would have got.
   function schematicPool(run, depth) {
     const built = (run.stats && run.stats.placed) || {};
+    // M-SCHEMS2: `needsModule` is the mutator table's contract, on the deck —
+    // a card whose module is absent is not dealt, not a dead pick (that is
+    // the Worm Whisperer while M-WORMS has not landed).
     return D.SCHEMATICS
       .filter(s => (!s.minDepth || depth >= s.minDepth) &&
-                   (!s.needs || (built[s.needs] || 0) > 0))
+                   (!s.needs || (built[s.needs] || 0) > 0) &&
+                   (!s.needsModule || !!DC[s.needsModule]))
       .map(s => s.id)
       .filter(id => run.schematics.indexOf(id) < 0);
   }
@@ -1819,6 +2108,9 @@
     depleted: 'vein empty — (X) to clear',
     // M-TIER2: the fourth thing the red '!' can mean.
     unpaired: 'no far end — place its pair',
+    // M-MANTLE/'cold seam': the fifth. There is no coal on this floor to be
+    // out of, so the fix is a place and not a delivery.
+    cold: 'cold — build it beside magma',
   };
 
   // M-TIER2: what a tier-II structure is doing, in the 29 columns the panel
@@ -1896,7 +2188,15 @@
         L.push({ text: 'recipe: ' + D.ITEMS[out].name, color: D.COLORS.blue });
         L.push({ text: 'click: cycle recipe', color: D.COLORS.amberDim });
       }
-      if (m.type === 'smelter' || m.type === 'damper')
+      // M-MANTLE / M-SCHEMS2: a smelter at the forge has no fuel line, because
+      // it has no fuel — the sentence that replaces it is the reason why.
+      if (forgeSmelter(run, m))
+        L.push({ text: 'the forge feeds it — no coal', color: D.COLORS.magma });
+      // M-SCHEMS2/Closed Loop: a fuel line on a damper that burns nothing
+      // would read as a damper about to stop. The sentence is the trade.
+      else if (m.type === 'damper' && run.mods.closedLoop)
+        L.push({ text: 'closed loop — no coal, half', color: D.COLORS.green });
+      else if (m.type === 'smelter' || m.type === 'damper')
         L.push({ text: fuelLine(m), color: D.COLORS.orange });
       if (m.type === 'extractor') {
         const ot = tileAt(run, m.x, m.y);
@@ -1978,5 +2278,22 @@
     // (worst case filled in) so the suites can hold the lot to the LOG panel;
     // STATUS_HINT is the '!' legend the SCAN panel draws.
     diagLine: diagLine, diagLines: diagLines, STATUS_HINT: STATUS_HINT,
+    // M-MANTLE: this floor's rule, as its data.js entry (null on strata 1-8),
+    // and the table it was rolled from — which is filtered by what is loaded,
+    // so a suite can assert that an absent module is absent from the deck.
+    // Nothing here rolls: `mutatorOf` is a lookup, and the ONE draw lives in
+    // startStratum (§0 law 7).
+    mutatorOf: mutDef, mutatorTable: mutatorTable,
+    // M-SCHEMS2: the deck as this run would be dealt it, exported for the
+    // same reason as the mutator table — so a suite can assert that a card
+    // whose module is absent is absent from the deck, not a dead pick.
+    schematicPool: schematicPool,
+    // The two questions the forge answers, exported because the tooltip, the
+    // CHAIN panel and the suites all have to ask them and must not each grow
+    // their own idea of "beside the magma" (M-MANTLE / M-SCHEMS2).
+    forgeSmelter: forgeSmelter, coldSmelter: coldSmelter,
+    // Gears per bite ('hungry drill' makes it 2) and the sweep's radius
+    // ('the dark rises' freezes it), both read by render and by the suites.
+    drillCost: drillCost, revealRadius: revealRadius,
   };
 })();

@@ -2022,6 +2022,728 @@ function machineStatusAfter(r, m) { S.tick(r); return m.status; }
 // therefore ONE SMELTER CANNOT FEED ONE ASSEMBLER. If that stops being
 // true in data.js, this test says so before a player has to find out.
 // ======================================================================
+// ------------------------------------------- M-MANTLE: mutators for the deep
+// Force the NEXT startStratum to deal a named mutator without disturbing
+// anything else. rollMutator is the first thing that draws in startStratum, so
+// substituting exactly one number picks the entry and every later draw in that
+// stratum is the run's own — which is what makes "this floor, but with the
+// mutator" a fair comparison against "this floor" rather than two maps.
+function forceMutator(run, id) {
+  const table = S.mutatorTable();
+  const i = table.findIndex((m) => m.id === id);
+  assert(i >= 0, 'mutator ' + id + ' is not in the roll table');
+  const base = run.rng;
+  let first = true;
+  run.rng = function () {
+    if (first) { first = false; return (i + 0.5) / table.length; }
+    return base();
+  };
+}
+function mantleRun(seed, id, eff) {
+  const r = S.newRun(eff || DC.Meta.effects(DC.Meta.newProfile()), seed);
+  r.depth = D.MUTATOR_DEPTH;
+  r.mantle = true;
+  if (id) forceMutator(r, id);
+  S.startStratum(r);
+  if (id) assertEq(r.mutator, id, 'forced mutator ' + id + ' was dealt');
+  return r;
+}
+function revealAll(r) {
+  for (let y = 0; y < D.MAP_H; y++)
+    for (let x = 0; x < D.MAP_W; x++) r.grid[y][x].revealed = true;
+}
+function countTiles(r, pred) {
+  let n = 0;
+  for (let y = 0; y < D.MAP_H; y++)
+    for (let x = 0; x < D.MAP_W; x++) if (pred(r.grid[y][x], x, y)) n++;
+  return n;
+}
+
+function checkMutators() {
+  const eff = DC.Meta.effects(DC.Meta.newProfile());
+
+  // ---- the table -------------------------------------------------------
+  // A mutator whose module is absent is NOT DEALT. It is not a floor that
+  // silently does nothing — the entry is filtered out and the roll picks
+  // among the rest, which is the contract that lets 'worm season' ship
+  // written-and-waiting rather than as dead weight or as a lie.
+  const table = S.mutatorTable();
+  assert(table.length > 0, 'the roll table is not empty');
+  for (const m of table)
+    assert(!m.needs || !!DC[m.needs],
+      'mutator ' + m.id + ' is dealt but its module ' + m.needs + ' is absent');
+  const gated = (D.MUTATORS || []).filter((m) => m.needs && !DC[m.needs]);
+  for (const m of gated)
+    assert(!table.some((t) => t.id === m.id),
+      'gated mutator ' + m.id + ' must not be in the roll table');
+  assert(gated.length > 0,
+    'worm season is still gated (if M-WORMS landed, retire this line deliberately)');
+
+  // ---- the banner ------------------------------------------------------
+  // render.js inlays '<space>† NAME — tag<space>' into the divider under the
+  // header, which is SB-1 = the map column's width. A pair that does not fit
+  // is not drawn at all, so a mutator that overflows would ship its rule
+  // INVISIBLE. Held here, where it is a data question.
+  const RULE_W = 48;
+  for (const m of D.MUTATORS || []) {
+    assert(typeof m.name === 'string' && m.name.length > 0, m.id + ' has a name');
+    assert(typeof m.tag === 'string' && m.tag.length > 0, m.id + ' has a one-line rule');
+    assertEq(m.name, m.name.toUpperCase(), m.id + ' name is the banner\'s caps');
+    const inset = ' † ' + m.name + ' — ' + m.tag + ' ';
+    assert(inset.length <= RULE_W,
+      'mutator ' + m.id + ' banner is ' + inset.length + ' > ' + RULE_W + ' columns');
+    assert(m.tag.indexOf('.') < 0, m.id + ' tag is a rule, not a sentence');
+  }
+
+  // ---- one roll, at one site, stored (§0 law 7) -------------------------
+  {
+    const a = S.newRun(eff, 5150);
+    a.depth = D.MUTATOR_DEPTH; a.mantle = true;
+    S.startStratum(a);
+    assert(a.mutator && D.MUTATOR_BY_ID[a.mutator],
+      'a Mantle floor deals a mutator from the table');
+    // reading it, repeatedly, costs nothing
+    const r0 = a.rng();
+    const again = S.newRun(eff, 5150);
+    again.depth = D.MUTATOR_DEPTH; again.mantle = true;
+    S.startStratum(again);
+    for (let i = 0; i < 50; i++) { S.mutatorOf(again); S.drillCost(again); S.revealRadius(again); }
+    assertEq(again.rng(), r0, 'reading the mutator never advances run.rng');
+    assertEq(again.mutator, a.mutator, 'and the same seed deals the same floor');
+    // ...and strata 1-8 deal none at all
+    const shallow = S.newRun(eff, 5150);
+    assertEq(shallow.mutator, null, 'no mutator above the Mantle');
+    for (let d = 2; d <= D.STRATA_COUNT; d++) {
+      shallow.depth = d;
+      S.startStratum(shallow);
+      assertEq(shallow.mutator, null, 'no mutator on stratum ' + d);
+    }
+  }
+
+  // ---- the dark rises --------------------------------------------------
+  {
+    const r = mantleRun(4242, 'dark', eff);
+    const all = D.MAP_W * D.MAP_H;
+    assertEq(countTiles(r, (t) => t.revealed), all,
+      'the dark rises hands you the whole floor first');
+    // the lantern does not grow: that is the mutator
+    const r0 = S.revealRadius(r);
+    for (let i = 0; i < 8 * 60; i++) S.tick(r);
+    assertEq(S.revealRadius(r), r0, 'the scan radius is frozen — it is a lantern');
+    assert(r.dark > 0, 'rings of the edge have gone dark');
+    const lit = countTiles(r, (t) => t.revealed);
+    assert(lit < all, 'the map has un-drawn itself (' + lit + '/' + all + ')');
+    // ...and what is left lit is the disc around the rig, still lit
+    const cx = r.hub.x + 1, cy = r.hub.y + 1;
+    assert(r.grid[cy][cx].revealed, 'the rig itself is never dark');
+    let inDisc = 0;
+    for (let y = 0; y < D.MAP_H; y++)
+      for (let x = 0; x < D.MAP_W; x++) {
+        const edge = Math.min(x, y, D.MAP_W - 1 - x, D.MAP_H - 1 - y);
+        if (edge >= r.dark && (x - cx) * (x - cx) + (y - cy) * (y - cy) <= r0 * r0) {
+          assert(r.grid[y][x].revealed, 'the lamp relights its own disc at ' + x + ',' + y);
+          inDisc++;
+        }
+      }
+    assert(inDisc > 0, 'the lantern disc survived the dark');
+    // un-revealed ground is un-buildable ground: the mutator has teeth
+    let dark = null;
+    for (let y = 0; y < D.MAP_H && !dark; y++)
+      for (let x = 0; x < D.MAP_W && !dark; x++)
+        if (!r.grid[y][x].revealed && r.grid[y][x].t === 'floor') dark = { x: x, y: y };
+    if (dark) {
+      r.inv.ironPlate = 999;
+      assertEq(S.canPlace(r, 'belt', dark.x, dark.y, 1).reason, 'unscanned ground',
+        'the dark takes the ground back, not just the picture of it');
+    }
+    // and a floor WITHOUT the mutator still sweeps open the way it always did
+    const plain = mantleRun(4242, 'seal', eff);
+    for (let i = 0; i < 8 * 60; i++) S.tick(plain);
+    assert(S.revealRadius(plain) > r0, 'an ordinary floor still grows its sweep');
+    assertEq(plain.dark, 0, 'and nothing goes dark on it');
+  }
+
+  // ---- hungry drill ----------------------------------------------------
+  {
+    const r = mantleRun(777, 'hungry', eff);
+    const def = D.MUTATOR_BY_ID.hungry;
+    assertEq(S.drillCost(r), def.gearCost, 'the drill takes two gears a bite');
+    const plain = mantleRun(777, 'seal', eff);
+    assertEq(S.drillCost(plain), 1, 'and one on every other floor');
+    // she bites faster: the same stock is spent sooner AND further
+    r.inv.gear = 40; r.breachReq = { gear: 100, charge: 0 };
+    plain.inv.gear = 40; plain.breachReq = { gear: 100, charge: 0 };
+    for (let i = 0; i < 8 * 20; i++) { S.tick(r); S.tick(plain); }
+    assertEq(r.inv.gear, 0, 'a hungry drill empties a 40-gear crate inside 20s');
+    assert(r.gearsFed === 20, 'and banks exactly half of it as progress (' + r.gearsFed + ')');
+    assert(plain.inv.gear > 0, 'an ordinary drill is still chewing (' + plain.inv.gear + ')');
+    assert(plain.gearsFed < r.gearsFed * 2,
+      'the hungry drill is genuinely faster per gear-second, not merely greedier');
+    // a crate of one is a stalled rig, not a slow one
+    r.inv.gear = 1;
+    const fed = r.gearsFed;
+    for (let i = 0; i < 8 * 10; i++) S.tick(r);
+    assertEq(r.gearsFed, fed, 'one gear does not buy a two-gear bite');
+    // ...and the projection is measured in BITES
+    const ch = S.chain(r);
+    assertEq(ch.drillCost, def.gearCost, 'CHAIN reports the cost of a bite');
+  }
+
+  // ---- cold seam -------------------------------------------------------
+  {
+    // Mapgen is held to the rule over many floors, because this is the one
+    // mutator that can generate an UNWINNABLE map: no coal anywhere means no
+    // plates unless a smelter can reach the lava.
+    let coalTiles = 0, minMagma = Infinity, pads = 0, maps = 0;
+    for (let s = 1; s <= 60; s++) {
+      const r = mantleRun(s * 7919 + 11, 'coldseam', eff);
+      maps++;
+      coalTiles += countTiles(r, (t) => t.ore === 'coal');
+      minMagma = Math.min(minMagma, countTiles(r, (t) => t.t === 'magma'));
+      // walkable-or-diggable set from the rig
+      const seen = new Set();
+      const q = [[r.hub.x + 1, r.hub.y + 1]];
+      seen.add((r.hub.y + 1) * D.MAP_W + (r.hub.x + 1));
+      while (q.length) {
+        const c = q.pop();
+        for (const d of D.DIRS) {
+          const nx = c[0] + d.dx, ny = c[1] + d.dy;
+          if (nx < 0 || ny < 0 || nx >= D.MAP_W || ny >= D.MAP_H) continue;
+          const k = ny * D.MAP_W + nx;
+          if (seen.has(k)) continue;
+          const t = r.grid[ny][nx];
+          if (t.t !== 'floor' && t.t !== 'rock') continue;
+          seen.add(k); q.push([nx, ny]);
+        }
+      }
+      const lava = (x, y) => {
+        for (const d of D.DIRS) {
+          const nx = x + d.dx, ny = y + d.dy;
+          if (nx >= 0 && ny >= 0 && nx < D.MAP_W && ny < D.MAP_H &&
+              r.grid[ny][nx].t === 'magma') return true;
+        }
+        return false;
+      };
+      let ok = false;
+      const B = D.BUILDINGS.smelter;
+      for (let y = 1; y < D.MAP_H - B.h && !ok; y++)
+        for (let x = 1; x < D.MAP_W - B.w && !ok; x++) {
+          let stand = true, touch = false;
+          for (let dy = 0; dy < B.h; dy++)
+            for (let dx = 0; dx < B.w; dx++) {
+              const t = r.grid[y + dy][x + dx];
+              if (t.ore || t.machine !== null || t.lm ||
+                  (t.t !== 'floor' && t.t !== 'rock')) stand = false;
+              if (lava(x + dx, y + dy)) touch = true;
+            }
+          if (stand && touch && seen.has(y * D.MAP_W + x)) ok = true;
+        }
+      if (ok) pads++;
+    }
+    assertEq(coalTiles, 0, 'cold seam leaves no coal in the rock at all');
+    assert(minMagma >= 3 * (D.MUTATOR_BY_ID.coldseam.magma || 2),
+      'every cold seam floor carries its pools (min ' + minMagma + ')');
+    assertEq(pads, maps,
+      'every cold seam floor has a REACHABLE smelter pad on the lava (' +
+      pads + '/' + maps + ')');
+
+    // the two smelters: one at the forge, one anywhere else
+    const r = mantleRun(4242, 'coldseam', eff);
+    revealAll(r);
+    r.inv.ironPlate = 999;
+    const lava = (x, y) => {
+      for (const d of D.DIRS) {
+        const nx = x + d.dx, ny = y + d.dy;
+        if (nx >= 0 && ny >= 0 && nx < D.MAP_W && ny < D.MAP_H &&
+            r.grid[ny][nx].t === 'magma') return true;
+      }
+      return false;
+    };
+    const free = (x, y) => {
+      for (let dy = 0; dy < 2; dy++)
+        for (let dx = 0; dx < 2; dx++) {
+          const t = r.grid[y + dy][x + dx];
+          if (t.ore || t.machine !== null || t.lm ||
+              (t.t !== 'floor' && t.t !== 'rock')) return false;
+        }
+      return true;
+    };
+    const near = (x, y, R) => {
+      for (let dy = -R; dy <= R; dy++)
+        for (let dx = -R; dx <= R; dx++) {
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= D.MAP_W || ny >= D.MAP_H) continue;
+          if (r.grid[ny][nx].t === 'magma') return true;
+        }
+      return false;
+    };
+    let hot = null, cold = null;
+    for (let y = 1; y < D.MAP_H - 2; y++)
+      for (let x = 1; x < D.MAP_W - 2; x++) {
+        if (!free(x, y)) continue;
+        const t = lava(x, y) || lava(x + 1, y) || lava(x, y + 1) || lava(x + 1, y + 1);
+        if (t && !hot) hot = { x: x, y: y };
+        if (!near(x, y, 3) && !cold) cold = { x: x, y: y };
+      }
+    assert(hot && cold, 'the test floor offers a forge pad and a cold pad');
+    for (const p of [hot, cold])
+      for (let dy = 0; dy < 2; dy++)
+        for (let dx = 0; dx < 2; dx++) {
+          const t = r.grid[p.y + dy][p.x + dx];
+          if (t.t === 'rock') t.t = 'floor';       // the player would dig it
+        }
+    assert(S.place(r, 'smelter', hot.x, hot.y, 1), 'a smelter stands at the forge');
+    assert(S.place(r, 'smelter', cold.x, cold.y, 1), 'and one stands away from it');
+    const ms = Object.keys(r.machines).map((k) => r.machines[k])
+      .filter((m) => m.type === 'smelter');
+    const H = ms.filter((m) => m.x === hot.x && m.y === hot.y)[0];
+    const K = ms.filter((m) => m.x === cold.x && m.y === cold.y)[0];
+    assert(H && K, 'both smelters exist');
+    assert(S.forgeSmelter(r, H), 'the one on the lava is a forge');
+    assert(!S.forgeSmelter(r, K), 'the one away from it is not');
+    assert(S.coldSmelter(r, K), 'and cold seam calls it cold');
+    assert(!S.coldSmelter(r, H), 'the forge is never cold');
+    // ore, and deliberately coal too: the cold one still will not run
+    H.input.ironOre = 8; K.input.ironOre = 8; K.input.coal = 8;
+    for (let i = 0; i < 8 * 40; i++) S.tick(r);
+    assertEq(H.status, 'blocked', 'the forge smelted with no coal and filled up');
+    assert(H.out.length > 0 || (r.inv.ironPlate || 0) > 999, 'the forge made plates');
+    assertEq(H.fuel, 0, 'and it burned none of its own fuel doing it');
+    assertEq(H.hp, D.BUILDINGS.smelter.hp,
+      'the lava does not eat the smith it is smelting for');
+    const K2 = r.machines[K.id];
+    assert(K2, 'the cold smelter still exists');
+    assertEq(K2.status, 'cold', 'a smelter off the seam reads cold, not out-of-fuel');
+    assertEq(K2.input.ironOre, 8, 'and it has not touched its ore');
+    assertEq(K2.input.coal, 8, '...nor its coal, which is not the problem');
+    assert(S.STATUS_HINT.cold && S.STATUS_HINT.cold.length <= S.SCAN_W,
+      "the '!' legend names the fifth fault, inside the panel");
+    // and the CHAIN panel says so rather than promising a rate
+    const ch = S.chain(r);
+    const plate = ch.stages.filter((s) => s.id === 'plate')[0];
+    assertEq(ch.cold, 1, 'CHAIN counts the frozen-out smelter');
+    assertEq(plate.flag, 'COLD', 'and flags the stage COLD, not STARVED');
+    assert(!(ch.flow.coal < 0), 'a forge draws no coal in the model either');
+  }
+
+  // ---- glass floors ----------------------------------------------------
+  {
+    const r = mantleRun(31337, 'glass', eff);
+    revealAll(r);
+    // bury a patch, then shake it: rubble that is hit again opens
+    const spots = [];
+    for (let y = 2; y < D.MAP_H - 2 && spots.length < 40; y++)
+      for (let x = 2; x < D.MAP_W - 2 && spots.length < 40; x++) {
+        const t = r.grid[y][x];
+        if (t.t === 'floor' && t.machine === null && !t.lm && !t.belt) {
+          t.rubble = true;
+          spots.push({ x: x, y: y });
+        }
+      }
+    assert(spots.length > 10, 'the test floor has ground to bury');
+    const chasm0 = countTiles(r, (t) => t.t === 'chasm');
+    r.instability = 95;
+    for (let k = 0; k < 40; k++) { r.quakeAt = 0; for (let i = 0; i < 8 * 20; i++) S.tick(r); }
+    const chasm1 = countTiles(r, (t) => t.t === 'chasm');
+    assert(chasm1 > chasm0,
+      'quakes opened the buried ground (' + chasm0 + ' -> ' + chasm1 + ')');
+    // ...and an ordinary floor only ever buries it
+    const plain = mantleRun(31337, 'seal', eff);
+    revealAll(plain);
+    for (const s of spots) {
+      const t = plain.grid[s.y][s.x];
+      if (t.t === 'floor' && t.machine === null && !t.lm) t.rubble = true;
+    }
+    const p0 = countTiles(plain, (t) => t.t === 'chasm');
+    plain.instability = 95;
+    for (let k = 0; k < 40; k++) {
+      plain.quakeAt = 0;
+      for (let i = 0; i < 8 * 20; i++) S.tick(plain);
+    }
+    assertEq(countTiles(plain, (t) => t.t === 'chasm'), p0,
+      'without the mutator a quake never opens the floor');
+  }
+
+  // ---- the seal --------------------------------------------------------
+  {
+    const def = D.MUTATOR_BY_ID.seal;
+    const sealed = mantleRun(99, 'seal', eff);
+    const plain = mantleRun(99, 'echo', eff);
+    const M = D.mantleStratum(D.MUTATOR_DEPTH);
+    assertEq(sealed.breachReq.gear, Math.ceil(M.breach.gear * def.breachMult),
+      'the seal thins the floor by exactly its data.js number');
+    assert(sealed.breachReq.gear < plain.breachReq.gear, 'which is less than it was');
+    assertEq(plain.breachReq.gear, M.breach.gear, 'and an ordinary floor is untouched');
+    // ...and charges the difference back in pressure
+    for (let i = 0; i < 8 * 20; i++) { S.tick(sealed); S.tick(plain); }
+    const ratio = sealed.instability / plain.instability;
+    assert(Math.abs(ratio - def.instMult) < 0.02,
+      'and instability rises ' + def.instMult + 'x (measured ' + ratio.toFixed(3) + ')');
+  }
+
+  // ---- echo chamber (pure, and it costs no rng) -------------------------
+  {
+    const B = require('../js/barks.js') && DC.Barks;
+    assert(B && typeof B.echoOf === 'function', 'the echo is exported');
+    let echoed = 0, longest = 0;
+    for (const k in B.POOLS)
+      for (const line of B.POOLS[k]) {
+        const e = B.echoOf(line);
+        assert(typeof e === 'string' && e.length > 0,
+          'every line GRIT can say has an echo: ' + JSON.stringify(line));
+        assertEq(B.echoOf(line), e, 'and the same line always echoes the same way');
+        longest = Math.max(longest, e.length);
+        echoed++;
+      }
+    assert(longest <= 70, 'the longest echo fits the bar (' + longest + ')');
+    assert(echoed > 100, 'the whole corpus was echoed (' + echoed + ')');
+    // the mutator only speaks on its own floor
+    const r = mantleRun(2024, 'echo', eff);
+    const before = r.rng();
+    let core = 0;
+    for (let i = 0; i < 8 * 90; i++) {
+      S.tick(r);
+      B.fire(r, 'quake');
+      B.tick(r);
+      if (r.foreman && r.foreman.voice === 'core') core++;
+    }
+    assert(core > 0, 'the floor answered him');
+    // rng invariance: echoing is a pure transform, so a run that is barked at
+    // and a run that is not must stand at the same place in the stream
+    const quiet = mantleRun(2024, 'echo', eff);
+    for (let i = 0; i < 8 * 90; i++) S.tick(quiet);
+    const loud = mantleRun(2024, 'echo', eff);
+    for (let i = 0; i < 8 * 90; i++) {
+      S.tick(loud);
+      B.echoOf('Another rig, another hole. Try not to marry this one, kid.');
+    }
+    assertEq(loud.rng(), quiet.rng(), 'reading an echo never advances run.rng');
+    assertEq(before === before, true, 'seed sanity');
+  }
+
+  return table.length;
+}
+
+// --------------------------------------------- M-SCHEMS2: the second batch
+// One block per card, each installing the pick through Sim.installSchematic —
+// the same applySchematicMod every descent pick goes through — never by
+// poking run.mods directly, so a card that stopped wiring its own flag would
+// fail here before a player ever drew it.
+function checkSchems2() {
+  const eff = DC.Meta.effects(DC.Meta.newProfile());
+  let cards = 0;
+
+  // ---- Magma Boiler ----------------------------------------------------
+  // The reward half of the cold seam engine: the SAME forge check, read from
+  // the other end. With the card, a smelter beside magma burns nothing and
+  // the lava spares it; without it, the same smelter in the same spot is an
+  // ordinary machine standing too close to the fire.
+  {
+    const mk = function (boiler) {
+      const r = S.newRun(eff, 777);
+      revealAll(r);
+      r.inv.ironPlate = 999;
+      // a clear 2x2 pad with a spare column to its left for the pool
+      let pad = null;
+      for (let y = 2; y < D.MAP_H - 3 && !pad; y++)
+        for (let x = 2; x < D.MAP_W - 3 && !pad; x++) {
+          let ok = true;
+          for (let dy = 0; dy < 2 && ok; dy++)
+            for (let dx = -1; dx < 2 && ok; dx++) {
+              const t = r.grid[y + dy][x + dx];
+              if (t.ore || t.machine !== null || t.lm || t.belt ||
+                  (t.t !== 'floor' && t.t !== 'rock')) ok = false;
+            }
+          if (ok) pad = { x: x, y: y };
+        }
+      assert(pad, 'the test floor offers a pad with a spare column');
+      for (let dy = 0; dy < 2; dy++) {
+        for (let dx = 0; dx < 2; dx++) r.grid[pad.y + dy][pad.x + dx].t = 'floor';
+        r.grid[pad.y + dy][pad.x - 1].t = 'magma';   // the pool
+      }
+      r.magmaCap = 4;    // stratum 1 rolls none, so arm the burn loop by hand
+      if (boiler)
+        assertEq(S.installSchematic(r, 's_boiler'), 's_boiler', 'the card installs');
+      assert(S.place(r, 'smelter', pad.x, pad.y, 1), 'the smelter stands');
+      const m = Object.keys(r.machines).map((k) => r.machines[k])
+        .filter((mm) => mm.type === 'smelter')[0];
+      m.input.ironOre = 8;
+      return { r: r, m: m };
+    };
+    const a = mk(true);
+    assert(S.forgeSmelter(a.r, a.m), 'with the card, beside magma IS the forge');
+    for (let i = 0; i < 8 * 30; i++) S.tick(a.r);
+    assert(a.m.out.length > 0 || a.m.status === 'blocked',
+      'it smelted with no coal at all');
+    assertEq(a.m.fuel, 0, 'and burned none of its own');
+    assertEq(a.m.hp, D.BUILDINGS.smelter.hp, 'and the lava lets the chimney be');
+    const ch = S.chain(a.r);
+    assert(!(ch.flow.coal < 0), 'CHAIN draws no coal for the forge either');
+    // ...and the same smelter without the card
+    const b = mk(false);
+    assert(!S.forgeSmelter(b.r, b.m), 'no card, no forge');
+    assert(!S.coldSmelter(b.r, b.m),
+      'and no cold box either — the card is a reward, never a rule');
+    for (let i = 0; i < 8 * 3; i++) S.tick(b.r);
+    assertEq(b.m.status, 'nofuel', 'it wants coal like it always did');
+    for (let i = 0; i < 8 * 30; i++) S.tick(b.r);
+    assert(!b.r.machines[b.m.id] || b.r.machines[b.m.id].hp < D.BUILDINGS.smelter.hp,
+      'and the lava does not spare it');
+    cards++;
+  }
+
+  // ---- Echo Charges ----------------------------------------------------
+  // Eight coal is exactly four charges' worth of fuel. Without the card that
+  // is where the assembler stops; with it, the same buffer yields five — the
+  // fifth starting on nothing, counted and never rolled (law 7).
+  {
+    const mk = function (echo) {
+      const r = S.newRun(eff, 4242);
+      revealAll(r);
+      r.inv.ironPlate = 999;
+      let pad = null;
+      for (let y = 2; y < D.MAP_H - 3 && !pad; y++)
+        for (let x = 2; x < D.MAP_W - 3 && !pad; x++) {
+          let ok = true;
+          for (let dy = 0; dy < 2 && ok; dy++)
+            for (let dx = 0; dx < 2 && ok; dx++) {
+              const t = r.grid[y + dy][x + dx];
+              if (t.ore || t.machine !== null || t.lm || t.belt ||
+                  (t.t !== 'floor' && t.t !== 'rock')) ok = false;
+            }
+          if (ok) pad = { x: x, y: y };
+        }
+      assert(pad, 'the test floor offers an assembler pad');
+      for (let dy = 0; dy < 2; dy++)
+        for (let dx = 0; dx < 2; dx++) r.grid[pad.y + dy][pad.x + dx].t = 'floor';
+      if (echo)
+        assertEq(S.installSchematic(r, 's_echo'), 's_echo', 'the card installs');
+      assert(S.place(r, 'assembler', pad.x, pad.y, 1), 'the assembler stands');
+      const m = Object.keys(r.machines).map((k) => r.machines[k])
+        .filter((mm) => mm.type === 'assembler')[0];
+      m.recipe = 'charge';
+      m.input = { crystal: 8, copperPlate: 8, coal: 8 };
+      return { r: r, m: m };
+    };
+    const a = mk(true);
+    let made = 0;
+    for (let i = 0; i < 8 * 60 && made < 5; i++) {
+      S.tick(a.r);
+      while (a.m.out.length) { made++; a.m.out.shift(); }
+    }
+    assertEq(made, 5, 'eight coal bought five charges with the card');
+    assertEq(a.m.input.crystal, 4, 'four crystal paid for them');
+    assertEq(a.m.input.coal, 0, '...and all eight coal');
+    assertEq(a.r.echoN, 5, 'the counter counted every one');
+    // the sixth is a paid charge again, and there is nothing left to pay with
+    for (let i = 0; i < 8 * 10; i++) { S.tick(a.r); a.m.out.length = 0; }
+    assertEq(a.r.echoN, 5, 'the free one does not chain into a free two');
+    // ...and the projection draws four fifths of the recipe
+    const ch = S.chain(a.r);
+    const rec = D.RECIPES.charge;
+    const rate = 8 / rec.ticks;
+    assert(Math.abs(ch.flow.crystal - (-rate * (1 - 1 / D.ECHO_EVERY))) < 1e-9,
+      'CHAIN draws crystal at four fifths of the card rate');
+    const b = mk(false);
+    let plain = 0;
+    for (let i = 0; i < 8 * 60 && plain < 5; i++) {
+      S.tick(b.r);
+      while (b.m.out.length) { plain++; b.m.out.shift(); }
+    }
+    assertEq(plain, 4, 'without the card the same buffer stops at four');
+    cards++;
+  }
+
+  // ---- Gravity Chute ---------------------------------------------------
+  // A smelter costs 10 plates: half back is 5, the chute's three quarters is
+  // 7. Belts are untouched — they already refund whole, card or no card.
+  {
+    const mk = function (chute) {
+      const r = S.newRun(eff, 1337);
+      revealAll(r);
+      r.inv.ironPlate = 100;
+      if (chute)
+        assertEq(S.installSchematic(r, 's_chute'), 's_chute', 'the card installs');
+      let pad = null;
+      for (let y = 2; y < D.MAP_H - 3 && !pad; y++)
+        for (let x = 2; x < D.MAP_W - 3 && !pad; x++) {
+          let ok = true;
+          for (let dy = 0; dy < 2 && ok; dy++)
+            for (let dx = 0; dx < 2 && ok; dx++) {
+              const t = r.grid[y + dy][x + dx];
+              if (t.ore || t.machine !== null || t.lm || t.belt || t.t !== 'floor')
+                ok = false;
+            }
+          if (ok) pad = { x: x, y: y };
+        }
+      assert(pad, 'the test floor offers a pad');
+      assert(S.place(r, 'smelter', pad.x, pad.y, 1), 'the smelter stands');
+      const before = r.inv.ironPlate;
+      assert(S.demolishAt(r, pad.x, pad.y).ok, 'and comes down');
+      return r.inv.ironPlate - before;
+    };
+    assertEq(mk(false), Math.floor(10 * D.DEMOLISH_REFUND),
+      'half back without the card');
+    assertEq(mk(true), Math.floor(10 * D.CHUTE_REFUND),
+      'three quarters back with it');
+    cards++;
+  }
+
+  // ---- Jury Rig --------------------------------------------------------
+  // A damaged machine ordinarily works every other tick. With the card it
+  // works every tick — measurably double the ore — and each patched machine
+  // bills the hull D.JURY_DRAIN a minute until it is repaired.
+  {
+    const mk = function (jury) {
+      const r = S.newRun(eff, 90210);
+      revealAll(r);
+      r.inv.ironPlate = 100;
+      r.instHold = true;   // no quakes: the only hull cost here is the card's
+      if (jury)
+        assertEq(S.installSchematic(r, 's_jury'), 's_jury', 'the card installs');
+      let vein = null;
+      for (let y = 1; y < D.MAP_H - 1 && !vein; y++)
+        for (let x = 1; x < D.MAP_W - 1 && !vein; x++) {
+          const t = r.grid[y][x];
+          if (t.ore === 'ironOre' && t.machine === null && !t.lm && t.t === 'floor')
+            vein = { x: x, y: y };
+        }
+      assert(vein, 'the test floor has an iron vein on open floor');
+      r.grid[vein.y][vein.x].oreAmt = 999;
+      assert(S.place(r, 'extractor', vein.x, vein.y, 1), 'the extractor stands');
+      const m = Object.keys(r.machines).map((k) => r.machines[k])
+        .filter((mm) => mm.type === 'extractor')[0];
+      m.hp = 1;
+      return { r: r, m: m };
+    };
+    const a = mk(true), b = mk(false);
+    let fast = 0, slow = 0;
+    for (let i = 0; i < D.BUILDINGS.extractor.period * 20; i++) {
+      S.tick(a.r);
+      S.tick(b.r);
+      while (a.m.out.length) { fast++; a.m.out.shift(); }
+      while (b.m.out.length) { slow++; b.m.out.shift(); }
+    }
+    assert(fast >= slow * 2 - 1 && fast > 0,
+      'the patched extractor mines at full speed (' + fast + ' vs ' + slow + ')');
+    // ...and the model agrees with the floor
+    assert(Math.abs(S.chain(a.r).flow.ironOre -
+                    2 * S.chain(b.r).flow.ironOre) < 1e-9,
+      'CHAIN rates the patched machine whole');
+    // the bill: one damaged machine, one JURY_DRAIN per minute, until repaired
+    const before = a.r.integrity;
+    for (let i = 0; i < 60 * 8; i++) { S.tick(a.r); a.m.out.length = 0; }
+    assert(Math.abs((before - a.r.integrity) - D.JURY_DRAIN) < 0.01,
+      'a minute on the patch costs exactly ' + D.JURY_DRAIN + ' hull');
+    a.m.hp = D.BUILDINGS.extractor.hp;         // repaired: the bleeding stops
+    const held = a.r.integrity;
+    for (let i = 0; i < 60 * 8; i++) { S.tick(a.r); a.m.out.length = 0; }
+    assertEq(a.r.integrity, held, 'repair stops the drain');
+    // ...and without the card the hull never paid at all
+    const b0 = b.r.integrity;
+    for (let i = 0; i < 60 * 8; i++) { S.tick(b.r); b.m.out.length = 0; }
+    assertEq(b.r.integrity, b0, 'no card, no bill');
+    cards++;
+  }
+
+  // ---- Deep Insurance --------------------------------------------------
+  // However far past zero the blow drove the hull, the policy pays back to
+  // exactly 1 — once. The second lethal hit is simply lethal, and a run
+  // without the card never sees the payout at all.
+  {
+    const r = S.newRun(eff, 2024);
+    assertEq(S.installSchematic(r, 's_insure'), 's_insure', 'the card installs');
+    r.integrity = -7;                          // a quake can overshoot zero
+    S.tick(r);
+    assertEq(r.integrity, 1, 'the payout leaves exactly 1, not a refund of 7');
+    assertEq(r.status, 'active', 'and the run is still a run');
+    assertEq(r.insured, true, 'the policy is spent');
+    assert(r.events.some((e) => e.type === 'insurance'),
+      'the sim announced it (GRIT needs his heart attack)');
+    assert(!r.events.some((e) => e.type === 'death'), 'and no death event fired');
+    r.integrity = -1;
+    S.tick(r);
+    assertEq(r.status, 'dead', 'the second killing blow kills');
+    const plain = S.newRun(eff, 2024);
+    plain.integrity = -1;
+    S.tick(plain);
+    assertEq(plain.status, 'dead', 'no card, no miracle');
+    cards++;
+  }
+
+  // ---- Closed Loop -----------------------------------------------------
+  // Three otherwise-identical floors, twenty coal-free seconds: no damper,
+  // a looped damper, a fuelled damper. The looped one calms — genuinely —
+  // and calms exactly half as hard as the coal-burner it replaced.
+  {
+    const mk = function (damper, loop) {
+      const r = S.newRun(eff, 555);
+      revealAll(r);
+      r.inv.ironPlate = 100; r.inv.copperPlate = 10;
+      if (loop)
+        assertEq(S.installSchematic(r, 's_loop'), 's_loop', 'the card installs');
+      if (!damper) return { r: r, m: null };
+      let pad = null;
+      for (let y = 2; y < D.MAP_H - 2 && !pad; y++)
+        for (let x = 2; x < D.MAP_W - 2 && !pad; x++) {
+          const t = r.grid[y][x];
+          if (t.t === 'floor' && !t.ore && t.machine === null && !t.lm && !t.belt)
+            pad = { x: x, y: y };
+        }
+      assert(S.place(r, 'damper', pad.x, pad.y, 1), 'the damper stands');
+      const m = Object.keys(r.machines).map((k) => r.machines[k])
+        .filter((mm) => mm.type === 'damper')[0];
+      return { r: r, m: m };
+    };
+    const none = mk(false, false), loop = mk(true, true), coal = mk(true, false);
+    coal.m.input.coal = 8;
+    loop.m.input.coal = 8;   // deliberately: the loop must not touch it
+    for (let i = 0; i < 8 * 20; i++) { S.tick(none.r); S.tick(loop.r); S.tick(coal.r); }
+    assertEq(loop.m.input.coal, 8, 'the looped damper never draws its coal');
+    assertEq(loop.m.fuel, 0, '...nor holds any');
+    assert(loop.m.status !== 'nofuel', 'and it never reads out-of-fuel');
+    assert(loop.r.instability < none.r.instability,
+      'it genuinely vents (' + loop.r.instability.toFixed(2) + ' < ' +
+      none.r.instability.toFixed(2) + ')');
+    assert(coal.r.instability < loop.r.instability,
+      'at half the coal-burner\'s strength');
+    // the arithmetic, exactly: 25% calm plain, 12.5% looped
+    const base = none.r.instability;
+    assert(Math.abs(loop.r.instability - base * (1 - D.BUILDINGS.damper.calm *
+                                                     D.CLOSED_LOOP_CALM)) < 0.01,
+      'the looped calm is the data.js product');
+    // ...and the projection stops charging coal for it
+    assertEq(S.chain(loop.r).flow.coal || 0, 0, 'CHAIN draws no coal for the loop');
+    assert((S.chain(coal.r).flow.coal || 0) < 0, 'and still does for the burner');
+    cards++;
+  }
+
+  // ---- Worm Whisperer --------------------------------------------------
+  // The deck's copy of the mutator table's contract: a card whose module has
+  // not landed is NOT DEALT — it is not a dead pick a breach can waste its
+  // one choice on. Everything else about the card already exists (line, art,
+  // mods flag), so the day DC.Worms loads, nothing here needs touching.
+  {
+    const r = S.newRun(eff, 31337);
+    r.depth = D.MUTATOR_DEPTH;                 // every minDepth gate is open
+    r.stats.placed = { splitter: 1, tunnel: 1, filter: 1, crusher: 1 };
+    const pool = S.schematicPool(r, r.depth);
+    assert(pool.indexOf('s_boiler') >= 0 && pool.indexOf('s_loop') >= 0,
+      'the rest of the batch is in the deck down here');
+    assertEq(pool.indexOf('s_whisper'), -1,
+      'the Worm Whisperer is not dealt while M-WORMS is absent');
+    const gated = D.SCHEMATICS.filter((s) => s.needsModule && !DC[s.needsModule]);
+    assert(gated.length > 0,
+      'the whisperer is still gated (if M-WORMS landed, retire this line deliberately)');
+    assertEq(S.installSchematic(r, 's_whisper'), 's_whisper',
+      'installed by hand it still wires its flag...');
+    assertEq(r.mods.wormBeacon, true, '...for the module that will read it');
+    cards++;
+  }
+
+  return cards;
+}
+
 function checkChain() {
   const eff = DC.Meta.effects(DC.Meta.newProfile());
   const r = S.newRun(eff, 4242);
@@ -2166,6 +2888,8 @@ function main() {
   const rigFeed = checkRigOutput();   // facing, not adjacency, feeds the rig
   const tier2N = checkTier2();        // M-TIER2: the tier-II logistics layer
   const chainCh = checkChain();       // M-WIDE: the CHAIN panel's numbers
+  const mutN = checkMutators();       // M-MANTLE: the deep's one rule per floor
+  const schemN = checkSchems2();      // M-SCHEMS2: the second card batch
 
   const eff = DC.Meta.effects(DC.Meta.newProfile());
   assert(eff && typeof eff.instMult === 'number' && eff.offerCount === 3,
@@ -2231,6 +2955,8 @@ function main() {
     ' | diagnostics: ' + diagN + ' causes named, once each, rng untouched' +
     ' | ' + rigFeed +
     ' | tier II: ' + tier2N + ' structures, facing not adjacency, line > machines' +
+    ' | mutators ' + mutN + ' dealt of ' + D.MUTATORS.length + ' written, one roll a floor' +
+    ' | schems2: ' + schemN + ' cards through the real pick path' +
     ' | chain: ' + chainCh.stages.map(s => s.n + s.letter + ' ' +
       s.rate.toFixed(2) + '/s').join(' -> ') +
     ' limited by ' + chainCh.stages.filter(s => s.limiting).map(s => s.name).join(','));
