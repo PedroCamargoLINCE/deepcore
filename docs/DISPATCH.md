@@ -139,6 +139,16 @@ tmux new-session -d -s laborer -c <worktree-path> \
      --permission-mode bypassPermissions "<prompt or continuation kick>"'
 ```
 
+**THE FABLE RULE (director's law, 2026-08-19, absolute):** the orchestrator
+NEVER starts a session, worker, or agent that runs on Fable — Fable is the
+director's model, spent only by his own hand. Which means: never launch
+anything whose model you cannot directly and explicitly control. If a launch
+mechanism has no --model (or equivalent) parameter, or its override is not
+verifiable, that mechanism is FORBIDDEN for workers — regardless of what the
+account default happens to be that day, because the default is the director's
+to change and yours to never depend on. Every launch pins the model
+explicitly; every launch is verified from the transcript stamps afterward.
+
 Three rules, each paid for:
 
 1. **The `--remote-control` FLAG, never the `claude remote-control` server
