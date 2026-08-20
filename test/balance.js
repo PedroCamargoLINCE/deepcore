@@ -1391,7 +1391,7 @@ console.log(`
     naked, standard   deaths med 4 -> 3   cores med 3 -> 2   s2 100% -> 86%
     naked, camper     deaths med 5 -> 4   cores med 4 -> 3   s2  93% -> 100%
     full, standard    deaths med 5 -> 8   cores med 5 -> 7   wins 2/14 both
-    full, camper      deaths med 5 -> 5   wins 2/14 -> 1/14
+    full, camper      deaths med 5 -> 5   wins 2/14 both (23.5 -> 23.4m)
 
   Every §12 target above still holds, so NO data.js VALUE MOVED (the M-HUMANBAL
   ledger rule: report, never retune). The two that are closest to their edge —

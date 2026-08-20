@@ -238,7 +238,10 @@
         run.rng(); run.rng();
         continue;
       }
-      const site = cand[Math.floor(run.rng() * cand.length)];
+      // Spliced out, so two worms never surface in the same hole. The draw
+      // COUNT does not change with the list's length, only which site it
+      // lands on, so this costs the stream nothing.
+      const site = cand.splice(Math.floor(run.rng() * cand.length), 1)[0];
       const dir = Math.floor(run.rng() * 4);
       S.worms.push({
         id: S.nextId++, x: site.x, y: site.y, dir: dir,
@@ -255,10 +258,11 @@
   // leaves a crystal-lined tunnel behind it.
   //
   // Everything it will do is decided HERE, at placement, and stored on the
-  // run. Waking rolls nothing (see the header), and it is placed by CARVING
-  // ROCK ONLY — it opens a 2x2 pocket inside a solid 4x4 block of nobody's
-  // rock and closes nothing, so no tile the rig could reach before can be
-  // walled off by it and mapgen's invariants survive untouched.
+  // run. Waking rolls nothing (see the header), and placement only ever
+  // OPENS ground — it turns a 2x2 of rock into a floor pocket and closes
+  // nothing — so no tile the rig could reach before can be walled off by it
+  // and mapgen's invariant 3 survives untouched. It never consumes a vein, a
+  // wonder, the rig's clearing or lava, which is the rest of that contract.
   // =========================================================================
   // THE SEARCH IS TIERED, and the tiers are the point. A cave map made of
   // cellular rock has thin, wispy walls: a 2x2 pocket with a fully solid ring
