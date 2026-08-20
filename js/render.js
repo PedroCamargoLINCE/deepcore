@@ -1417,6 +1417,13 @@
       ['D DESC ', ready ? (phase ? C.green : C.white) : C.amberDim],
       ['ESC H', C.amberDim],
     ];
+    // M-WORMS: the bait key, and ONLY on a floor that has something to bait.
+    // It is honest state (law 1 — the hint exists because the wildlife does)
+    // and it is four columns, which is exactly what this line has left before
+    // it would have to start dropping ESC and H. Inserted before those two so
+    // the verbs stay together; on strata 1-2 the bar is the bar it always was.
+    if (DC.Worms && DC.Worms.list(run).length)
+      segs.splice(segs.length - 1, 0, ['L ♣ ', C.amberDim]);
     let x = 0;
     for (const s of segs) {
       if (x + s[0].length > SB - 1) break;

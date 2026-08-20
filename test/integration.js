@@ -4417,6 +4417,21 @@ function wormsSection(seed) {
     assert(at(w.x, w.y).ch !== 'o', 'a worm does not show through unscanned rock');
     run.grid[w.y][w.x].revealed = true;
 
+    // --- the hint line advertises the key, and does not lose the old ones --
+    // Four columns is exactly what row 30 had spare. If a later brief widens
+    // any other segment this is the assertion that catches ESC/H falling off
+    // the end rather than a player discovering it.
+    {
+      paintOnly();
+      let row = '';
+      for (let c2 = 0; c2 < D.COLS; c2++)
+        row += (DC.Render.cellAt(c2, 30) || { ch: ' ' }).ch;
+      const bar = row.slice(0, D.MAP_W + 3).replace(/\s+$/, '');
+      assert(bar.indexOf('L ♣') >= 0, 'the bait key is on the hint line: "' + bar + '"');
+      assert(/ESC H$/.test(bar), '...and it did not push ESC/H off the end');
+      assert(bar.length <= D.MAP_W + 2, 'the line still stays out of the sidebar');
+    }
+
     // --- 'L' at the cursor, end to end ------------------------------------
     // Through the real keydown handler, at the real keyboard cursor, spending
     // the real inventory. No engine-internal function is called by name.
