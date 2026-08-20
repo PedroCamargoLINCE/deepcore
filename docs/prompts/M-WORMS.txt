@@ -1,0 +1,68 @@
+You are a worker session on the DEEPCORE project, implementing M-WORMS. You
+are in your own git worktree on branch M-WORMS — do ALL work there; the
+orchestrator owns the main working copy.
+
+Read SPEC.md, SPEC2.md, and SPEC3.md section M-WORMS in full, plus §0's EIGHT
+laws AND the lineage note above them (Dwarf Fortress is this brief's patron
+saint: wildlife you manage, never fight), js/data.js, js/sim.js, js/events.js
+(the cat is the living-world layer you extend), and docs/STATE.md.
+
+WHAT HAS LANDED SINCE THE BRIEF WAS WRITTEN — this brief has two features
+already SHIPPED, dark, waiting for you to exist:
+
+- M-MANTLE's 'worm season' mutator (3 vein worms active) is written and GATED
+  to a silent no-op until worms exist. Find the guard, wire it, and its GRIT
+  announcement already in barks. Do not redesign it.
+- M-SCHEMS2's 'Worm Whisperer' card (worms also path to your cursor beacon)
+  is likewise written and gated (data.js `needs`/guard). Wire it.
+- M-TIER2's five structures exist. Worms never touch machines OR belts OR the
+  new structures ("they dislike the taste of the Company") — and they must
+  not break an underground belt pair's tunnel: decide and TEST what happens
+  when a worm's tunnel crosses one (recommendation: nothing — the pair is
+  buried deeper than the worm swims; state it in a comment).
+- Sim.chain(run) is pure and rng-free (law 7), pinned by checkChain. Worms
+  eating 5 ore from a vein changes what extractors sit on — chain reads
+  machine state, so no chain change should be needed; verify, don't assume.
+- The tutorial (js/tutorial.js) runs on stratum 1; worms start s3+, so no
+  collision — keep its integration section green anyway.
+- The screen is 112 columns; the map is 46x26 and did not grow. Your glyphs
+  compete for legibility with everything already on the map: ~~o for worms
+  and Ω for the Undertoad against ▓ ▒ ░ · ≡ ♠ E S A D belts and structures.
+  Run node tools/glyphs.js after adding any glyph.
+- test/balance.js footer: full-Foundry standard is 2/14 @ 21.7m marked
+  DILUTED (a bot artifact, documented), camper med 5 DRIFTED. Compare your
+  before/after against THOSE numbers. Do not chase either marker.
+- The M-HUMANBAL ledger rule: if you believe an existing data.js value must
+  change, report it, never change it. data.js is ADDITIVE ONLY for you.
+
+DESIGN, decided in advance:
+- run.critters, ticked after machines, deterministic pathing from run.rng —
+  worms are SIM, so they may spend from the stream (they are the sim's
+  citizens, unlike panels). One roll site per decision; a re-render must
+  never move a worm.
+- The lure: cursor + L drops a 2-coal lure on a floor tile; worms path to
+  the nearest lure. Free excavation as a TOOL: spend coal to steer a living
+  tunnel-borer. Emergent, not scripted.
+- The Undertoad is the game's best mining site priced in integrity and
+  terror: one massive ANNOUNCED quake ("YOU WOKE IT. HARD HATS.") — law 8
+  is not violated because this quake is caused by the player's own act and
+  told to their face, not scheduled in secret.
+- Law 6 rules everything: a worm must read as alive at one glance and never
+  be mistakable for a belt. GRIT gets his 6-line disgust pool (guardrails:
+  profanity and gallows humour yes; slurs, hate, explicit anatomy,
+  non-consent never).
+
+Gate: all five suites green, node tools/build.js parses, extended for worms,
+lures, the Undertoad, the worm-season wiring and the Whisperer wiring. Run
+test/balance.js before and after and report both — worms eat ore and dig
+free tunnels, so this CAN move balance; measure it, and if a SPEC §12 naked
+target breaks, stop and report rather than tuning data.js.
+
+Checkpoint-commit AND PUSH after every green milestone with a
+"Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>" trailer. Ship vein
+worms + lure first, then the mutator/card wiring, then the Undertoad — a
+session death mid-brief should leave living worms, not half a toad.
+
+When done: push your branch and STOP — do not merge, rebase or force-push;
+the orchestrator merges. Report: what you built, your before/after balance
+numbers, deviations and why, and your final test output.
