@@ -799,6 +799,16 @@
     // travelling is legible in one glance the way a belt arrow's is. The tail
     // is dimmer than the head on purpose: that gradient is the animal's
     // heading, and it is honest sim state (law 1) rather than decoration.
+    //
+    // ONE COLLISION, KNOWN AND KEPT. js/fx.js animates magma by swapping '≈'
+    // for '~' on alternate frames (§A1), so a lava pool spends half its life
+    // wearing the worm's tail glyph. The brief names '~~o' and this does not
+    // redesign it: colour is what separates them, which is precisely the
+    // mechanism §0 law 6 names — ember orange against rose, a pool of them
+    // against a chain of three with an 'o' on the front, and the lava's swap
+    // is intermittent where a worm's tail is steady. Flagged here rather than
+    // silently absorbed, because the next person to look at this map will see
+    // it too and should know it was weighed.
     const cr = run.critters;
     if (cr) {
       // The Undertoad first, because it is the closest thing here to terrain:
