@@ -34,6 +34,10 @@ require('../js/art.js');
 require('../js/map.js');
 require('../js/sim.js');
 require('../js/meta.js');
+// M-WORMS: loaded at the top rather than inside one section, because its
+// presence is what un-gates 'worm season' and the Worm Whisperer — the whole
+// tree runs with the wildlife in it, exactly as the browser does.
+require('../js/worms.js');
 const DC = globalThis.DC;
 const D = DC.DATA;
 const S = DC.Sim;
@@ -117,7 +121,8 @@ function dirBetween(a, b) {
 // stratum that fits one) join the v1.1 set from SPEC2 §B.
 const EVENT_TYPES = ['quake', 'magma', 'depleted', 'breachReady', 'death', 'won',
                      'descend', 'core', 'landmark',
-                     'diagnostic'];   // M-ONBOARD: a failure state named itself
+                     'diagnostic',    // M-ONBOARD: a failure state named itself
+                     'worm', 'toad']; // M-WORMS: the wildlife, reporting in
 function mkDrainer(run) {
   const seen = {};              // type -> count
   const samples = {};           // type -> first event object
@@ -1198,9 +1203,16 @@ function endgameSection(seed) {
   assertEq(run.status, 'active', 'active again in the Mantle');
   assert(run.grid && run.hub, 'mantle map generated');
   const ms = D.mantleStratum(9);
-  assertEq(run.breachReq.gear, Math.ceil(ms.breach.gear * run.mods.breachMult),
+  // M-MANTLE: 'the seal' scales the requirement, so the expectation reads the
+  // floor's ACTUAL rule rather than assuming which one the roll dealt. It had
+  // been assuming — and M-WORMS joining the table (one more entry, so a
+  // different pick on this seed) is exactly the kind of change that finds an
+  // assumption like that. Every other mutator leaves breachMult at 1.
+  const mdef = S.mutatorOf(run);
+  const seal = (mdef && mdef.breachMult) || 1;
+  assertEq(run.breachReq.gear, Math.ceil(ms.breach.gear * run.mods.breachMult * seal),
     'depth 9 breachReq.gear from mantleStratum');
-  assertEq(run.breachReq.charge, Math.ceil(ms.breach.charge * run.mods.breachMult),
+  assertEq(run.breachReq.charge, Math.ceil(ms.breach.charge * run.mods.breachMult * seal),
     'depth 9 breachReq.charge from mantleStratum');
   assertEq(run.instability, Math.max(0, preInstab - 45), 'instability vented into the Mantle');
   // the mantle map simulates cleanly

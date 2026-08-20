@@ -11,6 +11,7 @@ require('../js/map.js');
 require('../js/sim.js');
 require('../js/meta.js');
 require('../js/events.js');   // M-EVENTS: dig finds, vignettes, the cat
+require('../js/worms.js');    // M-WORMS: vein worms, the lure, the Undertoad
 const DC = globalThis.DC;
 const D = DC.DATA;
 const S = DC.Sim;
@@ -52,8 +53,8 @@ function checkArt() {
 // use one of the 110 below, or run `node tools/font.js` and update this list
 // deliberately, in the same commit.
 const FONT_GLYPHS =
-  '¢¤§«°±·»×˙—’†‡•…←↑→↓↵−∩≈≋≡≤≫⌐─│┌┐└┘├┤┬┼═║╒╔╕╗╘╚╛╝╞╟╠╡╢╣╥╦╧╨╩╪╫╬' +
-  '▀▁▂▃▄▅▆▇█▉▊▋▌▍▎▏▐░▒▓▖▗▘▙▚▛▜▝▞▟▣▪▬▲▶▸▼◀◆◇◈○◎☼♠♦⣿';
+  '¢¤§«°±·»×˙Ω—’†‡•…←↑→↓↵−∩≈≋≡≤≫⌐─│┌┐└┘├┤┬┼═║╒╔╕╗╘╚╛╝╞╟╠╡╢╣╥╦╧╨╩╪╫╬' +
+  '▀▁▂▃▄▅▆▇█▉▊▋▌▍▎▏▐░▒▓▖▗▘▙▚▛▜▝▞▟▣▪▬▲▶▸▼◀◆◇◈○◎☼♠♣♦⣿';
 function checkGlyphInventory() {
   const drawn = require('../tools/glyphs.js').glyphs.join('');
   const have = new Set(FONT_GLYPHS.split(''));
@@ -2076,8 +2077,15 @@ function checkMutators() {
   for (const m of gated)
     assert(!table.some((t) => t.id === m.id),
       'gated mutator ' + m.id + ' must not be in the roll table');
-  assert(gated.length > 0,
-    'worm season is still gated (if M-WORMS landed, retire this line deliberately)');
+  // M-WORMS LANDED, and this is the line that used to say it had not. The
+  // contract is proved from the other side now: 'worm season' names a module,
+  // that module is loaded, and the floor rule therefore deals itself with no
+  // change to the table code that was written before it existed.
+  const season = (D.MUTATORS || []).find((m) => m.id === 'worms');
+  assertEq(season.needs, 'Worms', "'worm season' still names the module it needs");
+  assert(!!DC.Worms, 'and M-WORMS has landed, so it is loaded');
+  assert(table.some((m) => m.id === 'worms'),
+    "'worm season' is dealt now that DC.Worms exists");
 
   // ---- the banner ------------------------------------------------------
   // render.js inlays '<space>† NAME — tag<space>' into the divider under the
@@ -2730,14 +2738,17 @@ function checkSchems2() {
     const pool = S.schematicPool(r, r.depth);
     assert(pool.indexOf('s_boiler') >= 0 && pool.indexOf('s_loop') >= 0,
       'the rest of the batch is in the deck down here');
-    assertEq(pool.indexOf('s_whisper'), -1,
-      'the Worm Whisperer is not dealt while M-WORMS is absent');
-    const gated = D.SCHEMATICS.filter((s) => s.needsModule && !DC[s.needsModule]);
-    assert(gated.length > 0,
-      'the whisperer is still gated (if M-WORMS landed, retire this line deliberately)');
+    // M-WORMS LANDED: the card is DEALT now, by the same gate that refused
+    // it before, and nothing in the deck code changed to make that happen.
+    assert(pool.indexOf('s_whisper') >= 0,
+      'the Worm Whisperer is dealt now that DC.Worms exists');
+    for (const sc of D.SCHEMATICS)
+      if (sc.needsModule)
+        assertEq(pool.indexOf(sc.id) >= 0, !!DC[sc.needsModule],
+          sc.id + ' is dealt exactly when its module is loaded');
     assertEq(S.installSchematic(r, 's_whisper'), 's_whisper',
-      'installed by hand it still wires its flag...');
-    assertEq(r.mods.wormBeacon, true, '...for the module that will read it');
+      'installed it still wires its flag...');
+    assertEq(r.mods.wormBeacon, true, '...for the module that now reads it');
     cards++;
   }
 

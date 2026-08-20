@@ -102,6 +102,15 @@
     lastTime = now;
     if (st.screen === 'run' && !st.ui.paused && st.run &&
         (st.run.status === 'active' || st.run.status === 'breachReady')) {
+      // M-SCHEMS2/Worm Whisperer: the cursor, published into run state before
+      // the sim reads it. The SIM MUST NOT READ THE UI (it is DOM-free and
+      // headless), so the beacon travels the other way — engine writes where
+      // the player is pointing, js/worms.js reads a plain {x, y} on the run.
+      // Without the card, or without the module, this is a no-op and the
+      // worms have never heard of you.
+      const bc = (st.run.mods && st.run.mods.wormBeacon) ? st.ui.cursor : null;
+      if (DC.Worms && DC.Worms.beacon)
+        DC.Worms.beacon(st.run, bc ? bc.x : null, bc ? bc.y : null);
       acc = Math.min(acc + dt, 0.5);
       const step = 1 / tickHz;
       while (acc >= step && st.screen === 'run') {
@@ -219,6 +228,23 @@
       // saying out loud what the map is already showing.
       else if (ev.type === 'cat' && ev.data)
         bark(ev.data.act === 'flee' ? 'catFlee' : 'cat');
+      // M-WORMS: the wildlife. 'eat' is the one that matters — a vein going
+      // down without an extractor on it is news the player cannot see.
+      else if (ev.type === 'worm' && ev.data)
+        bark(ev.data.act === 'eat' ? 'worm'
+           : ev.data.act === 'lure' ? 'lureTaken' : 'lure');
+      // ...and the Undertoad, which is a PRIORITY line and a flash: the
+      // player caused this on the tick they caused it, and nothing on the bar
+      // outranks being told so.
+      else if (ev.type === 'toad' && ev.data) {
+        bark('undertoad');
+        if (DC.state && DC.state.ui) {
+          DC.state.ui.flash = {
+            text: '!! YOU WOKE IT — HARD HATS !!',
+            color: D.COLORS.toad, until: run.t + 4 * D.TICK_HZ,
+          };
+        }
+      }
       // M-ONBOARD: a failure state just named itself in the LOG, in the
       // system's plain voice. GRIT gets the last word and never the useful
       // one. Not routed through bark(): Barks.diag picks by seed hash rather
@@ -794,6 +820,10 @@
         bark(run.overdrive ? 'overdriveOn' : 'overdriveOff');
         return true;
       case 'd': tryDescend(st); return true;
+      // M-WORMS: two coal on the floor under the cursor. The only new binding
+      // this brief adds, and it sits beside the other one-letter verbs rather
+      // than on a modifier, because it is a TOOL and not an option.
+      case 'l': doLure(st); return true;
       case 'h': openHelp(st, 'run'); return true;
     }
     if (k === 'Escape') {
@@ -851,6 +881,19 @@
       return false;
     }
     return DC.Sim.place(run, type, x, y, st.ui.facing);
+  }
+
+  // M-WORMS: the lure. Refusals are said in the LOG in the sim's flat voice,
+  // exactly as a refused placement is; GRIT only gets a line when it works,
+  // because a foreman editorialising every mistyped key is nagging (§0 law 3).
+  function doLure(st) {
+    if (!DC.Worms || !DC.Worms.lure) return;
+    const c = st.ui.cursor;
+    if (!c) return;
+    const r = DC.Worms.lure(st.run, c.x, c.y);
+    // A successful lure pushes its own event; GRIT answers it on the next
+    // tick through drainEvents, like every other thing that happens down here.
+    if (r && !r.ok && r.reason) DC.Sim.msg(st.run, r.reason, D.COLORS.red);
   }
 
   function doDemolish(st, x, y) {

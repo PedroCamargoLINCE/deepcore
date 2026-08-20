@@ -72,6 +72,10 @@ require('../js/meta.js');
 // The finds roll on their own derived stream, so this changes what the bot
 // FINDS, never when the quakes land (see the header of js/events.js).
 require('../js/events.js');
+// M-WORMS: worms eat ore and dig free tunnel, so they MOVE this sweep. The
+// module is loaded here on purpose — a balance number measured without the
+// wildlife would be measuring a game nobody plays.
+require('../js/worms.js');
 const DC = globalThis.DC;
 const D = DC.DATA;
 const S = DC.Sim;

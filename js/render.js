@@ -788,6 +788,49 @@
       }
     }
 
+    // M-WORMS: the living world's second tenant, drawn over the tiles and
+    // under the cat — she has right of way on her own rig.
+    //
+    // A WORM MUST NEVER READ AS A BELT (§0 law 6, and the whole reason the
+    // glyphs are what they are). Three things separate them and any one of
+    // them would do: the ink is rose, which nothing else on this map is; the
+    // shape is a lowercase 'o' towing '~', which no arrow, ore or structure
+    // uses; and the head is drawn LAST and BRIGHTEST, so the direction it is
+    // travelling is legible in one glance the way a belt arrow's is. The tail
+    // is dimmer than the head on purpose: that gradient is the animal's
+    // heading, and it is honest sim state (law 1) rather than decoration.
+    const cr = run.critters;
+    if (cr) {
+      // The Undertoad first, because it is the closest thing here to terrain:
+      // a 2x2 seen faintly THROUGH the rock long before it can be reached. It
+      // breathes on the blink — it is asleep, not dead, and that is the only
+      // warning the map gives before the tooltip spells it out.
+      if (cr.toad && !cr.toad.gone) {
+        const tc = shade(C.toad, phase ? 0.72 : 0.5);
+        for (let dy = 0; dy < 2; dy++)
+          for (let dx = 0; dx < 2; dx++) {
+            const tx = cr.toad.x + dx, ty = cr.toad.y + dy;
+            const tt = run.grid[ty] && run.grid[ty][tx];
+            if (tt && tt.revealed) mapPut(tx, ty, 'Ω', egg ? eggTint(tc) : tc, xo);
+          }
+      }
+      // The bait, in the player's own amber: everything on this map the
+      // PLAYER put there is amber, so a lure is never mistaken for the coal
+      // seam ('♠', coal-grey) it was paid for.
+      for (const L of cr.lures) {
+        const lt = run.grid[L.y] && run.grid[L.y][L.x];
+        if (lt && lt.revealed) mapPut(L.x, L.y, '♣', egg ? eggTint(C.amber) : C.amber, xo);
+      }
+      const wc = DC.Worms && DC.Worms.cells ? DC.Worms.cells(run) : [];
+      for (let i = wc.length - 1; i >= 0; i--) {
+        const c = wc[i];
+        const wt = run.grid[c.y] && run.grid[c.y][c.x];
+        if (!wt || !wt.revealed) continue;
+        const col = c.head ? C.worm : shade(C.worm, 0.62);
+        mapPut(c.x, c.y, c.head ? 'o' : '~', egg ? eggTint(col) : col, xo);
+      }
+    }
+
     // M-EVENTS: the cat, drawn over the tiles and under the cursor. Her
     // COLOUR is state, the same way every other glyph on this map is: dim
     // while she is wandering, ember while she is sitting on a lit furnace,

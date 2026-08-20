@@ -30,6 +30,7 @@ require('../js/map.js');
 require('../js/sim.js');
 require('../js/meta.js');
 require('../js/events.js');    // M-EVENTS: the finds, the logbook, the vignettes
+require('../js/worms.js');     // M-WORMS: the wildlife GRIT has opinions about
 const DC = globalThis.DC;
 const D = DC.DATA;
 const S = DC.Sim;

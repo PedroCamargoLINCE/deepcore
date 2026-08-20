@@ -564,6 +564,8 @@
     const repairPl   = num(D.REPAIR_COST);
     const fuelPer    = num(D.FUEL_PER);
     const jump       = num(D.CURSOR_JUMP);
+    // M-WORMS: what the bait costs. Composed, not typed (CX-02's rule).
+    const lureCoal   = num((D.WORMS && D.WORMS.lureCost) || 2);
     const gearIn     = num(D.RECIPES.gear.in.ironPlate);
     const chgIn      = D.RECIPES.charge.in;
     // instability vented on descent — the same DATA key sim.js startStratum
@@ -717,6 +719,14 @@
         [T.obsidian.glyph, T.obsidian.color, 'obsidian', 'never yields'],
         [T.chasm.glyph, T.chasm.color, 'chasm', 'no way across'],
         [T.magma.glyph, T.magma.color, 'magma', 'spreads · melts all'],
+        // M-WORMS. Three rows on the hazard glossary, because that is what
+        // the wildlife IS — and because a key nobody documents is a key
+        // nobody presses, and 'L' is the whole of the feature's second half.
+        // The coal figure is composed from D.WORMS like every other number on
+        // these pages, so retuning the bait retunes the sentence.
+        ['o', C.worm, 'vein worm', 'eats the vein'],
+        ['♣', C.amber, 'coal lure', 'call them', 'L', lureCoal + ' coal'],
+        ['Ω', C.toad, 'undertoad', 'wake it and pay'],
       ];
       for (let i = 0; i < rocks.length; i++) {
         const r = rocks[i], y = 5 + i;
