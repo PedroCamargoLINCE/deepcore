@@ -96,6 +96,29 @@ for (const t of EVENT_POOLS) {
   assert(pool.length >= 4 && pool.length <= 8,
     'pool "mutator" has 4-8 lines (got ' + pool.length + ')');
 }
+// M-WORMS adds four, on the same 4-8 rule. The brief asks for SIX lines of
+// disgust for the worm itself, which is the top of the range and deliberate:
+// it is the thing the player will see most of. The Undertoad's is PRIORITY —
+// the player just detonated the floor on purpose and nothing on the bar
+// outranks being told so.
+{
+  const WORM_POOLS = { worm: 6, lure: 0, lureTaken: 0, undertoad: 0 };
+  for (const t in WORM_POOLS) {
+    const pool = B.POOLS[t];
+    assert(Array.isArray(pool), 'M-WORMS trigger "' + t + '" has a pool');
+    assert(pool.length >= 4 && pool.length <= 8,
+      'pool "' + t + '" has 4-8 lines (got ' + pool.length + ')');
+    if (WORM_POOLS[t])
+      assertEq(pool.length, WORM_POOLS[t],
+        'the brief asks for exactly ' + WORM_POOLS[t] + ' lines of ' + t);
+  }
+  assert(B.PRIORITY.undertoad === 1, 'waking it cuts through the cooldown');
+  // ...and the mutator's line was written before the module existed. It is
+  // still here, and now it is reachable.
+  assert(B.MUTATOR_LINES.worms, "'worm season' has its bespoke line");
+  assert(B.SCHEM_LINES.s_whisper, 'and so does the Worm Whisperer');
+}
+
 // M-SCHEMS2 adds one more: Deep Insurance's payout. It must also be PRIORITY
 // — the rig refusing to die is not a moment the cooldown gets to swallow.
 {
@@ -1235,7 +1258,10 @@ let MANUAL_COLORS = 0;
     'engine leaves WASD unbound (SPEC3 M-MANUAL)');
   assert(!/WASD/i.test(joined), 'the manual does not promise WASD');
   assert(/↑↓←→/.test(joined), 'the manual documents the arrow-key cursor');
-  for (const k of ['x', 'r', 'c', 'd', 'h']) {
+  // 'l' joins the list with M-WORMS: the manual's hazard glossary prints an
+  // L keycap beside the coal lure, and a keycap the engine does not answer is
+  // a lie printed in the only document the player is told to trust.
+  for (const k of ['x', 'r', 'c', 'd', 'h', 'l']) {
     assert(new RegExp("case '" + k + "':").test(engSrc),
       'manual key ' + k.toUpperCase() + ' is really bound in engine.runKey');
   }

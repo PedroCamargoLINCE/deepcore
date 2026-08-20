@@ -2755,6 +2755,508 @@ function checkSchems2() {
   return cards;
 }
 
+// ======================================================================
+// ------------------------------------------------- M-WORMS: something lives
+// The battery is organised the way the brief is: the animal, the tool, the
+// monster, and then the two features that shipped dark waiting for it. The
+// long one in the middle — 'a lure never moves the stream' — is the reason
+// this module was allowed to draw from run.rng at all, so it is the one to
+// read first if any of this ever has to be revisited.
+function wormRun(seed, depth) {
+  const r = S.newRun(DC.Meta.effects(DC.Meta.newProfile()), seed);
+  r.depth = depth === undefined ? D.WORMS.minDepth : depth;
+  S.startStratum(r);
+  return r;
+}
+// flatRun's board, but on a floor that really was started at a worm depth —
+// flatRun sets `depth` without regenerating, so its map (and its wildlife) is
+// always stratum 1's. This starts the stratum first and then flattens around
+// the animals, which is what a "walk a worm at this thing" test needs.
+function flatWorm(seed, depth) {
+  const r = S.newRun(DC.Meta.effects(DC.Meta.newProfile()), seed);
+  r.depth = depth === undefined ? D.WORMS.minDepth : depth;
+  S.startStratum(r);
+  for (let y = 0; y < D.MAP_H; y++)
+    for (let x = 0; x < D.MAP_W; x++) {
+      const t = r.grid[y][x];
+      t.revealed = true;
+      if (t.machine === 0) continue;                 // the rig stays put
+      t.t = 'floor'; t.machine = null; t.belt = null; t.rubble = false;
+      t.digT = 0; t.ore = null; t.oreAmt = 0; t.lm = null; t.toad = false;
+    }
+  r.landmark = null;
+  if (r.critters) r.critters.toad = null;            // the toad is tested elsewhere
+  // Scaffold: these cases tick for minutes to walk a worm somewhere, and a
+  // quake eating the very belt the case is about would be a false negative
+  // about worms. instHold is js/tutorial.js's own pressure pause; magmaCap 0
+  // stops the lava spreading over the board mid-experiment. Neither is
+  // touched by any case that is ABOUT pressure.
+  r.instHold = true;
+  r.magmaCap = 0;
+  r.inv.ironPlate = 9999; r.inv.copperPlate = 999;
+  return r;
+}
+function checkWorms() {
+  const eff = DC.Meta.effects(DC.Meta.newProfile());
+  const WD = D.WORMS, TD = D.UNDERTOAD;
+  assert(!!DC.Worms, 'DC.Worms is loaded');
+
+  // ---- where they are, and where they are not --------------------------
+  // The tutorial owns stratum 1 (js/tutorial.js), so worms starting at 3 is
+  // not a taste call — it is the reason the induction can never collide with
+  // one. Pinned here rather than trusted.
+  {
+    assert(WD.minDepth > 1, 'worms never share a floor with the induction');
+    for (let d = 1; d < WD.minDepth; d++) {
+      const r = wormRun(9001, d);
+      assertEq(DC.Worms.list(r).length, 0, 'no worms on stratum ' + d);
+      assertEq(DC.Worms.toad(r), null, 'and no Undertoad either');
+    }
+    let counts = {};
+    for (let s = 0; s < 60; s++) {
+      const r = wormRun(7001 + s * 131, WD.minDepth + (s % 5));
+      const ws = DC.Worms.list(r);
+      counts[ws.length] = (counts[ws.length] || 0) + 1;
+      assert(ws.length >= WD.count[0] && ws.length <= WD.count[1],
+        'a floor gets ' + WD.count[0] + '-' + WD.count[1] + ' worms (got ' + ws.length + ')');
+      const c = { x: r.hub.x + 1, y: r.hub.y + 1 };
+      for (const w of ws) {
+        assert(Math.hypot(w.x - c.x, w.y - c.y) >= WD.spawnMinD,
+          'a worm never surfaces on top of the rig');
+        assert(w.x > 0 && w.y > 0 && w.x < D.MAP_W - 1 && w.y < D.MAP_H - 1,
+          'a worm starts inside the map');
+      }
+    }
+    assert(Object.keys(counts).length > 1, 'the count actually varies across floors');
+  }
+
+  // ---- a re-render must never move a worm ------------------------------
+  // The render layer asks these three questions every frame. If any of them
+  // drew from run.rng, a player who watched the map would get a different
+  // quake than a player who looked away (§0 law 7's render trap).
+  {
+    const a = wormRun(4711, 5), b = wormRun(4711, 5);
+    const before = JSON.stringify(DC.Worms.list(a));
+    for (let i = 0; i < 200; i++) {
+      DC.Worms.cells(a); DC.Worms.list(a); DC.Worms.toad(a);
+      DC.Worms.describe(a, i % D.MAP_W, (i * 7) % D.MAP_H);
+      S.describeTile(a, i % D.MAP_W, (i * 7) % D.MAP_H);
+    }
+    assertEq(JSON.stringify(DC.Worms.list(a)), before, 'reading never moves a worm');
+    assertEq(a.rng(), b.rng(), 'and never advances run.rng');
+    // ...and the glyph chain is the three cells the brief asked for
+    const r = wormRun(4711, 5);
+    tickRun(r, WD.stepT * 6);
+    for (const w of DC.Worms.list(r)) {
+      const mine = DC.Worms.cells(r).filter((c) => c.id === w.id);
+      assertEq(mine.length, WD.segs, "'~~o' is " + WD.segs + ' cells of animal');
+      assertEq(mine.filter((c) => c.head).length, 1, 'exactly one of them is the head');
+      assertEq(mine[0].head, true, 'and cells() puts it first, so render draws it last');
+    }
+  }
+
+  // ---- it opens rock, and it eats the vein ------------------------------
+  {
+    const r = wormRun(1201, 6);
+    r.instHold = true; r.magmaCap = 0;   // scaffold: see flatWorm
+    let rock0 = countTiles(r, (t) => t.t === 'rock');
+    let ore0 = 0;
+    for (let y = 0; y < D.MAP_H; y++)
+      for (let x = 0; x < D.MAP_W; x++) ore0 += r.grid[y][x].oreAmt || 0;
+    tickRun(r, WD.stepT * 400);
+    const st = DC.Worms.peek(r);
+    assert(st.dug > 0, 'a worm opens rock as it swims (' + st.dug + ' tiles)');
+    assertEq(countTiles(r, (t) => t.t === 'rock'), rock0 - st.dug,
+      'and every tile it opened is floor now, none of them anything else');
+    let ore1 = 0;
+    for (let y = 0; y < D.MAP_H; y++)
+      for (let x = 0; x < D.MAP_W; x++) ore1 += r.grid[y][x].oreAmt || 0;
+    if (st.ate > 0) {
+      assertEq(ore0 - ore1, st.ate, 'the ore it ate is the ore that left the map');
+      assert(st.ate % WD.eat === 0 || ore1 === 0,
+        'it takes ' + WD.eat + ' a mouthful (or the last of a thin tile)');
+    }
+    // an exhausted tile stops being a vein rather than becoming a 0-ore one
+    for (let y = 0; y < D.MAP_H; y++)
+      for (let x = 0; x < D.MAP_W; x++) {
+        const t = r.grid[y][x];
+        if (t.ore) assert(t.oreAmt > 0, 'no vein tile is left holding zero ore');
+      }
+  }
+
+  // ---- it does not touch the Company -----------------------------------
+  // The one promise that makes a creature safe to have in a game with no
+  // combat. Driven against a real base rather than reasoned about: a worm is
+  // walked at a machine, a belt and a landmark with a lure behind each.
+  {
+    const r = flatWorm(1202, 6);
+    const hy = r.hub.y, hx = r.hub.x;
+    assert(S.place(r, 'smelter', hx - 10, hy, 1), 'a smelter in the worm\'s way');
+    assert(S.place(r, 'belt', hx - 12, hy, 1), 'and a belt beside it');
+    r.grid[hy][hx - 12].belt.item = 'coal';
+    r.grid[hy + 2][hx - 10].lm = { id: 'root', g: '♠' };
+    r.inv.coal = 99;
+    const w = DC.Worms.list(r)[0] || null;
+    assert(w, 'the floor has a worm to walk');
+    w.x = hx - 14; w.y = hy; w.body.length = 0;
+    assert(DC.Worms.lure(r, hx - 6, hy).ok, 'a lure on the far side of the smelter');
+    const mach0 = Object.keys(r.machines).length;
+    const hp0 = machAt(r, hx - 10, hy).hp;
+    let onMachine = 0, onBelt = 0, onLm = 0, moved = 0;
+    let last = w.x + ',' + w.y;
+    for (let i = 0; i < WD.stepT * 200; i++) {
+      S.tick(r);
+      if (w.x + ',' + w.y !== last) { moved++; last = w.x + ',' + w.y; }
+      for (const c of DC.Worms.cells(r)) {
+        const t = r.grid[c.y][c.x];
+        if (t.machine !== null) onMachine++;
+        if (t.belt) onBelt++;
+        if (t.lm) onLm++;
+      }
+    }
+    // The counters above are only worth anything if the animal actually
+    // walked past the things it is not allowed to touch.
+    assert(moved > 20, 'the worm really did travel (' + moved + ' steps)');
+    assertEq(onMachine, 0, 'a worm never stands on a machine or the rig');
+    assertEq(onBelt, 0, 'a worm never stands on a belt');
+    assertEq(onLm, 0, 'a worm never stands on a landmark');
+    assertEq(r.grid[hy][hx - 12].belt && r.grid[hy][hx - 12].belt.item, 'coal',
+      'the cargo on that belt is exactly where it was left');
+    assertEq(Object.keys(r.machines).length, mach0, 'and no machine was eaten');
+    assertEq(machAt(r, hx - 10, hy).hp, hp0, '...nor even scratched');
+    assert(!!r.grid[hy + 2][hx - 10].lm, 'the landmark tile still belongs to the landmark');
+    // ...nor does it swim through the three terrains nothing swims through
+    for (const kind of ['magma', 'obsidian', 'chasm']) {
+      const q = flatWorm(1203, 6);
+      const ww = DC.Worms.list(q)[0];
+      assert(ww, 'a worm to box in');
+      ww.x = 4; ww.y = 4; ww.body.length = 0;
+      for (let y = 2; y <= 6; y++)
+        for (let x = 2; x <= 6; x++)
+          if (x !== 4 || y !== 4) q.grid[y][x].t = kind;
+      tickRun(q, WD.stepT * 30);
+      assertEq(ww.x + ',' + ww.y, '4,4', 'a worm walled in by ' + kind + ' stays put');
+      assertEq(q.grid[3][4].t, kind, '...and the ' + kind + ' is untouched');
+    }
+  }
+
+  // ---- THE UNDERGROUND BELT PAIR ----------------------------------------
+  // The brief asked for a decision and a test. THE DECISION IS: NOTHING
+  // HAPPENS. sim.js pairTunnel binds the two ends machine-to-machine at
+  // placement and stores the ids; no code path ever re-reads the ground
+  // between them, so a worm's tunnel across that gap cannot break, re-route
+  // or unpair anything. In the fiction the pair is buried deeper than the
+  // worm swims. Here is the case, driven end to end.
+  {
+    const r = flatWorm(1204, 6);
+    const y = r.hub.y, x = r.hub.x - 14;
+    const gap = D.BUILDINGS.tunnel.gap;
+    assert(S.place(r, 'tunnel', x, y, 1), 'entrance placed');
+    assert(S.place(r, 'tunnel', x + gap + 1, y, 1), 'exit placed');
+    const a = machAt(r, x, y), b = machAt(r, x + gap + 1, y);
+    assertEq(a.pair, b.id, 'the pair found each other');
+    for (let k = 1; k <= gap; k++) r.grid[y][x + k].t = 'rock';   // solid ground over it
+    assert(S.place(r, 'belt', x - 1, y, 1), 'a belt into the entrance');
+    assert(S.place(r, 'belt', x + gap + 2, y, 1), 'a belt off the exit');
+    // walk a worm straight across the buried span
+    const w = DC.Worms.list(r)[0];
+    assert(w, 'a worm to walk over it');
+    w.x = x + 2; w.y = y - 3; w.body.length = 0;
+    r.inv.coal = 99;
+    assert(DC.Worms.lure(r, x + 2, y + 4).ok, 'bait on the far side of the span');
+    tickRun(r, WD.stepT * 40);
+    let crossed = 0;
+    for (let k = 1; k <= gap; k++) if (r.grid[y][x + k].t === 'floor') crossed++;
+    assert(crossed > 0, 'the worm really did open the ground over the pair (' + crossed + ')');
+    // ...and the pair does not care, at all
+    assertEq(a.pair, b.id, 'the pair is still bound');
+    assertEq(a.mode, 'in', 'the entrance is still the entrance');
+    assertEq(b.mode, 'out', 'the exit is still the exit');
+    r.grid[y][x - 1].belt.item = 'coal';
+    tickRun(r, 8 * D.BELT_PERIOD);
+    assertEq(r.grid[y][x + gap + 2].belt.item, 'coal',
+      'and cargo still crosses the span the worm dug through');
+  }
+
+  // ---- THE LURE ---------------------------------------------------------
+  {
+    const r = flatWorm(1205, 6);
+    const hy = r.hub.y, hx = r.hub.x;
+    r.inv.coal = 0;
+    assertEq(DC.Worms.lure(r, hx - 8, hy).ok, false, 'no coal, no lure');
+    assert(/coal/.test(DC.Worms.lure(r, hx - 8, hy).reason), '...and it says which');
+    r.inv.coal = WD.lureCost;
+    r.grid[hy][hx - 8].t = 'rock';
+    assertEq(DC.Worms.lure(r, hx - 8, hy).ok, false, 'a lure needs open floor');
+    r.grid[hy][hx - 8].t = 'floor';
+    assert(S.place(r, 'belt', hx - 7, hy, 1), 'a belt to be in the way');
+    assertEq(DC.Worms.lure(r, hx - 7, hy).ok, false, 'a lure does not go on a belt');
+    assert(DC.Worms.lure(r, hx - 8, hy).ok, 'and on bare floor it does');
+    assertEq(r.inv.coal, 0, 'it cost exactly ' + WD.lureCost + ' coal');
+    assertEq(DC.Worms.lures(r).length, 1, 'and it is on the map');
+    r.inv.coal = 99;
+    assertEq(DC.Worms.lure(r, hx - 8, hy).ok, false, 'one lure to a tile');
+    // a floor with nothing to call refuses the spend rather than eating it
+    const shallow = flatWorm(1206, 1);
+    shallow.inv.coal = 99;
+    const no = DC.Worms.lure(shallow, shallow.hub.x - 8, shallow.hub.y);
+    assertEq(no.ok, false, 'stratum 1 has nothing to call');
+    assertEq(shallow.inv.coal, 99, 'and the coal stays in the crate');
+    // ...and a worm walks to it, eats it, and moves on
+    const w = DC.Worms.list(r)[0];
+    w.x = hx - 16; w.y = hy; w.body.length = 0;
+    const d0 = Math.abs(w.x - (hx - 8));
+    tickRun(r, WD.stepT * 4);
+    assert(Math.abs(w.x - (hx - 8)) < d0, 'the worm turns toward the bait');
+    tickRun(r, WD.stepT * 40);
+    assertEq(DC.Worms.lures(r).length, 0, 'and eats it when it arrives');
+    assert(r.events.some((e) => e.type === 'worm' && e.data.act === 'lure'),
+      'which GRIT is told about');
+  }
+
+  // ---- A LURE NEVER MOVES THE STREAM (§0 law 7) -------------------------
+  // The load-bearing test of this whole module. Two identical runs; one of
+  // them is played WITH the tool, hard — six lures, dropped at different
+  // moments, dragging its worms right across the map. If aiming a worm cost
+  // the stream one draw, the quake schedule would depend on how the player
+  // played the floor, every number in test/balance.js would drift with the
+  // shape of a base, and the module would have to be rewritten onto a derived
+  // stream like js/events.js. It does not, so it does not.
+  {
+    const a = wormRun(8123, 6), b = wormRun(8123, 6);
+    revealAll(b);
+    b.inv.coal = 999;
+    let dropped = 0;
+    for (let i = 0; i < 8 * 240; i++) {
+      S.tick(a); S.tick(b);
+      if (i % 240 === 0) {
+        for (let y = 1; y < D.MAP_H - 1 && dropped <= i / 240; y++)
+          for (let x = 1; x < D.MAP_W - 1 && dropped <= i / 240; x++)
+            if (DC.Worms.lure(b, (x * 13 + i) % (D.MAP_W - 2) + 1,
+                                 (y * 7 + i) % (D.MAP_H - 2) + 1).ok) dropped++;
+      }
+    }
+    assert(dropped >= 4, 'the lured run really did use the tool (' + dropped + ' lures)');
+    const wa = DC.Worms.list(a).map((w) => w.x + ',' + w.y).join(' ');
+    const wb = DC.Worms.list(b).map((w) => w.x + ',' + w.y).join(' ');
+    assert(wa !== wb, 'and it really did move the worms (' + wa + ' vs ' + wb + ')');
+    assertEq(b.quakeAt, a.quakeAt, 'the next quake is scheduled for the same tick');
+    assertEq(Math.round(b.instability * 1e6), Math.round(a.instability * 1e6),
+      'the pressure is identical');
+    for (let i = 0; i < 40; i++)
+      assertEq(b.rng(), a.rng(), 'and the stream itself is bit-identical at draw ' + i);
+  }
+
+  // ---- WORM SEASON, wired (M-MANTLE) ------------------------------------
+  // The mutator shipped written and gated on this module. Nothing in the
+  // table changed when the module landed; the count comes out of the entry's
+  // own data.js field, so retuning the season retunes the floor.
+  {
+    const def = D.MUTATOR_BY_ID.worms;
+    assert(def && def.count >= 3, 'the season names its own count');
+    const r = mantleRun(6161, 'worms', eff);
+    assertEq(DC.Worms.list(r).length, def.count,
+      'worm season puts ' + def.count + ' of them in the walls');
+    const plain = mantleRun(6161, 'seal', eff);
+    assert(DC.Worms.list(plain).length < def.count,
+      'and an ordinary Mantle floor has fewer');
+    assert(DC.Barks && DC.Barks.MUTATOR_LINES && DC.Barks.MUTATOR_LINES.worms,
+      'GRIT already had a line for it');
+  }
+
+  // ---- THE WORM WHISPERER, wired (M-SCHEMS2) ----------------------------
+  // The card's contract: worms also come when the cursor calls. The cursor is
+  // UI, so ENGINE publishes it into run state and the sim reads a plain
+  // {x, y} — which is exactly what this drives, with no engine in the room.
+  {
+    const off = flatWorm(1207, 6), on = flatWorm(1207, 6);
+    assertEq(S.installSchematic(on, 's_whisper'), 's_whisper', 'the card installs');
+    assertEq(on.mods.wormBeacon, true, 'and sets its flag');
+    const bx = off.hub.x - 15, by = off.hub.y - 8;
+    for (const r of [off, on]) {
+      const w = DC.Worms.list(r)[0];
+      assert(w, 'a worm to call');
+      w.x = r.hub.x + 12; w.y = r.hub.y + 8; w.dir = 1; w.body.length = 0;
+      DC.Worms.beacon(r, bx, by);
+    }
+    const d0 = Math.abs(DC.Worms.list(on)[0].x - bx) + Math.abs(DC.Worms.list(on)[0].y - by);
+    tickRun(off, WD.stepT * 25); tickRun(on, WD.stepT * 25);
+    const wOn = DC.Worms.list(on)[0], wOff = DC.Worms.list(off)[0];
+    const dOn = Math.abs(wOn.x - bx) + Math.abs(wOn.y - by);
+    const dOff = Math.abs(wOff.x - bx) + Math.abs(wOff.y - by);
+    assert(dOn < d0, 'with the card the worm closes on the cursor (' + d0 + ' -> ' + dOn + ')');
+    assert(dOn < dOff, 'and without it, it has never heard of you (' + dOff + ')');
+    // the beacon costs the stream nothing either — it is a target, not a roll
+    const c1 = flatWorm(1208, 6), c2 = flatWorm(1208, 6);
+    S.installSchematic(c2, 's_whisper');
+    for (let i = 0; i < 400; i++) {
+      DC.Worms.beacon(c2, i % D.MAP_W, i % D.MAP_H);
+      S.tick(c1); S.tick(c2);
+    }
+    for (let i = 0; i < 20; i++) assertEq(c2.rng(), c1.rng(), 'the beacon draws nothing');
+  }
+
+  // ---- THE UNDERTOAD ----------------------------------------------------
+  let toads = 0, maps = 0, tunnels = [];
+  {
+    const c = {};
+    for (let s = 0; s < 200; s++) {
+      const r = wormRun(3300 + s * 977, TD.minDepth + (s % 5));
+      maps++;
+      const t = DC.Worms.toad(r);
+      if (!t) continue;
+      toads++;
+      const hub = { x: r.hub.x + 1, y: r.hub.y + 1 };
+      assert(Math.hypot(t.x - hub.x, t.y - hub.y) >= TD.minD,
+        'it never sleeps on top of the rig');
+      for (let dy = 0; dy < 2; dy++)
+        for (let dx = 0; dx < 2; dx++) {
+          const tt = r.grid[t.y + dy][t.x + dx];
+          assertEq(tt.toad, true, 'all four cells are the creature');
+          assertEq(tt.t, 'floor', 'and the chamber is open ground');
+          assertEq(tt.ore, null, 'it never sleeps on a vein');
+          assertEq(tt.lm, null, 'and never on a wonder');
+          assertEq(tt.machine, null, 'and never on the rig');
+        }
+      // nothing may be built on the tenant. Scanned first, or the refusal
+      // that comes back is the ordinary one about unscanned ground.
+      r.inv.ironPlate = 999;
+      for (let dy = 0; dy < 2; dy++)
+        for (let dx = 0; dx < 2; dx++) r.grid[t.y + dy][t.x + dx].revealed = true;
+      const chk = S.canPlace(r, 'belt', t.x, t.y, 1);
+      assertEq(chk.ok, false, 'you cannot build on it');
+      assert(/asleep/.test(chk.reason), '...and the refusal says why: ' + chk.reason);
+      c[r.depth] = 1;
+    }
+    assert(toads > 0, 'the Undertoad is placed at all (' + toads + '/' + maps + ')');
+    const rate = toads / maps;
+    assert(rate > 0.03 && rate < 0.35,
+      'and roughly at its stated rate (' + (rate * 100).toFixed(0) + '% vs ' +
+      (TD.chance * 100) + '%)');
+  }
+
+  // one to a run, however deep it goes
+  {
+    const r = S.newRun(eff, 5511);
+    let seen = 0;
+    for (let d = TD.minDepth; d <= TD.minDepth + 14; d++) {
+      r.depth = d;
+      S.startStratum(r);
+      if (DC.Worms.toad(r)) seen++;
+    }
+    assert(seen <= 1, 'at most one Undertoad in a run (saw ' + seen + ')');
+  }
+
+  // waking it: the radius, the quake, the prize — and no draw from the stream
+  {
+    let woke = 0;
+    for (let s = 0; s < 400 && woke < 6; s++) {
+      const r = wormRun(4400 + s * 613, TD.minDepth + (s % 6));
+      const t = DC.Worms.toad(r);
+      if (!t) continue;
+      revealAll(r);
+      r.inv.ironPlate = 999; r.inv.copperPlate = 999;
+      // far away, nothing happens
+      const far = { x: t.x > D.MAP_W / 2 ? 1 : D.MAP_W - 2, y: t.y };
+      r.grid[far.y][far.x].t = 'rock';
+      S.demolishAt(r, far.x, far.y);
+      assertEq(DC.Worms.toad(r).awake, false, 'a hole across the map does not wake it');
+      // within the radius, it does — and the roll does not move. A chamber
+      // seated by the loosest placement tier can have no rock left within the
+      // radius at all; that map is simply not this case's map.
+      let dug = null;
+      for (let dy = -TD.wakeR; dy <= TD.wakeR + 1 && !dug; dy++)
+        for (let dx = -TD.wakeR; dx <= TD.wakeR + 1 && !dug; dx++) {
+          const x = t.x + dx, y = t.y + dy;
+          const tt = r.grid[y] && r.grid[y][x];
+          if (tt && tt.t === 'rock' && !tt.toad) dug = { x: x, y: y };
+        }
+      if (!dug) continue;
+      const stream = [];
+      const base = r.rng;
+      r.rng = function () { stream.push(1); return base(); };
+      const i0 = r.integrity, p0 = r.instability;
+      assert(S.demolishAt(r, dug.x, dug.y).ok, 'the pick goes in');
+      assertEq(DC.Worms.toad(r).awake, true, 'and it wakes');
+      assertEq(stream.length, 0, 'waking it draws NOTHING from run.rng (law 7/8)');
+      r.rng = base;
+      assertEq(i0 - r.integrity, TD.dmg, 'the hull pays ' + TD.dmg + ' for it');
+      assertEq(Math.round(r.instability - p0), TD.inst, 'and the planet notices');
+      assertEq(r.shake, true, 'the screen is told to shake');
+      assert(/WOKE IT/.test(r.messages.map((m) => m.text).join(' ')),
+        'and the player is told to their face');
+      const ev = r.events.filter((e) => e.type === 'toad')[0];
+      assert(ev && ev.data.act === 'wake', 'the event carries the wake');
+      assert(ev.data.tiles >= TD.tunnel[0] && ev.data.tiles <= TD.tunnel[1],
+        'the tunnel is ' + TD.tunnel[0] + '-' + TD.tunnel[1] + ' tiles (' + ev.data.tiles + ')');
+      tunnels.push(ev.data.tiles);
+      assert(ev.data.rubble > 0, 'and it brought the ceiling down around itself');
+      assertEq(DC.Worms.toad(r).gone, true, 'the tenant has moved out');
+      for (let dy = 0; dy < 2; dy++)
+        for (let dx = 0; dx < 2; dx++)
+          assertEq(r.grid[t.y + dy][t.x + dx].toad, false, 'the chamber is ordinary ground');
+      assertEq(S.canPlace(r, 'belt', t.x, t.y, 1).ok, true, 'and buildable now');
+      // the prize: crystal, in a line, out of the chamber
+      let cry = 0;
+      for (let y = 0; y < D.MAP_H; y++)
+        for (let x = 0; x < D.MAP_W; x++)
+          if (r.grid[y][x].ore === 'crystal' && r.grid[y][x].oreAmt > 0) cry++;
+      assert(cry >= ev.data.tiles, 'the tunnel is lined with crystal (' + cry + ')');
+      // a second disturbance is not a second quake
+      const i1 = r.integrity;
+      assertEq(DC.Worms.disturb(r, dug.x, dug.y), false, 'it only wakes once');
+      assertEq(r.integrity, i1, 'and only bills once');
+      woke++;
+    }
+    assert(woke >= 3, 'the wake path was driven on several maps (' + woke + ')');
+  }
+
+  // building near it wakes it too — the brief says building OR digging
+  {
+    for (let s = 0; s < 400; s++) {
+      const r = wormRun(6600 + s * 421, TD.minDepth + (s % 5));
+      const t = DC.Worms.toad(r);
+      if (!t) continue;
+      revealAll(r);
+      r.inv.ironPlate = 999;
+      let spot = null;
+      for (let dy = -TD.wakeR; dy <= TD.wakeR + 1 && !spot; dy++)
+        for (let dx = -TD.wakeR; dx <= TD.wakeR + 1 && !spot; dx++) {
+          const x = t.x + dx, y = t.y + dy;
+          const tt = r.grid[y] && r.grid[y][x];
+          if (tt && tt.t === 'floor' && !tt.toad && !tt.ore && tt.machine === null &&
+              !tt.rubble && !tt.lm) spot = { x: x, y: y };
+        }
+      if (!spot) continue;
+      assert(S.place(r, 'belt', spot.x, spot.y, 1), 'a belt goes down beside it');
+      assertEq(DC.Worms.toad(r).awake, true, 'and that wakes it as surely as a pick');
+      break;
+    }
+  }
+
+  // ---- Sim.chain is still pure, and still blind to the wildlife ---------
+  // chain() reads MACHINE state, so a worm eating a vein out from under an
+  // extractor changes what the panel reports through the extractor's own
+  // status and not through any new term. Verified rather than assumed: the
+  // projection is identical across a worm's whole meal, and rolls nothing.
+  {
+    const r = wormRun(2211, 6);
+    const before = JSON.stringify(S.chain(r));
+    const twin = wormRun(2211, 6);
+    for (let i = 0; i < 200; i++) { S.chain(r); }
+    assertEq(r.rng(), twin.rng(), 'chain() still draws nothing with worms on the map');
+    tickRun(r, WD.stepT * 200);
+    const ch = S.chain(r);
+    assert(ch && typeof ch.drillCost === 'number', 'and still answers after they have eaten');
+    assertEq(JSON.stringify(S.chain(r)), JSON.stringify(ch), 'twice, identically');
+    assert(before.length > 0, 'the panel had an answer before they started too');
+  }
+
+  return { worms: 1, toads: toads, maps: maps,
+           tunnel: tunnels.length ? Math.min.apply(null, tunnels) + '-' +
+                                    Math.max.apply(null, tunnels) : 'n/a' };
+}
+
 function checkChain() {
   const eff = DC.Meta.effects(DC.Meta.newProfile());
   const r = S.newRun(eff, 4242);
@@ -2901,6 +3403,7 @@ function main() {
   const chainCh = checkChain();       // M-WIDE: the CHAIN panel's numbers
   const mutN = checkMutators();       // M-MANTLE: the deep's one rule per floor
   const schemN = checkSchems2();      // M-SCHEMS2: the second card batch
+  const wormN = checkWorms();         // M-WORMS: the wildlife, the lure, the toad
 
   const eff = DC.Meta.effects(DC.Meta.newProfile());
   assert(eff && typeof eff.instMult === 'number' && eff.offerCount === 3,
@@ -2968,6 +3471,8 @@ function main() {
     ' | tier II: ' + tier2N + ' structures, facing not adjacency, line > machines' +
     ' | mutators ' + mutN + ' dealt of ' + D.MUTATORS.length + ' written, one roll a floor' +
     ' | schems2: ' + schemN + ' cards through the real pick path' +
+    ' | worms: ' + wormN.toads + '/' + wormN.maps + ' maps have an Undertoad, ' +
+    'tunnels ' + wormN.tunnel + ', a lure never moves the stream' +
     ' | chain: ' + chainCh.stages.map(s => s.n + s.letter + ' ' +
       s.rate.toFixed(2) + '/s').join(' -> ') +
     ' limited by ' + chainCh.stages.filter(s => s.limiting).map(s => s.name).join(','));
