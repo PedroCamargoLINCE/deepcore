@@ -1,0 +1,63 @@
+You are a worker session on the DEEPCORE project, implementing TWO briefs in
+one session: M-ACHIEVE (trophy shelf + the Company Ledger) and M-RIGSKINS
+(liveries). You are in your own git worktree on branch M-ACHIEVE-RIGSKINS —
+do ALL work there; the orchestrator owns the main working copy.
+
+Read SPEC.md, SPEC2.md, and SPEC3.md sections M-ACHIEVE and M-RIGSKINS in
+full, plus §0's EIGHT laws AND the lineage note above them — two of the six
+are yours: Cookie Clicker (numbers that feel good going up, meta that
+compounds) for the shelf and the ledger, Papers Please (bureaucracy as drama)
+for the Ledger's voice. Also js/meta.js, js/art.js, js/render.js (the
+Foundry screen), js/data.js, and docs/STATE.md.
+
+WHAT HAS LANDED SINCE THESE BRIEFS WERE WRITTEN:
+
+- The screen is 112 columns (M-WIDE) and the rig portrait is drawn IN THE
+  RUN, in the YOUR RIG sidebar panel, not only in the Foundry — a livery
+  must skin it there too. The map is 46x26 and did not grow.
+- The Foundry already has keys: [A-I] forge upgrades, [L] LOGBOOK (M-EVENTS),
+  [ESC] surface. Your shelf, ledger and [S]kins must not collide; the pages
+  are shown at 112 columns and integration.js renders every screen at that
+  width and holds it (SECTION 16 — extend it for your pages).
+- meta.js has a SAVE_V + sanitize() pattern with optional fields: v4 added
+  tutorialSeen without moving SAVE_KEY. Do the same — new trophy/skin/stat
+  fields are optional, default cleanly, and a v1..v4 save loads unchanged.
+  NEVER move SAVE_KEY. Add a test that an old save loads.
+- run.stats exists (SPEC2 §B) per run; LIFETIME counters for the Ledger are
+  yours to add to meta, additively, awarded where runs are already awarded
+  (engine awardRun / meta.award).
+- Trophy triggers must be REAL events that exist today: first win; sub-15:00
+  win; no-repair win; never-overdrive win ("Scenic Route"); depth 12 (the
+  Mantle exists, M-MANTLE); cat found (meta.catFound, M-EVENTS); all
+  schematics seen (the deck is 25 cards after M-SCHEMS2); worm ride (M-WORMS
+  exists: define it as the Undertoad woken OR a lure that a worm actually
+  ate — pick one, name it, test it). ~12 trophies; each with a GRIT
+  inspection line (guardrails: profanity and gallows humour yes; slurs,
+  hate, explicit anatomy, non-consent never).
+- Liveries recolour CHROME ONLY — rig portrait, panel frames, gauges, title
+  art. NEVER the map: machines, veins, belts, worms, hazards keep their
+  colours on every skin (§0 law 6, "readability is sacred"). 'Void'
+  (white-on-black inverse) is the hard case: every panel must stay readable;
+  render it in a test and assert the map cells' colours are untouched.
+- Sim.chain, worms, tutorial: none of this is yours to touch. If a change
+  there seems needed, stop and report.
+- test/balance.js: this brief is meta + UI. The sweep must come out
+  BYTE-IDENTICAL before and after (the M-WIDE gate). If a number moves, you
+  touched the sim — find out why.
+- js/data.js ADDITIVE ONLY. meta/art/render stay DOM-free where they were;
+  no CDN; file:// keeps working; no Math.random, no Date.now in meta/art.
+
+Gate: all five suites green, node tools/build.js parses, extended for every
+trophy trigger, the ledger's numbers (composed from real counters, never
+typed), each livery, the Void readability assertion, and old-save loading.
+
+Checkpoint-commit AND PUSH after every green milestone with a
+"Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>" trailer. Ship the
+trophy shelf first (data + meta + one Foundry page), then the Ledger, then
+liveries — a session death should leave a working shelf, not a half-skinned
+rig.
+
+When done: push your branch and STOP — do not merge, rebase or force-push;
+the orchestrator merges. Report: what you built, trophy by trophy and skin
+by skin, your before/after balance numbers (must be identical), deviations
+and why, and your final test output.
