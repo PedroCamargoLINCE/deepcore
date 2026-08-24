@@ -4970,6 +4970,28 @@ function wideSection(seed) {
   run.pendingOffers = ['s_drill', 's_coal', 's_veins'];
   rows = frame(state);
 
+  // M-CONTRACTS: the desk, with every paper unlocked so every card is inked
+  SCREEN = 'contract';
+  state.screen = 'contract';
+  state.ui.contractCursor = 2;
+  meta.wins = 1; meta.contracts = ['hazard'];
+  rows = frame(state);
+  assertCentred(rows, 1, D.ROWS - 3, 2);
+  {
+    const cds = DC.Render.layout.contracts;
+    assertEq(cds.length, D.CONTRACTS.length, 'a card per paper published');
+    assert(cds[cds.length - 1].col + cds[cds.length - 1].w <= D.COLS, 'the last paper fits on the screen');
+    for (const cd of cds) {
+      const c = D.CONTRACT_BY_ID[cd.id];
+      let txt = '';
+      for (let r = cd.row; r < cd.row + cd.h; r++) txt += rows[r].slice(cd.col, cd.col + cd.w) + ' ';
+      for (const w of (c.name + ' ' + c.terms.join(' ') + ' WAGE x' + c.wage.toFixed(1)).split(/\s+/))
+        assert(txt.indexOf(w) >= 0, cd.id + ': the card lost "' + w + '"');
+      assert(cd.unlocked, cd.id + ': inked (unlocked) on this profile');
+    }
+  }
+  meta.wins = 1; meta.contracts = [];
+
   SCREEN = 'help p1';
   state.screen = 'help';
   state.ui.helpPage = 0;
@@ -5041,7 +5063,7 @@ function wideSection(seed) {
   assert(ch.length >= 1 && ch[0].col >= 20,
     'the vignette choices sit under the panel, not out in the dark');
 
-  return D.COLS + 'x' + D.ROWS + ', ' + 14 + ' screens, ' +
+  return D.COLS + 'x' + D.ROWS + ', ' + 15 + ' screens, ' +
     D.MUTATORS.length + ' mutator banners';
 }
 
@@ -6512,8 +6534,11 @@ function contractSection(seed) {
     const mapOf = (r) => r.grid.map((row) => row.map((t) => t.t + (t.ore || '') + t.oreAmt).join('')).join('|');
     assertEq(mapOf(runs.hazard), mapOf(runs.standard), 'HAZARD draws the same map as STANDARD');
     assertEq(mapOf(runs.warrant), mapOf(runs.standard), 'and so does the WARRANT');
-    assertEq(runs.hazard.inv.ironPlate, runs.standard.inv.ironPlate + 30, 'HAZARD: +30 plates at the desk');
-    assertEq(runs.warrant.inv.ironPlate, runs.standard.inv.ironPlate + 20, 'WARRANT: +20 plates at the desk');
+    assertEq(JSON.stringify(runs.hazard.inv), JSON.stringify(runs.standard.inv), 'HAZARD: no advance (measured: any advance made it EASIER)');
+    assertEq(JSON.stringify(runs.warrant.inv), JSON.stringify(runs.standard.inv), 'WARRANT: no advance either');
+    assertEq(runs.hazard.maxIntegrity, runs.standard.maxIntegrity - 20, 'HAZARD: hull rated 20 lower');
+    assertEq(runs.warrant.maxIntegrity, runs.standard.maxIntegrity - 30, 'WARRANT: hull rated 30 lower');
+    assertEq(runs.warrant.integrity, runs.warrant.maxIntegrity, '...and starts full');
     assertEq(runs.hazard.mods.quakeDmgMult, 1.25, 'HAZARD: quakes 25% harder');
     assertEq(runs.warrant.mods.quakeDmgMult, 1.5, 'WARRANT: quakes 50% harder');
     assertEq(runs.warrant.mods.salvageCap, 0, 'WARRANT: salvage ceiling 0');
@@ -6555,12 +6580,12 @@ function contractSection(seed) {
     assertEq(runs.warrant.status, 'won', 'breaching stratum 8 wins');
     assertEq(runs.warrant.result.contract, 'warrant', 'the result carries the paper');
   }
-  // the Foundry's own start bonus is ADDED to, not replaced
+  // the Foundry's own bonuses are ADDED to, not replaced
   {
-    const p = M.newProfile(); p.upgrades = { m_stock: 2 };
-    const r = S.newRun(M.effects(p), seed, 'hazard');
-    assertEq(r.inv.ironPlate, D.START_STOCK.ironPlate + 40 + 30, 'HAZARD stacks on Deeper Stores');
-    assertEq(r.inv.gear, D.START_STOCK.gear + 8, '...and leaves the Foundry gears alone');
+    const p = M.newProfile(); p.upgrades = { m_stock: 2, m_hull: 2 };
+    const r = S.newRun(M.effects(p), seed, 'warrant');
+    assertEq(r.inv.ironPlate, D.START_STOCK.ironPlate + 40, 'the WARRANT leaves Deeper Stores alone');
+    assertEq(r.maxIntegrity, D.START_INTEGRITY + 50 - 30, '...and its hull term stacks on Reinforced Hull');
   }
 
   // ---- 2. meta -----------------------------------------------------------

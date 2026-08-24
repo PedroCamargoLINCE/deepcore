@@ -852,10 +852,15 @@
   // inventory — see tools/glyphs.js. STANDARD is unmarked on purpose: the
   // ordinary shift is the one that needs no annotation.
   //
-  // Terms are TUNING and were measured, not typed — see the report in
-  // docs/STATE.md and the DC_BAL_CONTRACT sweeps in test/balance.js. Existing
-  // data.js values are untouched (the M-HUMANBAL ledger rule); everything here
-  // is new data.
+  // Terms are TUNING and were measured, not typed (tools/ab.js over the
+  // full-Foundry sweep; the paragraph in test/balance.js's footer has the
+  // numbers). The spec's illustrative cards carried a plate ADVANCE as a
+  // sweetener; measured, any advance at all — even ten plates — made the
+  // rider an EASIER run than STANDARD for the bot (a faster stratum 1 is
+  // worth more than a quake rider costs), which is the one thing a harder
+  // paper may not be. So the sweetener is the wage and nothing else, and the
+  // second term is a hull rating. Existing data.js values are untouched (the
+  // M-HUMANBAL ledger rule); everything here is new data.
   D.CONTRACTS = [
     { id: 'standard', name: 'STANDARD TERMS', mark: '', wage: 1,
       sub: 'form 1-A',
@@ -866,15 +871,15 @@
     { id: 'hazard', name: 'HAZARD CLAUSE', mark: '‡', wage: 1.5,
       sub: 'form 1-A, rider H',
       terms: ['Quakes hit 25% harder.',
-              'Advance: 30 iron plates.'],
-      fx: { quakeDmgMult: 1.25, startBonus: { ironPlate: 30 } },
+              'Hull rated 20 lower.'],
+      fx: { quakeDmgMult: 1.25, integrityBonus: -20 },
       unlock: 'win', lockText: 'LOCKED: reach the Core once' },
     { id: 'warrant', name: 'DEATH WARRANT', mark: '×', wage: 2,
       sub: 'form 9-D',
       terms: ['Quakes hit 50% harder.',
               'No salvage on descent, ever.',
-              'Advance: 20 iron plates.'],
-      fx: { quakeDmgMult: 1.5, salvageCap: 0, startBonus: { ironPlate: 20 } },
+              'Hull rated 30 lower.'],
+      fx: { quakeDmgMult: 1.5, salvageCap: 0, integrityBonus: -30 },
       unlock: 'hazardWin', lockText: 'LOCKED: win under HAZARD' },
   ];
   D.CONTRACT_BY_ID = {};

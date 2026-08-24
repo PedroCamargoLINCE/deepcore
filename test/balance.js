@@ -1455,6 +1455,36 @@ console.log(`
   next piece of bot. A human picking knowingly is not diluted by variety —
   that is what the batch is FOR. No data.js value moved.
 
+  M-CONTRACTS (DC_BAL_CONTRACT): the three papers, measured on the FULL
+  loadout, 14 canonical seeds, 2026-08-24. STANDARD is this table exactly —
+  the naked sweep was diffed byte for byte before and after the brief and did
+  not move. The riders are checked for WINNABLE AT ALL, never banded:
+
+    contract   standard policy                        camper
+    STANDARD   2/14 @ 21.9m  deaths med 8  quakes 27  2/14  deaths med 5
+    HAZARD     2/14 @ 21.9m  deaths med 7  quakes 19  1/14  deaths med 5
+    WARRANT    2/14 @ 21.9m  deaths med 7  quakes 16  0/14  deaths med 5
+
+  Both riders win on the same two seeds STANDARD wins on and kill the rig a
+  stratum earlier on the rest (fewer quakes survived: the bill is bigger).
+  The terms were CHOSEN by this sweep, not typed. The spec's illustrative
+  cards carried a plate advance (+30 / +20) as a sweetener; with it, HAZARD
+  went 4/14 and the WARRANT 3/14 — EASIER than STANDARD, because a faster
+  stratum 1 (34s vs 41s) is worth more to this bot than any quake rider
+  costs, and doubling the rider (1.5x / 2.0x) did not close that. Ten plates
+  still did it (5/14). So the advance is gone, the wage is the whole
+  sweetener, and the second term is a hull rating (-20 / -30), which reads
+  as a term and measures as one. tools/ab.js reproduces every row:
+
+    DC_BAL_META=<full> DC_BAL_CONTRACT=hazard node tools/ab.js \
+      'D.CONTRACT_BY_ID.hazard.fx.startBonus={ironPlate:30}'   -> 4/14
+
+  Logged for M-HUMANBAL rather than tuned further: the camper's WARRANT
+  0/14 is the bot overstaying under a 1.5x bill, which is what the paper
+  says will happen — but a human who camps on a Warrant should be told so
+  by the paper, and the two hull terms are the numbers to revisit once a
+  human has signed one.
+
   DRIFTED (camper): superseded, and in the other direction. The med 8 logged
   last wave (one PAST the s6-s7 band) is now med 5, one short of it, on the
   same deck-dilution mechanism. Still logged for M-HUMANBAL rather than
