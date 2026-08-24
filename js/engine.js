@@ -396,6 +396,9 @@
   // the day's ladder measures play and not banked cores). The first attempt of
   // a date is the ranked one; every later attempt that day is practice and is
   // never recorded.
+  // opts.contract (M-CONTRACTS): the D.CONTRACTS id signed on the contract
+  // screen. The Daily, the induction and the [I] replay never reach that
+  // screen and sign STANDARD here, silently.
   function newRun(st, opts) {
     opts = opts || {};
     let seed, effects, daily = null;
@@ -408,7 +411,12 @@
       seed = params.seed !== null ? params.seed : (Math.random() * 2 ** 31) | 0;
       effects = DC.Meta.effects(st.meta);
     }
-    st.run = DC.Sim.newRun(effects, seed);
+    let contract = D.CONTRACT_DEFAULT || 'standard';
+    if (!daily && !opts.tutor && typeof opts.contract === 'string' &&
+        DC.Meta.contractUnlocked && DC.Meta.contractUnlocked(st.meta, opts.contract)) {
+      contract = opts.contract;
+    }
+    st.run = DC.Sim.newRun(effects, seed, contract);
     // Engine-owned recap bookkeeping. The sim knows nothing about any of it:
     // splits are stamped at descend time, startedAt is wall-clock (engine may
     // read a clock; sim may not).
@@ -453,7 +461,38 @@
     arriveFlash(st);
     acc = 0;
     st.screen = 'run';
-    bark(daily ? (daily.practice ? 'dailyPractice' : 'dailyStart') : 'runStart');
+    // M-CONTRACTS: GRIT reads a signed rider aloud instead of the shift-start
+    // line; STANDARD gets the ordinary greeting, as it always did.
+    if (contract !== (D.CONTRACT_DEFAULT || 'standard')) bark('contract', contract);
+    else bark(daily ? (daily.practice ? 'dailyPractice' : 'dailyStart') : 'runStart');
+  }
+
+  // ---------------- M-CONTRACTS: the paper ----------------
+  // [ENTER] on the title opens the desk — unless the induction is about to
+  // arm (a profile with zero runs), in which case STANDARD is signed
+  // silently and the tutorial begins: nobody is asked to read a rider before
+  // they have placed an extractor.
+  function openContracts(st) {
+    if (DC.Tutorial && DC.Tutorial.eligible(st.meta)) { newRun(st); return; }
+    const list = D.CONTRACTS || [];
+    if (!list.length || !DC.Meta.contractLast) { newRun(st); return; }
+    const last = DC.Meta.contractLast(st.meta);
+    let i = 0;
+    for (let k = 0; k < list.length; k++) if (list[k].id === last) i = k;
+    st.ui.contractCursor = i;
+    st.ui.contractDenied = null;
+    st.screen = 'contract';
+  }
+  function signContract(st, i) {
+    const def = (D.CONTRACTS || [])[i];
+    if (!def) return false;
+    if (!DC.Meta.contractUnlocked(st.meta, def.id)) {
+      st.ui.contractDenied = { id: def.id, until: Date.now() + 1200 };
+      return false;
+    }
+    try { DC.Meta.setContractLast(st.meta, def.id); } catch (e) { /* optional */ }
+    newRun(st, { contract: def.id });
+    return true;
   }
 
   // M-RECAP: one cleared stratum = one split. Stamped the moment the descent
@@ -496,8 +535,13 @@
       awardedCores = res.cores || 0;
       recordRun(st);
     } else {
-      // Already banked at victory; a Mantle death only credits the new breaches.
-      const delta = (res.cores || 0) - awardedCores;
+      // Already banked at victory; a Mantle death only credits the new breaches
+      // — at the same wage (M-CONTRACTS), so the paid delta is the difference
+      // of the two PAID figures, never a raw core count.
+      const paid = DC.Meta.paidFor ? DC.Meta.paidFor(res.cores || 0, res.contract) : (res.cores || 0);
+      const was = DC.Meta.paidFor ? DC.Meta.paidFor(awardedCores, res.contract) : awardedCores;
+      const delta = paid - was;
+      res.paid = paid;
       if (delta > 0) {
         st.meta.cores += delta;
         st.meta.totalCores += delta;
@@ -585,6 +629,9 @@
       placed: built,
       repairs: t.repairs || 0, overdrives: t.overdrives || 0,
       quakes: t.quakes || 0, lures: t.lures || 0,
+      // M-CONTRACTS: what the wage added over the run's own count. A fact
+      // like the others, so the Mantle path credits only the new part.
+      wagePaid: run.result ? Math.max(0, (run.result.paid || 0) - (run.result.cores || 0)) : 0,
     };
   }
   function recordRun(st) {
@@ -599,6 +646,9 @@
       const abandoned = dead && run.integrity > 0;
       delta.deaths = dead && !abandoned ? 1 : 0;
       delta.abandons = abandoned ? 1 : 0;
+      // M-CONTRACTS: one paper per shift, and what the wage added over the
+      // run's own count (Meta.award stamped `paid` a moment ago).
+      delta.signed = 1;
     } else if (run.status === 'dead') {
       // a Mantle death after a banked victory is still a letter home
       delta.deaths = run.integrity > 0 ? 0 : 1;
@@ -613,6 +663,7 @@
         repairs: now.repairs, overdrives: now.overdrives,
         daily: !!(run.daily && !run.daily.practice),
         egg: !!run.eggSeen,
+        contract: run.contract || 'standard',
       }) || [];
     } catch (e) { fresh = []; }
     if (!Array.isArray(st.newTrophies)) st.newTrophies = [];
@@ -766,7 +817,7 @@
     }
     switch (st.screen) {
       case 'title':
-        if (k === 'Enter') newRun(st);
+        if (k === 'Enter') openContracts(st);
         else if (lk === 't') newRun(st, { daily: true });
         else if (lk === 'f') {
           st.screen = 'foundry';
@@ -785,6 +836,18 @@
       case 'run':
         handled = runKey(st, e, k, lk);
         break;
+      // M-CONTRACTS: the paper. ←/→ or 1-3 to read, ENTER to sign, ESC back.
+      case 'contract': {
+        const list = D.CONTRACTS || [];
+        const n = (k >= '1' && k <= '9') ? k.charCodeAt(0) - 49 : -1;
+        if (k === 'Escape') st.screen = 'title';
+        else if (k === 'ArrowLeft' || k === 'ArrowUp') st.ui.contractCursor = Math.max(0, (st.ui.contractCursor | 0) - 1);
+        else if (k === 'ArrowRight' || k === 'ArrowDown') st.ui.contractCursor = Math.min(list.length - 1, (st.ui.contractCursor | 0) + 1);
+        else if (n >= 0 && n < list.length) { st.ui.contractCursor = n; signContract(st, n); }
+        else if (k === 'Enter') signContract(st, st.ui.contractCursor | 0);
+        else handled = false;
+        break;
+      }
       case 'descend': {
         const offers = st.run && st.run.pendingOffers;
         const n = (k >= '1' && k <= '9') ? k.charCodeAt(0) - 49 : -1;
@@ -1177,6 +1240,16 @@
     } else if (st.screen === 'descend') {
       const i = cardAt(st, c);
       if (i >= 0) applyChoice(st, i);
+    } else if (st.screen === 'contract') {
+      const L = DC.Render.layout, cds = L && L.contracts;
+      if (Array.isArray(cds)) {
+        for (let i = 0; i < cds.length; i++) {
+          const cd = cds[i];
+          if (c.col >= cd.col && c.col < cd.col + cd.w && c.row >= cd.row && c.row < cd.row + cd.h) {
+            st.ui.contractCursor = i; signContract(st, i); break;
+          }
+        }
+      }
     } else if (st.screen === 'vignette') {
       const i = choiceAt(st, c);
       if (i >= 0) answerVignette(st, i);

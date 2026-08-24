@@ -195,6 +195,9 @@
       depth: run.depth, breaches: run.breaches,
       timeSec: Math.round(run.totalT / HZ),
       cores: run.breaches + (won ? D.WIN_CORES : 0), won: won,
+      // M-CONTRACTS: the paper this run was worked under. Meta.award reads
+      // it for the wage; `cores` above stays the run's own count.
+      contract: run.contract || 'standard',
     };
   }
 
@@ -217,6 +220,11 @@
       closedLoop: false, wormBeacon: false,
       // Gravity Chute raises this; everything demolished reads it.
       refund: D.DEMOLISH_REFUND,
+      // M-CONTRACTS: the two knobs only a contract turns. quakeDmgMult scales
+      // the INTEGRITY a quake costs (never the tiles it picks — law 7);
+      // salvageCap is a ceiling on mods.salvage that survives every later
+      // Salvage Claws pick (the Warrant's "nothing salvaged, ever").
+      quakeDmgMult: 1, salvageCap: 1,
     };
   }
   function applyMeta(mods, fx) {
@@ -229,6 +237,26 @@
     mods.scanBonus += fx.scanBonus || 0;
     mods.salvage = Math.max(mods.salvage, fx.salvage || 0);
     if (fx.offerCount) mods.offerCount = fx.offerCount;
+    // M-CONTRACTS: a contract is another layer of this exact shape. Its
+    // startBonus ADDS to the Foundry's rather than replacing it.
+    if (fx.quakeDmgMult != null) mods.quakeDmgMult *= fx.quakeDmgMult;
+    if (fx.salvageCap != null) mods.salvageCap = Math.min(mods.salvageCap, fx.salvageCap);
+  }
+  // The contract's effects, applied after the Foundry's. Every field goes
+  // through applyMeta above; startBonus is merged additively first because
+  // applyMeta's Foundry path assigns it whole.
+  function applyContract(mods, id) {
+    const def = (D.CONTRACT_BY_ID || {})[id];
+    if (!def || !def.fx) return;
+    const fx = {};
+    for (const k in def.fx) if (k !== 'startBonus') fx[k] = def.fx[k];
+    if (def.fx.startBonus) {
+      const sb = {};
+      for (const k in mods.startBonus) sb[k] = mods.startBonus[k];
+      for (const k in def.fx.startBonus) sb[k] = (sb[k] || 0) + def.fx.startBonus[k];
+      fx.startBonus = sb;
+    }
+    applyMeta(mods, fx);
   }
   function applySchematicMod(run, id) {
     const m = run.mods;
@@ -245,7 +273,7 @@
       case 's_damp': m.instMult *= 0.75; break;
       case 's_repair': m.autoRepair = true; break;
       case 's_drill': m.breachMult = Math.max(0.1, m.breachMult - 0.15); break;
-      case 's_salvage': m.salvage = Math.max(m.salvage, 0.6); break;
+      case 's_salvage': m.salvage = Math.max(m.salvage, 0.6); break;   // capped below
       case 's_survey': m.fullReveal = true; break;
       case 's_charge': m.chargeX2 = true; break;
       case 's_over': m.overCheap = true; break;
@@ -266,13 +294,23 @@
       // Written for M-WORMS: that module reads the flag; nothing here does.
       case 's_whisper': m.wormBeacon = true; break;
     }
+    // M-CONTRACTS: the Warrant's ceiling holds against every pick.
+    if (m.salvage > m.salvageCap) m.salvage = m.salvageCap;
   }
 
   // ---------------- run lifecycle ----------------
-  function newRun(metaEffects, seed) {
+  // M-CONTRACTS: `contract` is a D.CONTRACTS id (absent/unknown = STANDARD,
+  // which applies nothing — a STANDARD run is byte-for-byte the run it always
+  // was, and test/balance.js proves it).
+  function newRun(metaEffects, seed, contract) {
     const mods = baseMods();
     applyMeta(mods, metaEffects);
+    const cid = (contract && D.CONTRACT_BY_ID && D.CONTRACT_BY_ID[contract])
+      ? contract : (D.CONTRACT_DEFAULT || 'standard');
+    applyContract(mods, cid);
+    if (mods.salvage > mods.salvageCap) mods.salvage = mods.salvageCap;
     const run = {
+      contract: cid,
       seed: seed, rng: U.mulberry32(seed >>> 0),
       depth: 1, status: 'active', t: 0, totalT: 0,
       grid: null, hub: null, machines: {}, nextId: 1,
@@ -1713,7 +1751,10 @@
           D.COLORS.blue);
       pushEvent(run, 'glass', { tiles: glassOpened });
     }
-    const dmg = Q.integrityDmg(run.instability, run.depth);
+    // M-CONTRACTS: the contract's rider lands here and only here — on the
+    // integrity bill, after every tile has already been chosen.
+    const dmg = Math.round(Q.integrityDmg(run.instability, run.depth) *
+      ((run.mods && run.mods.quakeDmgMult) || 1));
     run.integrity -= dmg;
     run.shake = true;
     if (run.instability >= 99) {
@@ -2305,6 +2346,12 @@
     // (worst case filled in) so the suites can hold the lot to the LOG panel;
     // STATUS_HINT is the '!' legend the SCAN panel draws.
     diagLine: diagLine, diagLines: diagLines, STATUS_HINT: STATUS_HINT,
+    // M-CONTRACTS: the signed paper's definition (null for STANDARD, which
+    // is unmarked), the way mutatorOf answers for the floor's rule.
+    contractOf: function (run) {
+      const def = run && run.contract ? (D.CONTRACT_BY_ID || {})[run.contract] : null;
+      return def && def.id !== (D.CONTRACT_DEFAULT || 'standard') ? def : null;
+    },
     // M-WORMS: the Undertoad's one quake damages machines through the same
     // door every other hazard in this file does, rather than growing a second
     // idea of what "damaged" means.

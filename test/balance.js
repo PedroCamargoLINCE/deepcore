@@ -59,6 +59,7 @@
    Usage: node test/balance.js [seed seed ...]
    Env:   DC_BAL_POLICIES=standard,camper   DC_BAL_CAPMIN=30
           DC_BAL_BUDGET=200 (wall seconds)  DC_BAL_META=m_stock:2,m_hull:1
+          DC_BAL_CONTRACT=standard|hazard|warrant (M-CONTRACTS; see footer)
           DC_TRACE=1 (30s progress snapshots to stderr) */
 'use strict';
 
@@ -1188,7 +1189,7 @@ function pickSchematic(run) {
 
 // ------------------------------------------------------------------ one run
 function playRun(seed, policy, capMin, effects) {
-  const run = S.newRun(effects, seed);
+  const run = S.newRun(effects, seed, CONTRACT);
   const bot = mkBot(run);
   const capTotalT = capMin * 60 * HZ;
   const rec = { policy, seed, strata: [], outcome: '?', deathDepth: null,
@@ -1265,6 +1266,17 @@ if (process.env.DC_BAL_META) {
   }
 }
 const effects = DC.Meta.effects(profile);
+// M-CONTRACTS: which paper the bot signs. 'standard' is the default and
+// applies NOTHING — this file's numbers under it are byte-identical to the
+// numbers before the brief (that identity is the gate, and the reason the
+// contract rides into newRun as a third argument rather than through
+// `effects`). HAZARD and WARRANT are reported as "winnable at all" on the
+// full-Foundry loadout, never banded: a harder paper is supposed to be harder.
+const CONTRACT = (process.env.DC_BAL_CONTRACT || 'standard').toLowerCase();
+if (!D.CONTRACT_BY_ID || !D.CONTRACT_BY_ID[CONTRACT]) {
+  console.error('DC_BAL_CONTRACT must be one of: ' + Object.keys(D.CONTRACT_BY_ID || {}).join('|'));
+  process.exit(2);
+}
 
 function pad(s, n) { return (String(s) + ' '.repeat(n)).slice(0, n); }
 function padL(s, n) { return (' '.repeat(n) + String(s)).slice(-n); }
@@ -1273,7 +1285,8 @@ function mmss(sec) { return Math.floor(sec / 60) + ':' + ('0' + (sec % 60)).slic
 console.log('DEEPCORE balance sweep — ' + seeds.length + ' seeds x ' +
   policies.length + ' policies, cap ' + capMin + ' sim-min, budget ' +
   Math.round(BUDGET_MS / 1000) + 's wall' +
-  (process.env.DC_BAL_META ? ', meta ' + process.env.DC_BAL_META : ', naked rig'));
+  (process.env.DC_BAL_META ? ', meta ' + process.env.DC_BAL_META : ', naked rig') +
+  (CONTRACT !== 'standard' ? ', contract ' + CONTRACT.toUpperCase() : ''));
 console.log(pad('policy', 9) + padL('seed', 7) + '  ' + pad('outcome', 8) +
   padL('time', 6) + padL('cores', 6) + padL('mInt', 5) + '  ' + pad('cause', 22) +
   'per-stratum  breach>leave (integ,inst,plates)');
@@ -1372,6 +1385,9 @@ console.log(`
 
   Default loadout is a NAKED rig: run one, no Foundry. Give it upgrades with
     DC_BAL_META=${FULL_LOADOUT}
+  and a paper with DC_BAL_CONTRACT=hazard|warrant (M-CONTRACTS). STANDARD is
+  the default and is this table exactly; the other two are checked only for
+  WINNABLE AT ALL on the full loadout — see the M-CONTRACTS paragraph below.
 
   SPEC §12 target                  checked on            last known good
   ---------------------------------------------------------------------------
@@ -1438,6 +1454,36 @@ console.log(`
   rest is the bot needing to read an offer instead of a list, which is the
   next piece of bot. A human picking knowingly is not diluted by variety —
   that is what the batch is FOR. No data.js value moved.
+
+  M-CONTRACTS (DC_BAL_CONTRACT): the three papers, measured on the FULL
+  loadout, 14 canonical seeds, 2026-08-24. STANDARD is this table exactly —
+  the naked sweep was diffed byte for byte before and after the brief and did
+  not move. The riders are checked for WINNABLE AT ALL, never banded:
+
+    contract   standard policy                        camper
+    STANDARD   2/14 @ 21.9m  deaths med 8  quakes 27  2/14  deaths med 5
+    HAZARD     2/14 @ 21.9m  deaths med 7  quakes 19  1/14  deaths med 5
+    WARRANT    2/14 @ 21.9m  deaths med 7  quakes 16  0/14  deaths med 5
+
+  Both riders win on the same two seeds STANDARD wins on and kill the rig a
+  stratum earlier on the rest (fewer quakes survived: the bill is bigger).
+  The terms were CHOSEN by this sweep, not typed. The spec's illustrative
+  cards carried a plate advance (+30 / +20) as a sweetener; with it, HAZARD
+  went 4/14 and the WARRANT 3/14 — EASIER than STANDARD, because a faster
+  stratum 1 (34s vs 41s) is worth more to this bot than any quake rider
+  costs, and doubling the rider (1.5x / 2.0x) did not close that. Ten plates
+  still did it (5/14). So the advance is gone, the wage is the whole
+  sweetener, and the second term is a hull rating (-20 / -30), which reads
+  as a term and measures as one. tools/ab.js reproduces every row:
+
+    DC_BAL_META=<full> DC_BAL_CONTRACT=hazard node tools/ab.js \
+      'D.CONTRACT_BY_ID.hazard.fx.startBonus={ironPlate:30}'   -> 4/14
+
+  Logged for M-HUMANBAL rather than tuned further: the camper's WARRANT
+  0/14 is the bot overstaying under a 1.5x bill, which is what the paper
+  says will happen — but a human who camps on a Warrant should be told so
+  by the paper, and the two hull terms are the numbers to revisit once a
+  human has signed one.
 
   DRIFTED (camper): superseded, and in the other direction. The med 8 logged
   last wave (one PAST the s6-s7 band) is now med 5, one short of it, on the

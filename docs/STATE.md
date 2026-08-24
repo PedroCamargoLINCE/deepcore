@@ -79,6 +79,21 @@ than the stratum being unbeatable. Never tune `data.js` against those.
   under DRILL in the first. Anything drawing a new screen should centre itself
   off `COLS` rather than typing a margin.
 
+- **M-CONTRACTS (2026-08-24, branch M-CONTRACTS)**: difficulty is the paper
+  you sign — three Company forms on a `contract` screen between the title's
+  [ENTER] and the run (Papers Please for the paper, Balatro for the pick).
+  A contract is an effects layer of `Meta.effects()`'s shape, applied in
+  `Sim.newRun(effects, seed, contractId)` after the Foundry; the wage
+  multiplies at `Meta.award` and nowhere else (`result.paid`). STANDARD
+  applies nothing and `test/balance.js` is byte-identical under it; HAZARD
+  (quakes 1.25x, hull -20, wage x1.5) unlocks on the first win, DEATH
+  WARRANT (quakes 1.5x, no salvage ever, hull -30, wage x2) on a HAZARD win.
+  Terms were measured, not typed — any plate advance made the riders EASIER
+  than STANDARD for the bot; see the M-CONTRACTS paragraph in the balance
+  footer. The Daily, the induction and [I] always sign STANDARD silently.
+  `SAVE_V` 6 (optional fields; v1..v5 load). Two trophies, a CONTRACTS SIGNED
+  ledger line, `DC_BAL_CONTRACT=standard|hazard|warrant`.
+
 ## Conventions (violating these has cost us hours before)
 
 1. **Checkpoint-commit constantly.** Session limits have killed four agent

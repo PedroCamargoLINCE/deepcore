@@ -780,6 +780,14 @@
     { id: 'shareholder',  name: 'SHAREHOLDER',
       how:  'Bank 100 cores over your career.',
       grit: "A hundred cores. The Company got the cores. You got a shelf." },
+    // M-CONTRACTS: the two the paper is worth. Both are "signed it AND came
+    // back", which is the only way a contract is ever really tested.
+    { id: 'hazard_win',   name: 'HAZARD PAY',
+      how:  'Reach the Core under the Hazard Clause.',
+      grit: "Signed the rider, took the shaking, got out. That's a career." },
+    { id: 'warrant_win',  name: 'DEATH WARRANT',
+      how:  'Reach the Core under a Death Warrant.',
+      grit: "Death Warrant. Signed it. Read it after." },
   ];
   D.TROPHY_BY_ID = {};
   for (let i = 0; i < D.TROPHIES.length; i++) D.TROPHY_BY_ID[D.TROPHIES[i].id] = D.TROPHIES[i];
@@ -816,6 +824,69 @@
     throttle: { craftDone: 4, place: 8, wormMove: 6, squelch: 6 },   // max per second
     levels: { drill: 0.55, klaxon: 0.45, title: 0.06, purr: 0.05 },  // continuous voices
   };
+
+
+  // ---------------- M-CONTRACTS: the paper you sign ----------------
+  // Difficulty as a Company document. §0's lineage names both halves of it:
+  // Papers Please for the form you sign and regret, Balatro for the pick —
+  // three cards with names, not a slider with three notches. Each contract is
+  // a NAME, two or three lines of terms you can hold in your head, and a WAGE
+  // that multiplies every core banked at DC.Meta.award.
+  //
+  // `fx` is an EFFECTS LAYER of exactly the shape DC.Meta.effects() returns.
+  // sim.js applies it through the same applyMeta() the Foundry goes through,
+  // one line below it, so a contract can never teach the sim a rule the
+  // Foundry has not already taught it — and every term below names a knob
+  // that was already there.
+  //
+  // NOTHING IN `fx` TOUCHES run.rng (§0 law 7), and that is load-bearing:
+  // `quakeDmgMult` scales the INTEGRITY a quake costs and never the tiles it
+  // picks, so one seed generates the same map, schedules the same quakes and
+  // lands them on the same tiles under all three contracts. That is what makes
+  // "the STANDARD sweep is byte-identical" a fact about the code rather than a
+  // hope, and test/integration.js pins it by snapshotting run.rng across
+  // newRun for each of the three.
+  //
+  // `mark` is the one glyph the run header carries (§0 law 6: one glyph, the
+  // way the Mantle carries its '†'), and both are already in the game's glyph
+  // inventory — see tools/glyphs.js. STANDARD is unmarked on purpose: the
+  // ordinary shift is the one that needs no annotation.
+  //
+  // Terms are TUNING and were measured, not typed (tools/ab.js over the
+  // full-Foundry sweep; the paragraph in test/balance.js's footer has the
+  // numbers). The spec's illustrative cards carried a plate ADVANCE as a
+  // sweetener; measured, any advance at all — even ten plates — made the
+  // rider an EASIER run than STANDARD for the bot (a faster stratum 1 is
+  // worth more than a quake rider costs), which is the one thing a harder
+  // paper may not be. So the sweetener is the wage and nothing else, and the
+  // second term is a hull rating. Existing data.js values are untouched (the
+  // M-HUMANBAL ledger rule); everything here is new data.
+  D.CONTRACTS = [
+    { id: 'standard', name: 'STANDARD TERMS', mark: '', wage: 1,
+      sub: 'form 1-A',
+      terms: ['The shift as posted.',
+              'No rider. No hazard pay.'],
+      fx: {},
+      unlock: null, lockText: '' },
+    { id: 'hazard', name: 'HAZARD CLAUSE', mark: '‡', wage: 1.5,
+      sub: 'form 1-A, rider H',
+      terms: ['Quakes hit 25% harder.',
+              'Hull rated 20 lower.'],
+      fx: { quakeDmgMult: 1.25, integrityBonus: -20 },
+      unlock: 'win', lockText: 'LOCKED: reach the Core once' },
+    { id: 'warrant', name: 'DEATH WARRANT', mark: '×', wage: 2,
+      sub: 'form 9-D',
+      terms: ['Quakes hit 50% harder.',
+              'No salvage on descent, ever.',
+              'Hull rated 30 lower.'],
+      fx: { quakeDmgMult: 1.5, salvageCap: 0, integrityBonus: -30 },
+      unlock: 'hazardWin', lockText: 'LOCKED: win under HAZARD' },
+  ];
+  D.CONTRACT_BY_ID = {};
+  for (let i = 0; i < D.CONTRACTS.length; i++) D.CONTRACT_BY_ID[D.CONTRACTS[i].id] = D.CONTRACTS[i];
+  // The contract every run that never sees the screen signs: the Daily (ranked
+  // runs stay equal), the first-run induction, and the [I] replay.
+  D.CONTRACT_DEFAULT = 'standard';
 
   D.SAVE_KEY = 'deepcore_save_v1';
   // Display only (title-screen corner). v1.1 is the shipped feature set —
