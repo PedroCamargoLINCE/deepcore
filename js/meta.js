@@ -27,7 +27,12 @@
   // the induction on the strength of that default either — eligibility is
   // `!tutorialSeen && runs === 0`, and any save old enough to lack the field
   // has runs on it (see DC.Tutorial.eligible).
-  const SAVE_V = 4;
+  // v5 (M-ACHIEVE + M-RIGSKINS) adds the trophy shelf, the Company Ledger's
+  // lifetime counters, the schematics-seen set and the livery. A fourth time,
+  // the same story: every field is optional, sanitize() defaults it, a v1..v4
+  // profile loads with an empty shelf, a zeroed ledger and Company Amber, and
+  // SAVE_KEY does not move.
+  const SAVE_V = 5;
   const DAILY_HISTORY_MAX = 60;   // ~2 months of dailies, then the oldest drop
   const MAX_DEPTH_KEY = 999;      // the Mantle is endless; the record isn't
   // The logbook's ceiling. Deliberately NOT DC.Events.LOGS.length: meta.js
@@ -55,8 +60,30 @@
       // M-ONBOARD Part 2: the first-run induction has been seen through or
       // waved away. Either way it never comes back.
       tutorialSeen: false,
+      // M-ACHIEVE: trophy ids in shelf order, the schematic ids ever dealt,
+      // and the lifetime counters the Ledger is composed from. Every number
+      // in `life` is ADDED at award time from a real run counter; nothing
+      // here is ever typed.
+      trophies: [],
+      schemsSeen: [],
+      life: newLife(),
+      // M-RIGSKINS: which livery the chrome wears. Unlocks are not stored —
+      // they are a pure function of the rest of the profile (liveryUnlocked).
+      skin: 'amber',
     };
   }
+
+  // The Ledger's counters. Keys are the contract with engine.recordRun.
+  const LIFE_KEYS = ['timeSec', 'breaches', 'deaths', 'abandons', 'repairs',
+                     'overdrives', 'quakes', 'delivered', 'placed', 'lures', 'wages'];
+  const LIFE_MAX = 1e9;
+  function newLife() {
+    const o = {};
+    for (let i = 0; i < LIFE_KEYS.length; i++) o[LIFE_KEYS[i]] = 0;
+    return o;
+  }
+  function trophyDef(id) { return (D.TROPHY_BY_ID && D.TROPHY_BY_ID[id]) || null; }
+  function liveryDef(id) { return (D.LIVERY_BY_ID && D.LIVERY_BY_ID[id]) || null; }
 
   function storage() {
     try {
@@ -114,6 +141,29 @@
     f.catFound = !!p.catFound;
     // ---- M-ONBOARD field (absent in v1, v2 and v3 saves) ----
     f.tutorialSeen = !!p.tutorialSeen;
+    // ---- M-ACHIEVE / M-RIGSKINS fields (absent in v1..v4 saves) ----
+    // Trophies are kept in SHELF order regardless of the order they were won
+    // in, and an id data.js no longer knows is dropped rather than kept as a
+    // ghost on the shelf.
+    if (Array.isArray(p.trophies) && D.TROPHIES) {
+      for (let i = 0; i < D.TROPHIES.length; i++) {
+        if (p.trophies.indexOf(D.TROPHIES[i].id) >= 0) f.trophies.push(D.TROPHIES[i].id);
+      }
+    }
+    if (Array.isArray(p.schemsSeen) && D.SCHEMATICS) {
+      for (let i = 0; i < D.SCHEMATICS.length; i++) {
+        if (p.schemsSeen.indexOf(D.SCHEMATICS[i].id) >= 0) f.schemsSeen.push(D.SCHEMATICS[i].id);
+      }
+    }
+    if (p.life && typeof p.life === 'object') {
+      for (let i = 0; i < LIFE_KEYS.length; i++) {
+        const k = LIFE_KEYS[i], v = p.life[k];
+        if (typeof v === 'number' && isFinite(v) && v >= 0) f.life[k] = Math.min(Math.floor(v), LIFE_MAX);
+      }
+    }
+    // A livery the profile has not earned (or one that no longer exists)
+    // falls back to Company Amber — the save is never the way to a skin.
+    if (typeof p.skin === 'string' && liveryDef(p.skin) && liveryUnlocked(f, p.skin)) f.skin = p.skin;
     f.v = SAVE_V;
     return f;
   }
@@ -336,6 +386,210 @@
     return n;
   }
 
+  // ===================== M-ACHIEVE: the trophy shelf =====================
+
+  function trophies(profile) {
+    if (!profile) return [];
+    if (!Array.isArray(profile.trophies)) profile.trophies = [];
+    return profile.trophies;
+  }
+  function hasTrophy(profile, id) { return trophies(profile).indexOf(id) >= 0; }
+  function allTrophies(profile) {
+    if (!D.TROPHIES || !D.TROPHIES.length) return false;
+    for (let i = 0; i < D.TROPHIES.length; i++) {
+      if (!hasTrophy(profile, D.TROPHIES[i].id)) return false;
+    }
+    return true;
+  }
+  // Puts a trophy on the shelf. Returns true only when it is NEW — the
+  // engine's "◈ trophy" line and the save write both key on that, so a run
+  // that earns FIRST LIGHT for the ninth time says nothing.
+  function awardTrophy(profile, id) {
+    if (!profile || !trophyDef(id) || hasTrophy(profile, id)) return false;
+    const t = trophies(profile);
+    t.push(id);
+    // shelf order, always
+    t.sort(function (a, b) { return D.TROPHIES.indexOf(a) - D.TROPHIES.indexOf(b); });
+    save(profile);
+    return true;
+  }
+
+  function schemsSeen(profile) {
+    if (!profile) return [];
+    if (!Array.isArray(profile.schemsSeen)) profile.schemsSeen = [];
+    return profile.schemsSeen;
+  }
+  // Marks a hand of schematics as dealt. Returns how many were new.
+  function seeSchematics(profile, ids) {
+    if (!profile || !Array.isArray(ids)) return 0;
+    const seen = schemsSeen(profile);
+    let n = 0;
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i];
+      if (typeof id !== 'string' || seen.indexOf(id) >= 0) continue;
+      let known = false;
+      for (let j = 0; j < D.SCHEMATICS.length; j++) if (D.SCHEMATICS[j].id === id) known = true;
+      if (!known) continue;
+      seen.push(id);
+      n++;
+    }
+    if (n) save(profile);
+    return n;
+  }
+  function allSchemsSeen(profile) {
+    const seen = schemsSeen(profile);
+    for (let i = 0; i < D.SCHEMATICS.length; i++) {
+      if (seen.indexOf(D.SCHEMATICS[i].id) < 0) return false;
+    }
+    return D.SCHEMATICS.length > 0;
+  }
+
+  function life(profile) {
+    if (!profile) return newLife();
+    if (!profile.life || typeof profile.life !== 'object') profile.life = newLife();
+    for (let i = 0; i < LIFE_KEYS.length; i++) {
+      if (typeof profile.life[LIFE_KEYS[i]] !== 'number') profile.life[LIFE_KEYS[i]] = 0;
+    }
+    return profile.life;
+  }
+  // Adds one run's worth of counters to the lifetime ledger. `delta` holds
+  // DELTAS (the engine owns idempotence — the Mantle path awards twice and
+  // hands over only what is new the second time). Saves once.
+  function recordRun(profile, delta) {
+    if (!profile || !delta || typeof delta !== 'object') return false;
+    const L = life(profile);
+    let moved = false;
+    for (let i = 0; i < LIFE_KEYS.length; i++) {
+      const k = LIFE_KEYS[i], v = delta[k];
+      if (typeof v === 'number' && isFinite(v) && v > 0) {
+        L[k] = Math.min(L[k] + Math.floor(v), LIFE_MAX);
+        moved = true;
+      }
+    }
+    if (moved) save(profile);
+    return moved;
+  }
+
+  // The end-of-run check. `facts` is what the engine knows about the finished
+  // run: { won, timeSec, depth, repairs, overdrives, daily, egg }. Returns the
+  // ids that are NEW on the shelf, in shelf order. Pure apart from the shelf
+  // write; every rule here names a counter that exists.
+  function checkTrophies(profile, facts) {
+    if (!profile) return [];
+    facts = facts || {};
+    const won = [];
+    const give = function (id) { if (awardTrophy(profile, id)) won.push(id); };
+    if (facts.won) {
+      give('first_win');
+      if (typeof facts.timeSec === 'number' && facts.timeSec < D.SUB15_SEC) give('sub15');
+      if (!(facts.repairs > 0)) give('no_repair');
+      if (!(facts.overdrives > 0)) give('scenic');
+      if (facts.daily) give('daily_win');
+      if (facts.egg) give('high_score');
+    }
+    if (typeof facts.depth === 'number' && facts.depth >= D.TROPHY_DEPTH) give('depth12');
+    if (profile.bestDepth >= D.TROPHY_DEPTH) give('depth12');
+    if (profile.runs >= D.LIVERY_RUNS) give('company_man');
+    if (profile.totalCores >= D.SHAREHOLDER_CORES) give('shareholder');
+    if (profile.catFound) give('cat');
+    if (allSchemsSeen(profile)) give('schems_all');
+    if (DC.Events && Array.isArray(DC.Events.LOGS) && DC.Events.LOGS.length &&
+        logbook(profile).length >= DC.Events.LOGS.length) give('logbook_full');
+    return won;
+  }
+
+  // ---- the Company Ledger ----
+  // Lifetime stats as the form the Company files them on. Every value is
+  // composed from a profile counter; the labels are the only prose. Rows are
+  // {label, value, note} — render draws the leaders, never the numbers.
+  function fmtN(n) {
+    n = Math.floor(n || 0);
+    let s = String(n), out = '';
+    while (s.length > 3) { out = ',' + s.slice(-3) + out; s = s.slice(0, -3); }
+    return s + out;
+  }
+  function fmtHours(sec) {
+    const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
+    return h + 'h ' + pad2(m) + 'm';
+  }
+  function ledger(profile) {
+    const p = profile || newProfile();
+    const L = life(p);
+    const deaths = L.deaths, dailyWins = dailyHistory(p).filter(function (e) { return e && e.won; }).length;
+    return [
+      { label: 'SHIFTS LOGGED',                    value: fmtN(p.runs) },
+      { label: 'SHIFTS CONCLUDED AT THE CORE',     value: fmtN(p.wins),
+        note: p.runs ? Math.round(100 * p.wins / p.runs) + '% of quota' : 'no data' },
+      { label: 'HOURS ON THE CLOCK',               value: fmtHours(L.timeSec), note: 'unpaid' },
+      { label: 'STRATA BREACHED',                  value: fmtN(L.breaches),
+        note: fmtN(L.breaches * D.DEPTH_M) + ' m of hole' },
+      { label: 'TOTAL VALUE EXTRACTED',            value: fmtN(L.delivered) + ' units' },
+      { label: 'STRUCTURES ERECTED',               value: fmtN(L.placed) },
+      { label: 'STRUCTURES RETURNED',              value: fmtN(0 * L.placed), note: 'see clause 9' },
+      { label: 'SEISMIC EVENTS',                   value: fmtN(L.quakes), note: 'not our fault' },
+      { label: 'REPAIRS INVOICED TO OPERATOR',     value: fmtN(L.repairs) },
+      { label: 'OVERDRIVE INCIDENTS',              value: fmtN(L.overdrives), note: 'noted' },
+      { label: 'CORES REMITTED TO HEAD OFFICE',    value: fmtN(p.totalCores) + ' ◈' },
+      { label: 'CORES RETAINED BY OPERATOR',       value: fmtN(p.cores) + ' ◈', note: 'audit pending' },
+      { label: 'EMPLOYEE COMPENSATION DISBURSED',  value: (L.wages / 100).toFixed(2) },
+      { label: 'CONDOLENCE LETTERS SENT',          value: fmtN(deaths), note: deaths ? 'bulk rate' : '' },
+      { label: 'RESIGNATIONS ACCEPTED',            value: fmtN(L.abandons) },
+      { label: 'DAILY SHAFTS RANKED',              value: fmtN(dailyHistory(p).length),
+        note: dailyWins ? fmtN(dailyWins) + ' concluded' : '' },
+      { label: 'LIVESTOCK FED',                    value: fmtN(L.lures) },
+      { label: 'CATS ON PAYROLL',                  value: fmtN(p.catFound ? 1 : 0),
+        note: p.catFound ? 'unauthorised' : '' },
+      { label: 'COMMENDATIONS ON FILE',            value: fmtN(trophies(p).length) + ' / ' + fmtN(D.TROPHIES.length) },
+    ];
+  }
+
+  // ===================== M-RIGSKINS: liveries =====================
+  // Unlocks are DERIVED, never stored: a skin is yours exactly while the
+  // profile says so, which is also what makes a hand-edited save honest.
+  function liveryUnlocked(profile, id) {
+    const def = liveryDef(id);
+    if (!def || !profile) return false;
+    switch (id) {
+      case 'amber':    return true;
+      case 'orange':   return dailyHistory(profile).some(function (e) { return e && e.won; });
+      case 'gunmetal': return profile.runs >= D.LIVERY_RUNS;
+      case 'void':     return profile.bestDepth >= D.TROPHY_DEPTH;
+      case 'gold':     return allTrophies(profile);
+    }
+    return false;
+  }
+  function liveries(profile) {
+    return D.LIVERIES.map(function (l) {
+      return { id: l.id, name: l.name, unlock: l.unlock, unlocked: liveryUnlocked(profile, l.id) };
+    });
+  }
+  // The livery the chrome should wear. Falls back to Company Amber if the
+  // chosen one is somehow no longer earned.
+  function livery(profile) {
+    const id = profile && typeof profile.skin === 'string' ? profile.skin : 'amber';
+    return liveryUnlocked(profile, id) ? id : 'amber';
+  }
+  function setLivery(profile, id) {
+    if (!profile || !liveryUnlocked(profile, id)) return false;
+    if (profile.skin === id) return true;
+    profile.skin = id;
+    save(profile);
+    return true;
+  }
+  // [S] on the Foundry: the next unlocked livery after the current one.
+  function cycleLivery(profile) {
+    if (!profile) return 'amber';
+    const cur = livery(profile);
+    const n = D.LIVERIES.length;
+    let i = 0;
+    for (let k = 0; k < n; k++) if (D.LIVERIES[k].id === cur) i = k;
+    for (let k = 1; k <= n; k++) {
+      const id = D.LIVERIES[(i + k) % n].id;
+      if (liveryUnlocked(profile, id)) { setLivery(profile, id); return id; }
+    }
+    return cur;
+  }
+
   DC.Meta = {
     load, save, newProfile, award, canBuy, buy, effects,
     // M-RECAP
@@ -347,5 +601,12 @@
     logbook, recordLog, hasLog, catFound, findCat,
     // M-ONBOARD
     tutorialSeen, seeTutorial,
+    // M-ACHIEVE
+    LIFE_KEYS,
+    trophies, hasTrophy, awardTrophy, allTrophies, checkTrophies,
+    schemsSeen, seeSchematics, allSchemsSeen,
+    life, recordRun, ledger, fmtN,
+    // M-RIGSKINS
+    liveryUnlocked, liveries, livery, setLivery, cycleLivery,
   };
 })();
