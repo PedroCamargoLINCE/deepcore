@@ -55,6 +55,8 @@
       // M-ONBOARD Part 2: the first-run induction has been seen through or
       // waved away. Either way it never comes back.
       tutorialSeen: false,
+      // M-SOUND: the M key. Optional and off by default; engine.js owns it.
+      muted: false,
     };
   }
 
@@ -114,6 +116,8 @@
     f.catFound = !!p.catFound;
     // ---- M-ONBOARD field (absent in v1, v2 and v3 saves) ----
     f.tutorialSeen = !!p.tutorialSeen;
+    // ---- M-SOUND field (absent in every save before it) ----
+    f.muted = !!p.muted;
     f.v = SAVE_V;
     return f;
   }
