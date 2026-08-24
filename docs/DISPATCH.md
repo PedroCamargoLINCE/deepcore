@@ -154,6 +154,19 @@ account default happens to be that day, because the default is the director's
 to change and yours to never depend on. Every launch pins the model
 explicitly; every launch is verified from the transcript stamps afterward.
 
+**Fourth rule, from the director (2026-08-24): every worker gets a MONITOR
+the moment it launches.** A worker that dies to a connection drop sits idle at
+its prompt, silently, until somebody looks — M-CONTRACTS lost an hour that way
+and was only found because the director asked "how is it going". The
+orchestrator arms a persistent Monitor on the worker's tmux pane and branch,
+polling every 30s and emitting on exactly the states it would act on:
+`ERROR:` (API Error / Connection lost / limit / Overloaded — the nudge is
+`tmux send-keys -t laborer "<continue>" Enter Enter`), `STALLED:` (idle at the
+prompt 5+ min), `DEAD:` (tmux session gone — resume the session by id with
+the model re-pinned), `PUSHED:` (a new checkpoint on origin — progress), and
+`DONE?:` (the worker's own finished recap). Silence is not success: the
+filter must cover every failure signature, not just the happy path.
+
 Three rules, each paid for:
 
 1. **The `--remote-control` FLAG, never the `claude remote-control` server
