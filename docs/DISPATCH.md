@@ -56,7 +56,7 @@ with `git add -A`).
 | 4.6 | ~~M-WIDE (alone; changed COLS 80→112)~~ ✅ **merged 2026-08-17** | — | — |
 | 4.7 | ~~M-ONBOARD Part 2 (the tutorial)~~ ✅ **merged 2026-08-17** | — | — |
 | 5 | ~~M-TIER2 (alone)~~ ✅ **merged 2026-08-18** — worker died at its session limit with all checkpoints pushed; rescued from its worktree, one finished diff committed for it | ~~M-MANTLE + M-SCHEMS2~~ ✅ **merged 2026-08-19** — survived THREE worker deaths (ECONNRESET, connection drop, rate limit-on-wrong-model) with zero pushed work lost | — |
-| 6 | M-WORMS | M-ACHIEVE + M-RIGSKINS | M-SOUND |
+| 6 | ~~M-WORMS~~ ✅ **merged 2026-08-19** | **next: M-ACHIEVE + M-RIGSKINS** (one session) | M-SOUND (last) |
 | 7 | **M-HUMANBAL — alone, LAST** (SPEC3 §M-HUMANBAL) — the director's playtest ledger | — | — |
 
 **M-HUMANBAL is a running ledger, not a queued brief.** Every balance problem
@@ -139,10 +139,14 @@ tmux new-session -d -s laborer -c <worktree-path> \
      --permission-mode bypassPermissions "<prompt or continuation kick>"'
 ```
 
-**THE FABLE RULE (director's law, 2026-08-19, absolute):** the orchestrator
-NEVER starts a session, worker, or agent that runs on Fable — Fable is the
-director's model, spent only by his own hand. Which means: never launch
-anything whose model you cannot directly and explicitly control. If a launch
+**THE MODEL RULE (director's law, 2026-08-19, amended the same day):** the
+model a worker runs on is the DIRECTOR'S choice, per dispatch, and it is
+ALWAYS pinned explicitly on the command line and verified from the transcript
+stamps afterward. Fable is the director's own model: a worker runs on it only
+when he says so for that dispatch (he opened that door on 2026-08-19 — "i want
+to try using fable 5 for the workers"), never by default, never by
+inheritance. Which means: never launch anything whose model you cannot
+directly and explicitly control. If a launch
 mechanism has no --model (or equivalent) parameter, or its override is not
 verifiable, that mechanism is FORBIDDEN for workers — regardless of what the
 account default happens to be that day, because the default is the director's
