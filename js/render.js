@@ -580,6 +580,9 @@
     const sl = 'STRATUM ' + run.depth;
     text(12, 0, sl, SK.amber);
     text(12 + sl.length + 1, 0, '— ' + st.name, accent);
+    // M-CONTRACTS: the paper's one glyph, after the stratum name the way the
+    // Mantle's '†' rides on its name (§0 law 6: one mark, nothing else).
+    drawContractMark(run, 12 + sl.length + 1 + 2 + st.name.length + 1);
     text(46, 0, 'DEPTH -' + (run.depth * D.DEPTH_M) + 'm', C.gray);
     textR(COLS - 1, 0, 'ELAPSED ' + fmtTime(run.totalT / D.TICK_HZ), C.gray);
 
@@ -638,6 +641,16 @@
       text(bx + 3, by + 4, '[A]   ABANDON RUN', C.red);
       text(bx + 3, by + 5, '[H]   MANUAL', C.gray);
     }
+  }
+
+  // M-CONTRACTS: one glyph in the header, in the contract's own ink, after
+  // the stratum name. Nothing else: the terms were read at the desk and the
+  // paper is not re-read every frame. Skipped if a long Mantle name has
+  // already used the room (DEPTH starts at column 46).
+  function drawContractMark(run, x) {
+    const def = (DC.Sim && DC.Sim.contractOf) ? DC.Sim.contractOf(run) : null;
+    if (!def || !def.mark || x >= 45) return;
+    put(x, 0, def.mark, def.id === 'warrant' ? C.red : C.orange);
   }
 
   // M-MANTLE: the floor's rule, inlaid in the divider under the header.
@@ -1813,6 +1826,87 @@
     ctext(rowc + h + 2, 'CHOOSE ONE — [1-' + n + '] OR CLICK', C.amberDim);
   }
 
+  // ================= THE CONTRACT DESK (M-CONTRACTS) =================
+  // Papers Please for the paper, Balatro for the pick: three documents on a
+  // desk, each a Company form with a name, its terms in two or three lines
+  // you can hold in your head, and the wage. The card grammar is the descend
+  // screen's (a box, a title, a keycap) so the pick is already a learned
+  // gesture by the time it is a choice. A locked paper is drawn whole with
+  // its lock line where the wage would be — a goal you can read.
+  const CONTRACT_W = 34, CONTRACT_H = 11, CONTRACT_GAP = 3, CONTRACT_ROW = 6;
+  function drawContracts(state) {
+    const meta = state.meta || {};
+    const ui = state.ui || {};
+    const list = D.CONTRACTS || [];
+    const M = DC.Meta;
+    const n = Math.max(1, list.length);
+    const w = CONTRACT_W, gap = CONTRACT_GAP;
+    const x0 = Math.max(0, (COLS - (n * w + (n - 1) * gap)) >> 1);
+    const cur = Math.max(0, Math.min(list.length - 1, ui.contractCursor | 0));
+    const denied = ui.contractDenied || null;
+    const rule = mix(SK.amber, C.bg, 0.42);
+
+    ctext(1, 'DEEPCORE MINING CONCERN  ·  TERMS OF ENGAGEMENT', SK.amber);
+    ctext(2, 'sign one before you descend — the wage is paid on every core banked', C.gray);
+    text(x0, 3, '═'.repeat(n * w + (n - 1) * gap), rule);
+
+    layout.contracts = [];
+    for (let i = 0; i < list.length; i++) {
+      const c = list[i];
+      const cx = x0 + i * (w + gap), cy = CONTRACT_ROW;
+      const open = M && M.contractUnlocked ? M.contractUnlocked(meta, c.id) : i === 0;
+      const won = M && M.contractWon ? M.contractWon(meta, c.id) : false;
+      const sel = i === cur;
+      const ink = !open ? C.darkgray : sel ? C.white : c.id === 'warrant' ? C.red : c.id === 'hazard' ? C.orange : SK.amber;
+      box(cx, cy, w, CONTRACT_H, ink, c.name, open ? (sel ? C.white : ink) : C.darkgray);
+      // the form number, top-right inside the box, in the Company's small print
+      if (c.sub) textR(cx + w - 3, cy + 1, c.sub, C.darkgray);
+      // the mark — the glyph the run header will carry
+      if (c.mark) put(cx + 2, cy + 2, c.mark, open ? ink : C.darkgray);
+      let yy = cy + 2;
+      const tc = open ? C.gray : C.darkgray;
+      for (let t = 0; t < c.terms.length && yy < cy + CONTRACT_H - 5; t++) {
+        const ln = String(c.terms[t]).slice(0, w - 6);
+        text(cx + 4, yy++, ln, tc);
+      }
+      // wage line, or the lock
+      const wy = cy + CONTRACT_H - 4;
+      if (open) {
+        const wage = 'WAGE x' + (Number(c.wage).toFixed(1));
+        text(cx + 4, wy, wage, c.wage > 1 ? C.gold : C.gray);
+        if (won) textR(cx + w - 3, wy, '[ CONCLUDED ]', C.green);
+      } else {
+        text(cx + 4, wy, (c.lockText || 'LOCKED').slice(0, w - 6), C.darkgray);
+      }
+      // the signature line
+      const sigy = cy + CONTRACT_H - 2;
+      const isDenied = denied && denied.id === c.id;
+      if (!open) {
+        text(cx + 2, sigy, (isDenied ? 'x  NOT YOURS TO SIGN' : 'x  ' + '_'.repeat(w - 8)).slice(0, w - 4), isDenied ? C.red : C.darkgray);
+      } else if (sel) {
+        text(cx + 2, sigy, 'x  [ ' + (i + 1) + ' ]  SIGN HERE', C.green);
+      } else {
+        text(cx + 2, sigy, 'x  [ ' + (i + 1) + ' ]', C.green);
+      }
+      if (sel) { put(cx - 1, cy + (CONTRACT_H >> 1), '▸', C.white); put(cx + w, cy + (CONTRACT_H >> 1), '◀', C.white); }
+      layout.contracts.push({ col: cx, row: cy, w: w, h: CONTRACT_H, id: c.id, index: i, unlocked: open });
+    }
+    const y = CONTRACT_ROW + CONTRACT_H + 1;
+    text(x0, y, '═'.repeat(n * w + (n - 1) * gap), rule);
+    // the small print
+    const selDef = list[cur];
+    if (selDef) {
+      const open = M && M.contractUnlocked ? M.contractUnlocked(meta, selDef.id) : cur === 0;
+      ctext(y + 2, open
+        ? 'Signing ' + selDef.name + ': every core this shift banks is paid at x' + Number(selDef.wage).toFixed(1) + '.'
+        : selDef.name + ' is not on your desk yet. ' + (selDef.lockText || '').replace(/^LOCKED: /, '') + '.',
+        open ? C.gray : C.darkgray);
+    }
+    ctext(y + 3, 'The Daily Shaft is always worked under STANDARD TERMS.', C.darkgray);
+    ctext(ROWS - 3, 'The Company accepts no liability. The Company accepts everything else.', C.darkgray);
+    ctext(ROWS - 1, '←→ READ   [1-' + n + '] / [ENTER] SIGN   [ESC] BACK', SK.amber);
+  }
+
   // ================= FOUNDRY =================
   // The Foundry page's two columns, as a block that centres itself: the rig
   // box, a gutter, and the upgrade list (44 columns holds the longest desc,
@@ -2226,6 +2320,13 @@
     text(V, row + 2, fmtTime(res.timeSec), C.white);
     text(L, row + 3, 'CORES EARNED', C.gray);
     text(V, row + 3, '+' + res.cores + ' ◈', C.magenta);
+    // M-CONTRACTS: the wage, when a rider was signed — what was actually
+    // banked, beside the run's own count. Meta.award stamps `paid`.
+    const cdef = res.contract ? (D.CONTRACT_BY_ID || {})[res.contract] : null;
+    if (cdef && cdef.wage !== 1 && typeof res.paid === 'number') {
+      text(L, row + 4, cdef.name, cdef.id === 'warrant' ? C.red : C.orange);
+      text(V, row + 4, 'x' + Number(cdef.wage).toFixed(1) + '  →  +' + res.paid + ' ◈ PAID', C.gold);
+    }
   }
 
   // M-ACHIEVE: what this run put on the shelf, said once on the end screen
@@ -2510,7 +2611,10 @@
     const gears = ctx ? ctx.gears : (run.gearsFed || 0);
     const charges = ctx ? ctx.charges : (run.chargesFed || 0);
     const fedL = ' FED  ' + gears + D.ITEMS.gear.glyph + '  ' + charges + D.ITEMS.charge.glyph;
-    const fedR = 'CORES +' + (res.cores || 0) + ' ◈ ';
+    const cdef = res.contract ? (D.CONTRACT_BY_ID || {})[res.contract] : null;
+    const fedR = (cdef && cdef.wage !== 1 && typeof res.paid === 'number')
+      ? 'CORES +' + (res.cores || 0) + ' x' + Number(cdef.wage).toFixed(1) + ' = +' + res.paid + ' ◈ '
+      : 'CORES +' + (res.cores || 0) + ' ◈ ';
     rows.push(cardRow(U.pad(fedL, Math.max(0, CARD_IN - fedR.length)) + fedR, C.gray));
 
     // and the reason to read the thing
@@ -2696,6 +2800,7 @@
   }
   // ================= public API =================
   const layout = { cards: [], buildRows: [], map: null, choices: [], runRig: null,
+                   contracts: [],   // M-CONTRACTS: the three papers' boxes
                    // M-ONBOARD Part 2: where STOCK's rows and CHAIN's stages
                    // landed, so the induction can point at them by position
                    // rather than by re-deriving this file's arithmetic.
@@ -2862,6 +2967,7 @@
         switch (state.screen) {
           case 'run':      drawRun(state); break;
           case 'descend':  drawDescend(state); break;
+          case 'contract': drawContracts(state); break; // M-CONTRACTS
           case 'foundry':  drawFoundry(state); break;
           case 'logbook':  drawLogbook(state); break;   // M-EVENTS
           case 'trophies': drawTrophies(state); break;  // M-ACHIEVE

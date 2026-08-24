@@ -868,14 +868,14 @@
       terms: ['Quakes hit 25% harder.',
               'Advance: 30 iron plates.'],
       fx: { quakeDmgMult: 1.25, startBonus: { ironPlate: 30 } },
-      unlock: 'win', lockText: 'LOCKED — REACH THE CORE ONCE' },
+      unlock: 'win', lockText: 'LOCKED: reach the Core once' },
     { id: 'warrant', name: 'DEATH WARRANT', mark: '×', wage: 2,
       sub: 'form 9-D',
       terms: ['Quakes hit 50% harder.',
               'No salvage on descent, ever.',
               'Advance: 20 iron plates.'],
       fx: { quakeDmgMult: 1.5, salvageCap: 0, startBonus: { ironPlate: 20 } },
-      unlock: 'hazardWin', lockText: 'LOCKED — WIN UNDER THE HAZARD CLAUSE' },
+      unlock: 'hazardWin', lockText: 'LOCKED: win under HAZARD' },
   ];
   D.CONTRACT_BY_ID = {};
   for (let i = 0; i < D.CONTRACTS.length; i++) D.CONTRACT_BY_ID[D.CONTRACTS[i].id] = D.CONTRACTS[i];

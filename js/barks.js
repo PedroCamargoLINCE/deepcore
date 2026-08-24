@@ -224,6 +224,16 @@
       "Today's shaft is open. Company logged the time. Make it look good.",
       "Naked rig, ranked run. This is the one they'll read out. Dig sharp.",
     ],
+    // M-CONTRACTS: the paper, read aloud on signing. The Company wrote these
+    // and he is contractually obliged to read them — it is the induction
+    // script's register, through his teeth. Bespoke per contract in
+    // CONTRACT_LINES; this pool is the safety net for an id with no line.
+    contract: [
+      "Head office wants the terms read aloud. Consider it done. Dig.",
+      "Signed, witnessed, filed. Whatever it said, it's said now.",
+      "You signed something. I didn't read it either. Get to work.",
+      "Paperwork's done. The rock doesn't care what it says. Feed her.",
+    ],
     dailyPractice: [
       "Practice run. Doesn't count, doesn't rank, doesn't fool me either.",
       "Second crack at today's shaft. Unranked. Warm up, kid, then sulk.",
@@ -805,6 +815,13 @@
     seal: "Thin floor, angry planet. Punch through fast or don't punch at all.",
   };
 
+  // M-CONTRACTS: what he says the moment a rider is signed. STANDARD gets the
+  // ordinary runStart line — no paper worth reading out.
+  const CONTRACT_LINES = {
+    hazard: "Hazard Clause, as required: quakes hit harder, you get paid. Signed.",
+    warrant: "Death Warrant, as required: no salvage, quakes worse, wage double.",
+  };
+
   // Bespoke line per Foundry meta upgrade id (9).
   const META_LINES = {
     m_stock: "Deeper stores. More plates up front. Spend 'em like you hate 'em.",
@@ -964,6 +981,8 @@
     if (trigger === 'schematicPick' && typeof ctx === 'string') return SCHEM_LINES[ctx] || null;
     // M-MANTLE: ctx is the mutator id off the sim's arrival event.
     if (trigger === 'mutator' && typeof ctx === 'string') return MUTATOR_LINES[ctx] || null;
+    // M-CONTRACTS: ctx is the contract id off the signing.
+    if (trigger === 'contract' && typeof ctx === 'string') return CONTRACT_LINES[ctx] || null;
     if (trigger === 'foundryBuy' && typeof ctx === 'string') return META_LINES[ctx] || null;
     // M-WONDERS: ctx is the landmark id; the generic pool covers the rest.
     if ((trigger === 'landmarkFound' || trigger === 'landmarkUse') &&
@@ -1454,6 +1473,7 @@
     // data exposed for the headless acceptance test (SPEC2 §G)
     POOLS: POOLS, STRATUM_LINES: STRATUM_LINES, SCHEM_LINES: SCHEM_LINES,
     MUTATOR_LINES: MUTATOR_LINES,     // M-MANTLE
+    CONTRACT_LINES: CONTRACT_LINES,   // M-CONTRACTS
     echoOf: echoOf,                   // M-MANTLE/'echo chamber' (pure, rng-free)
     META_LINES: META_LINES, EPITAPHS: EPITAPHS, TOASTS: TOASTS,
     LANDMARK_LINES: LANDMARK_LINES,   // M-WONDERS

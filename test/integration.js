@@ -6450,6 +6450,435 @@ function audioSection(seed) {
     (muteChecks ? '' : '?') + ', absent = identical';
 }
 
+// =========================================================================
+// SECTION — M-CONTRACTS: Sign Here.
+// The paper you sign before you descend, pinned where each rule lives:
+//   1. sim: a contract is an effects layer. STANDARD applies nothing (the
+//      run is byte-identical, rng stream included); HAZARD/WARRANT change the
+//      integrity a quake bills and NOTHING about which tiles it picks — the
+//      three contracts on one seed draw the same map and the same quakes.
+//      The Warrant's salvage ceiling holds against Salvage Claws.
+//   2. meta: the wage multiplies at award and only there; the ladder derives
+//      from wins (HAZARD) and from a HAZARD win (WARRANT); a v5 save loads
+//      with STANDARD alone on the desk.
+//   3. engine: [ENTER] opens the desk for a returning player; the induction
+//      profile, the Daily and [I] never see it and sign STANDARD; a locked
+//      paper cannot be signed by key or click; GRIT reads the rider aloud.
+//   4. render: every card's text whole at COLS, the header mark, the ledger
+//      line, and law 8 still holds on the desk (no quake schedule anywhere).
+// =========================================================================
+function contractSection(seed) {
+  SECTION = 'contract seed=' + seed;
+  require('../js/barks.js');
+  require('../js/events.js');
+  require('../js/fx.js');
+  require('../js/render.js');
+  require('../js/engine.js');
+  const M = DC.Meta, R = DC.Render, B = DC.Barks;
+  const IDS = D.CONTRACTS.map((c) => c.id);
+  assertEq(IDS.join(','), 'standard,hazard,warrant', 'three papers, in desk order');
+  for (const c of D.CONTRACTS) {
+    assert(c.name && Array.isArray(c.terms) && c.terms.length >= 2 && c.terms.length <= 3,
+      c.id + ': a name and two or three lines of terms');
+    assert(typeof c.wage === 'number' && c.wage >= 1, c.id + ': a wage');
+    assert(c.fx && typeof c.fx === 'object', c.id + ': an effects layer');
+    assert(JSON.stringify(c).indexOf('rng') < 0, c.id + ': nothing in the paper names rng (law 7)');
+    assert(JSON.stringify(c).indexOf('quakeAt') < 0, c.id + ': nothing in the paper reads the schedule (law 8)');
+    if (c.mark) assertEq(c.mark.length, 1, c.id + ': the mark is ONE glyph (law 6)');
+  }
+  assertEq(D.CONTRACT_BY_ID.standard.mark, '', 'STANDARD is unmarked');
+  assertEq(D.CONTRACT_BY_ID.standard.wage, 1, 'STANDARD pays x1');
+  assert(D.CONTRACT_BY_ID.hazard.wage < D.CONTRACT_BY_ID.warrant.wage, 'the harder paper pays more');
+  assert(B.CONTRACT_LINES.hazard && B.CONTRACT_LINES.warrant, 'GRIT has a line for each rider');
+  for (const id of ['hazard_win', 'warrant_win']) {
+    assert(D.TROPHY_BY_ID[id] && DC.Art.trophies[id], id + ': trophy and object on the shelf');
+  }
+
+  // ---- 1. sim ------------------------------------------------------------
+  const fx = M.effects(M.newProfile());
+  {
+    const a = S.newRun(fx, seed), b = S.newRun(fx, seed, 'standard'), c = S.newRun(fx, seed, 'bogus');
+    assertEq(a.contract, 'standard', 'no argument signs STANDARD');
+    assertEq(c.contract, 'standard', 'an unknown id signs STANDARD');
+    assertEq(JSON.stringify(a.mods), JSON.stringify(b.mods), 'STANDARD applies nothing to the mods');
+    assertEq(JSON.stringify(a.inv), JSON.stringify(b.inv), '...or to the stock');
+    assertEq(a.rng(), b.rng(), '...or to the stream');
+    assertEq(S.contractOf(a), null, 'contractOf is null on STANDARD (no mark to draw)');
+  }
+  {
+    // same seed, three papers: same map, same quake schedule, different bill
+    const runs = {};
+    for (const id of IDS) runs[id] = S.newRun(fx, seed, id);
+    const mapOf = (r) => r.grid.map((row) => row.map((t) => t.t + (t.ore || '') + t.oreAmt).join('')).join('|');
+    assertEq(mapOf(runs.hazard), mapOf(runs.standard), 'HAZARD draws the same map as STANDARD');
+    assertEq(mapOf(runs.warrant), mapOf(runs.standard), 'and so does the WARRANT');
+    assertEq(runs.hazard.inv.ironPlate, runs.standard.inv.ironPlate + 30, 'HAZARD: +30 plates at the desk');
+    assertEq(runs.warrant.inv.ironPlate, runs.standard.inv.ironPlate + 20, 'WARRANT: +20 plates at the desk');
+    assertEq(runs.hazard.mods.quakeDmgMult, 1.25, 'HAZARD: quakes 25% harder');
+    assertEq(runs.warrant.mods.quakeDmgMult, 1.5, 'WARRANT: quakes 50% harder');
+    assertEq(runs.warrant.mods.salvageCap, 0, 'WARRANT: salvage ceiling 0');
+    // the stream is untouched by the paper: identical draws after newRun
+    const draw0 = runs.standard.rng();
+    assertEq(runs.hazard.rng(), draw0, 'HAZARD spent nothing from the stream (law 7)');
+    assertEq(runs.warrant.rng(), draw0, 'WARRANT spent nothing from the stream (law 7)');
+    // drive all three to the first quake in lockstep: same tick, same tiles,
+    // and the bill scales exactly
+    for (const id of IDS) { runs[id].instability = 60; }
+    let fired = null;
+    for (let i = 0; i < 2000 && !fired; i++) {
+      for (const id of IDS) S.tick(runs[id]);
+      const q = runs.standard.events.filter((e) => e.type === 'quake');
+      if (q.length) fired = i;
+    }
+    assert(fired !== null, 'a quake fired on STANDARD');
+    const dmg = {};
+    for (const id of IDS) {
+      const q = runs[id].events.filter((e) => e.type === 'quake');
+      assertEq(q.length, 1, id + ': the same quake fired on the same tick');
+      dmg[id] = q[0].data.dmg;
+    }
+    assertEq(dmg.hazard, Math.round(dmg.standard * 1.25), 'HAZARD bills 1.25x the integrity (' + dmg.standard + ' -> ' + dmg.hazard + ')');
+    assertEq(dmg.warrant, Math.round(dmg.standard * 1.5), 'WARRANT bills 1.5x (' + dmg.standard + ' -> ' + dmg.warrant + ')');
+    const rubble = (r) => { let n = 0; for (const row of r.grid) for (const t of row) if (t.rubble) n++; return n; };
+    assertEq(rubble(runs.warrant), rubble(runs.standard), 'the quake landed on the same tiles (the paper never picks tiles)');
+    const draw1 = runs.standard.rng();
+    assertEq(runs.hazard.rng(), draw1, 'and the streams still agree after it');
+    assertEq(runs.warrant.rng(), draw1, '...all three');
+    // the Warrant's ceiling holds against Salvage Claws
+    S.applySchematic(runs.warrant, 's_salvage');
+    assertEq(runs.warrant.mods.salvage, 0, 'Salvage Claws cannot lift the Warrant\'s ceiling');
+    S.applySchematic(runs.standard, 's_salvage');
+    assertEq(runs.standard.mods.salvage, 0.6, '...while STANDARD takes them at 60%');
+    assertEq(runs.warrant.result, null, 'no result yet');
+    runs.warrant.depth = D.STRATA_COUNT; runs.warrant.status = 'breachReady';
+    S.beginDescent(runs.warrant);
+    assertEq(runs.warrant.status, 'won', 'breaching stratum 8 wins');
+    assertEq(runs.warrant.result.contract, 'warrant', 'the result carries the paper');
+  }
+  // the Foundry's own start bonus is ADDED to, not replaced
+  {
+    const p = M.newProfile(); p.upgrades = { m_stock: 2 };
+    const r = S.newRun(M.effects(p), seed, 'hazard');
+    assertEq(r.inv.ironPlate, D.START_STOCK.ironPlate + 40 + 30, 'HAZARD stacks on Deeper Stores');
+    assertEq(r.inv.gear, D.START_STOCK.gear + 8, '...and leaves the Foundry gears alone');
+  }
+
+  // ---- 2. meta -----------------------------------------------------------
+  const cell = {};
+  Object.defineProperty(globalThis, 'localStorage', {
+    value: {
+      getItem: (k) => (Object.prototype.hasOwnProperty.call(cell, k) ? cell[k] : null),
+      setItem: (k, v) => { cell[k] = String(v); },
+    }, configurable: true, writable: true,
+  });
+  assertEq(D.SAVE_KEY, 'deepcore_save_v1', 'SAVE_KEY has not moved');
+  assertEq(M.SAVE_V, 6, 'SAVE_V is 6');
+  {
+    // a v5 save (M-ACHIEVE shape): everything it had, STANDARD alone on the desk
+    const v5 = { v: 5, cores: 7, upgrades: { m_hull: 1 }, bestDepth: 8, wins: 0, runs: 12, totalCores: 30,
+      bestSplits: { 1: 90 }, dailyHistory: [], logbook: [3], catFound: true, tutorialSeen: true,
+      trophies: ['first_win'], schemsSeen: [], life: { breaches: 40 }, skin: 'gunmetal', muted: true };
+    cell[D.SAVE_KEY] = JSON.stringify(v5);
+    const p = M.load();
+    assertEq(p.v, 6, 'a v5 save loads, stamped v6');
+    assertEq(p.cores, 7, '...with its cores');
+    assertEq(p.runs, 12, '...its runs');
+    assertEq(M.trophies(p).join(','), 'first_win', '...its shelf');
+    assertEq(M.livery(p), 'gunmetal', '...its livery');
+    assertEq(p.muted, true, '...its mute');
+    assertEq(M.life(p).breaches, 40, '...its ledger');
+    assertEq(M.life(p).signed, 0, '...and the new counters at zero');
+    assertEq(M.contracts(p).map((c) => c.id + ':' + c.unlocked).join(','), 'standard:true,hazard:false,warrant:false',
+      'a v5 save with no wins has STANDARD only');
+    assertEq(M.contractLast(p), 'standard', '...and the cursor rests on it');
+    // a v5 save WITH wins: HAZARD is already on the desk (deeds, not fields)
+    cell[D.SAVE_KEY] = JSON.stringify(Object.assign({}, v5, { wins: 3 }));
+    const pw = M.load();
+    assert(M.contractUnlocked(pw, 'hazard') && !M.contractUnlocked(pw, 'warrant'),
+      'a v5 save with wins finds HAZARD unlocked, the WARRANT not');
+    // and a hand-edited `contracts` list does not smuggle in a paper
+    cell[D.SAVE_KEY] = JSON.stringify(Object.assign({}, v5, { contracts: ['warrant', 'bogus'], contractLast: 'warrant' }));
+    const px = M.load();
+    assertEq(px.contracts.join(','), 'warrant', 'an unknown contract id is dropped');
+    assertEq(M.contractLast(px), 'standard', 'contractLast falls back when the paper is not on the desk');
+    // a v1 save
+    cell[D.SAVE_KEY] = JSON.stringify({ cores: 1, upgrades: {}, bestDepth: 2, wins: 0, runs: 3, totalCores: 1 });
+    assertEq(M.contracts(M.load()).filter((c) => c.unlocked).length, 1, 'a v1 save: STANDARD only');
+  }
+  {
+    // the wage arithmetic, at award and only there
+    const p = M.newProfile();
+    assertEq(M.wageOf('standard'), 1, 'wageOf standard');
+    assertEq(M.wageOf('nope'), 1, 'wageOf unknown = 1');
+    assertEq(M.paidFor(7, 'hazard'), 11, '7 cores at x1.5 = 10.5 -> 11 (rounded)');
+    assertEq(M.paidFor(7, 'warrant'), 14, '7 cores at x2 = 14');
+    assertEq(M.paidFor(3, 'standard'), 3, '3 cores at x1 = 3');
+    let res = { depth: 4, breaches: 3, timeSec: 500, cores: 3, won: false, contract: 'standard' };
+    M.award(p, res);
+    assertEq(p.cores, 3, 'STANDARD banks the run\'s own count');
+    assertEq(res.paid, 3, '...and stamps paid = cores');
+    assert(!M.contractUnlocked(p, 'hazard'), 'a death unlocks nothing');
+    res = { depth: 8, breaches: 8, timeSec: 900, cores: 18, won: true, contract: 'standard' };
+    M.award(p, res);
+    assertEq(p.cores, 21, 'a STANDARD win banks 18');
+    assert(M.contractUnlocked(p, 'hazard'), 'the first win unlocks HAZARD');
+    assert(!M.contractUnlocked(p, 'warrant'), '...not the WARRANT');
+    assertEq(M.setContractLast(p, 'warrant'), false, 'the cursor cannot rest on a locked paper');
+    assertEq(M.setContractLast(p, 'hazard'), true, '...but can on HAZARD');
+    assertEq(M.contractLast(M.load()), 'hazard', '...and that survives the round trip');
+    res = { depth: 8, breaches: 8, timeSec: 900, cores: 18, won: true, contract: 'hazard' };
+    M.award(p, res);
+    assertEq(res.paid, 27, 'a HAZARD win: 18 cores paid as 27');
+    assertEq(p.cores, 48, '...banked');
+    assertEq(p.totalCores, 48, '...and remitted');
+    assert(M.contractWon(p, 'hazard'), 'the win is filed under HAZARD');
+    assert(M.contractUnlocked(p, 'warrant'), 'a HAZARD win unlocks the WARRANT');
+    assertEq(JSON.parse(cell[D.SAVE_KEY]).contracts.join(','), 'standard,hazard', 'the file is on disk (in desk order)');
+    const fresh = M.checkTrophies(p, { won: true, contract: 'hazard', timeSec: 900, repairs: 1, overdrives: 1 });
+    assert(fresh.indexOf('hazard_win') >= 0, 'HAZARD PAY goes on the shelf');
+    assert(fresh.indexOf('warrant_win') < 0, '...not DEATH WARRANT');
+    assertEq(M.checkTrophies(p, { won: false, contract: 'warrant' }).length, 0, 'a WARRANT death is not a WARRANT trophy');
+    assert(M.checkTrophies(p, { won: true, contract: 'warrant' }).indexOf('warrant_win') >= 0, 'a WARRANT win is');
+    // the Ledger line
+    M.recordRun(p, { signed: 3, wagePaid: 9 });
+    const row = M.ledger(p).filter((r) => r.label === 'CONTRACTS SIGNED')[0];
+    assert(row, 'the Ledger has a CONTRACTS SIGNED line');
+    assertEq(row.value, '3', '...counting papers');
+    assertEq(row.note, 'hazard pay 9 ◈', '...and the hazard pay');
+    assertEq(M.ledger(M.newProfile()).filter((r) => r.label === 'CONTRACTS SIGNED')[0].note, 'standard terms',
+      'a fresh Ledger says standard terms');
+  }
+
+  // ---- 3. the real engine -------------------------------------------------
+  const handlers = {};
+  const ctxStub = {
+    fillStyle: '', font: '', textBaseline: '', textAlign: '',
+    setTransform: function () {}, fillRect: function () {},
+    save: function () {}, restore: function () {}, scale: function () {},
+    fillText: function () {}, measureText: function () { return { width: 10 }; },
+  };
+  const canvasStub = {
+    style: {},
+    getContext: function () { return ctxStub; },
+    addEventListener: function (t, fn) { handlers[t] = fn; },
+    getBoundingClientRect: function () {
+      return { left: 0, top: 0, width: D.COLS * 10, height: D.ROWS * 19 };
+    },
+  };
+  global.window = { addEventListener: function (t, fn) { handlers[t] = fn; } };
+  global.document = { getElementById: function () { return canvasStub; } };
+  global.location = { search: '?seed=' + seed };
+  let rafCb = null;
+  global.requestAnimationFrame = function (fn) { rafCb = fn; };
+  let now = 6e7;
+  function frames(n) {
+    for (let i = 0; i < n; i++) {
+      now += 1000 / HZ;
+      const cb = rafCb;
+      assert(cb, 'rAF loop stays scheduled');
+      rafCb = null;
+      cb(now);
+    }
+  }
+  function key(k) {
+    handlers.keydown({ key: k, shiftKey: false, preventDefault: function () {} });
+  }
+  function click(col, row) {
+    handlers.mousedown({ clientX: col * 10 + 5, clientY: row * 19 + 9, button: 0, preventDefault: function () {} });
+    if (handlers.mouseup) handlers.mouseup({});
+  }
+  function paint() { now += 1000 / HZ; R.frame(DC.state, now); }
+  function gridRows() {
+    const out = [];
+    for (let r = 0; r < D.ROWS; r++) {
+      let line = '';
+      for (let c = 0; c < D.COLS; c++) line += (R.cellAt(c, r) || { ch: ' ' }).ch;
+      out.push(line);
+    }
+    return out;
+  }
+  function shown(needle) { return gridRows().some((l) => l.indexOf(needle) >= 0); }
+
+  // --- the induction profile never sees the desk --------------------------
+  cell[D.SAVE_KEY] = JSON.stringify({ cores: 0, upgrades: {}, bestDepth: 0, wins: 0, runs: 0, totalCores: 0 });
+  DC.Engine.start();
+  let st = DC.state;
+  assert(DC.Tutorial.eligible(st.meta), 'a zero-run profile is induction-eligible');
+  key('Enter');
+  assertEq(st.screen, 'run', 'ENTER on an induction profile goes straight to the run');
+  assert(st.run.tutorial, '...with the induction armed');
+  assertEq(st.run.contract, 'standard', '...under STANDARD, signed silently');
+
+  // --- a returning player: the desk ----------------------------------------
+  cell[D.SAVE_KEY] = JSON.stringify({ cores: 5, upgrades: {}, bestDepth: 6, wins: 0, runs: 4, totalCores: 9, tutorialSeen: true });
+  DC.Engine.start();
+  st = DC.state;
+  key('Enter');
+  assertEq(st.screen, 'contract', 'ENTER on a returning profile opens the desk');
+  assertEq(st.run, null, '...and no run has started');
+  paint();
+  let rows = gridRows();
+  for (const c of D.CONTRACTS) {
+    assert(shown(c.name), c.id + ': the paper is on the desk');
+    for (const t of c.terms) assert(shown(t), c.id + ': its term is on screen whole: ' + t);
+  }
+  assert(shown('WAGE x1.0'), 'STANDARD shows its wage');
+  assert(shown('LOCKED: reach the Core once'), 'HAZARD shows its lock condition');
+  assert(shown('LOCKED: win under HAZARD'), 'the WARRANT shows its lock condition');
+  // law 8 on the desk: nothing here can read a schedule (there is no run)
+  // and the whole screen is centred at COLS
+  {
+    let min = D.COLS, max = -1;
+    for (let r = 1; r < D.ROWS - 1; r++) {
+      const a = rows[r].search(/\S/); if (a < 0) continue;
+      let b = rows[r].length - 1; while (b >= 0 && rows[r][b] === ' ') b--;
+      min = Math.min(min, a); max = Math.max(max, b);
+    }
+    assert(Math.abs(min - (D.COLS - 1 - max)) <= 2, 'the desk is centred at ' + D.COLS + ' (margins ' + min + '/' + (D.COLS - 1 - max) + ')');
+    const cds = R.layout.contracts;
+    assertEq(cds.length, 3, 'three papers published for the mouse');
+    assert(cds[2].col + cds[2].w <= D.COLS, 'the last paper is on the screen');
+    for (const cd of cds) {
+      const c = D.CONTRACT_BY_ID[cd.id];
+      let txt = '';
+      for (let r = cd.row; r < cd.row + cd.h; r++) txt += rows[r].slice(cd.col, cd.col + cd.w) + ' ';
+      for (const w of (c.name + ' ' + c.terms.join(' ')).split(/\s+/))
+        assert(txt.indexOf(w) >= 0, cd.id + ': the card lost "' + w + '" from its own terms');
+    }
+  }
+  // a locked paper cannot be signed: by key...
+  key('2');
+  assertEq(st.screen, 'contract', "'2' on locked HAZARD does not start a run");
+  assert(st.ui.contractDenied && st.ui.contractDenied.id === 'hazard', '...and the desk says so');
+  paint();
+  assert(shown('NOT YOURS TO SIGN'), '...on the signature line');
+  // ...by cursor...
+  key('ArrowRight'); key('ArrowRight');
+  assertEq(st.ui.contractCursor, 2, 'the cursor walks the desk');
+  key('Enter');
+  assertEq(st.screen, 'contract', 'ENTER on the locked WARRANT does not start a run');
+  // ...or by mouse
+  click(R.layout.contracts[1].col + 3, R.layout.contracts[1].row + 3);
+  assertEq(st.screen, 'contract', 'a click on locked HAZARD does not start a run');
+  key('Escape');
+  assertEq(st.screen, 'title', 'ESC returns to the title');
+  // sign STANDARD by click
+  key('Enter');
+  click(R.layout.contracts[0].col + 3, R.layout.contracts[0].row + 3);
+  assertEq(st.screen, 'run', 'a click on STANDARD signs it');
+  assertEq(st.run.contract, 'standard', '...and the run is under STANDARD');
+  paint();
+  assert(!/[‡×]/.test(gridRows()[0]), 'STANDARD leaves the header unmarked');
+  // the Daily never sees the desk
+  st.run = null; st.screen = 'title';
+  key('t');
+  assertEq(st.screen, 'run', 'T starts the Daily without the desk');
+  assertEq(st.run.contract, 'standard', '...under STANDARD');
+  assert(st.run.daily, '...and it is the Daily');
+  // nor does [I]
+  st.run = null; st.screen = 'title';
+  key('i');
+  assertEq(st.screen, 'run', '[I] replays the induction without the desk');
+  assertEq(st.run.contract, 'standard', '...under STANDARD');
+  assert(st.run.tutorial, '...with the induction armed');
+
+  // --- a winner: HAZARD on the desk, signed, marked, read aloud, paid -------
+  cell[D.SAVE_KEY] = JSON.stringify({ cores: 5, upgrades: {}, bestDepth: 8, wins: 1, runs: 4, totalCores: 9, tutorialSeen: true });
+  DC.Engine.start();
+  st = DC.state;
+  key('Enter');
+  assertEq(st.screen, 'contract', 'the desk');
+  key('2');
+  assertEq(st.screen, 'run', "'2' signs HAZARD");
+  const hrun = st.run;
+  assertEq(hrun.contract, 'hazard', '...and the run is under HAZARD');
+  assertEq(hrun.mods.quakeDmgMult, 1.25, '...with the rider in force');
+  assert(hrun.foreman && hrun.foreman.text === B.CONTRACT_LINES.hazard, 'GRIT reads the Hazard Clause aloud: ' + JSON.stringify(hrun.foreman && hrun.foreman.text));
+  assertEq(JSON.parse(cell[D.SAVE_KEY]).contractLast, 'hazard', 'the desk remembers the last paper signed');
+  paint();
+  rows = gridRows();
+  assert(rows[0].indexOf('‡') > 0 && rows[0].indexOf('‡') < 46, "the header carries HAZARD's mark, on the stratum line");
+  assertEq((rows[0].match(/‡/g) || []).length, 1, '...once (law 6: one glyph)');
+  // law 8 still holds with the mark on: move the schedule, nothing changes
+  // (the map is revealed whole first so the scan sweep is not what differs)
+  for (let y = 0; y < D.MAP_H; y++) for (let x = 0; x < D.MAP_W; x++) hrun.grid[y][x].revealed = true;
+  hrun.instHold = true;
+  for (let i = 0; i < 6; i++) paint();
+  hrun.instability = 60; hrun.quakeAt = hrun.t + 40;
+  const before = (paint(), gridRows().join('\n'));
+  hrun.quakeAt = hrun.t + 400;
+  const after = (paint(), gridRows().join('\n'));
+  assertEq(after, before, 'nothing on a HAZARD run screen reads run.quakeAt');
+  // win it: the wage lands, the paper is filed, the trophy is on the shelf
+  hrun.instHold = true;
+  hrun.depth = D.STRATA_COUNT; hrun.breaches = D.STRATA_COUNT - 1;
+  hrun.status = 'breachReady';
+  const cores0 = st.meta.cores;
+  key('d');
+  frames(2);
+  assertEq(st.screen, 'victory', 'the run is won');
+  const res = hrun.result;
+  assertEq(res.contract, 'hazard', 'the result carries the paper');
+  assertEq(res.cores, D.STRATA_COUNT + D.WIN_CORES, 'the run earned ' + res.cores);
+  assertEq(res.paid, Math.round(res.cores * 1.5), '...paid at x1.5 = ' + res.paid);
+  assertEq(st.meta.cores, cores0 + res.paid, 'the wage is what was banked');
+  assert(M.contractWon(st.meta, 'hazard'), 'the win is filed under HAZARD');
+  assert(M.contractUnlocked(st.meta, 'warrant'), '...which puts the WARRANT on the desk');
+  assert(M.hasTrophy(st.meta, 'hazard_win'), 'HAZARD PAY is on the shelf');
+  assertEq(M.life(st.meta).signed, 1, 'the Ledger counts the paper');
+  assertEq(M.life(st.meta).wagePaid, res.paid - res.cores, '...and the hazard pay');
+  paint();
+  assert(shown('+' + res.paid + ' ◈'), 'the victory screen shows what was PAID');
+  assert(shown('x1.5'), '...and the wage');
+  // the Mantle path: the second award credits only the new breaches, at the wage
+  key('c');
+  assertEq(st.screen, 'descend', 'C continues into the Mantle');
+  st.ui.descendAnim = 9999; paint();
+  key('1');
+  if (st.screen === 'vignette') st.screen = 'run';
+  hrun.instHold = true;
+  const banked = st.meta.cores;
+  // a Mantle death's result counts breaches only (no Core bonus), so the
+  // credit is whatever the paid figure grew by — deep enough to grow it
+  hrun.breaches += 14;
+  // abandon through the engine's own path (a Mantle death after the win)
+  frames(1);
+  key('Escape'); key('a');
+  frames(2);
+  assertEq(st.screen, 'gameover', 'the Mantle run ended');
+  const extra = Math.max(0, M.paidFor(hrun.result.cores, 'hazard') - M.paidFor(D.STRATA_COUNT + D.WIN_CORES, 'hazard'));
+  assert(extra > 0, 'the Mantle run went deep enough to owe more (' + hrun.result.cores + ' cores)');
+  assertEq(st.meta.cores - banked, extra, 'the Mantle death credits only the new breaches, at the wage (' + extra + ')');
+  // the Ledger page prints the line
+  st.screen = 'ledger'; paint();
+  assert(shown('CONTRACTS SIGNED'), 'the Ledger page prints CONTRACTS SIGNED');
+
+  // --- the WARRANT, signed and won: DEATH WARRANT on the shelf --------------
+  st.run = null; st.screen = 'title';
+  key('Enter');
+  key('3');
+  assertEq(st.screen, 'run', "'3' signs the WARRANT once HAZARD is won");
+  const wrun = st.run;
+  assertEq(wrun.contract, 'warrant', 'under the WARRANT');
+  assertEq(wrun.foreman.text, B.CONTRACT_LINES.warrant, 'GRIT reads the Death Warrant aloud');
+  paint();
+  assert(gridRows()[0].indexOf('×') > 0, "the header carries the WARRANT's mark");
+  wrun.instHold = true;
+  wrun.depth = D.STRATA_COUNT; wrun.breaches = D.STRATA_COUNT - 1; wrun.status = 'breachReady';
+  const c1 = st.meta.cores;
+  key('d'); frames(2);
+  assertEq(st.screen, 'victory', 'won under the WARRANT');
+  assertEq(st.meta.cores - c1, (D.STRATA_COUNT + D.WIN_CORES) * 2, 'paid double');
+  assert(M.hasTrophy(st.meta, 'warrant_win'), 'DEATH WARRANT is on the shelf');
+  assert(st.newTrophies.indexOf('warrant_win') >= 0, '...and announced');
+  st.screen = 'trophies'; st.ui.trophyCursor = D.TROPHIES.length - 1; paint();
+  assert(shown(D.TROPHY_BY_ID.warrant_win.grit), 'GRIT: ' + D.TROPHY_BY_ID.warrant_win.grit);
+
+  delete globalThis.localStorage;
+  delete global.window;
+  return IDS.length + ' papers, same map and quakes on one seed, wage at award, v5 loads, desk at ' + D.COLS;
+}
+
 // -------------------------------------------------------------------- main
 const SEED = process.env.DC_SEED ? (parseInt(process.env.DC_SEED, 10) | 0) : 1337;
 try {
@@ -6489,6 +6918,8 @@ try {
   const onboard = tutorialSection(SEED + 61);
   // M-SOUND: after the tutorial section for the same reason it is last.
   const audio = audioSection(SEED + 67);
+  // M-CONTRACTS: boots the engine again, on its own seeded saves.
+  const contracts = contractSection(SEED + 71);
   // The webfont section is the one asynchronous check in the suite — a
   // document.fonts.ready handler cannot be driven synchronously — so the
   // PASS line waits on it rather than racing it.
@@ -6506,6 +6937,7 @@ try {
       ' | onboard ' + onboard +
       ' | audio: ' + audio +
       ' | achieve ' + achieve +
+      ' | contracts ' + contracts +
       ' | cadence 16/12/10 | overdrive x2 | damper ok | charge+bronze ok | mantle ok' +
       ' | engine+barks ok | ' + (Date.now() - t0) + 'ms');
     process.exit(0);
