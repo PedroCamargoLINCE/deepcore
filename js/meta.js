@@ -32,7 +32,12 @@
   // the same story: every field is optional, sanitize() defaults it, a v1..v4
   // profile loads with an empty shelf, a zeroed ledger and Company Amber, and
   // SAVE_KEY does not move.
-  const SAVE_V = 5;
+  // v6 (M-CONTRACTS) adds `contracts` — which papers have been WON under
+  // (the unlock ladder is a function of that list) — and the two Ledger
+  // counters `signed` / `wagePaid`. A fifth time, the same story: optional
+  // fields, sanitize() defaults, SAVE_KEY does not move, and a v1..v5 profile
+  // loads with STANDARD TERMS as the only paper on the desk.
+  const SAVE_V = 6;
   const DAILY_HISTORY_MAX = 60;   // ~2 months of dailies, then the oldest drop
   const MAX_DEPTH_KEY = 999;      // the Mantle is endless; the record isn't
   // The logbook's ceiling. Deliberately NOT DC.Events.LOGS.length: meta.js
@@ -72,12 +77,19 @@
       skin: 'amber',
       // M-SOUND: the M key. Optional and off by default; engine.js owns it.
       muted: false,
+      // M-CONTRACTS: contract ids the operator has reached the Core under.
+      // Unlocks derive from this and from `wins` (STANDARD is always signed).
+      contracts: [],
+      contractLast: 'standard',
     };
   }
 
   // The Ledger's counters. Keys are the contract with engine.recordRun.
   const LIFE_KEYS = ['timeSec', 'breaches', 'deaths', 'abandons', 'repairs',
-                     'overdrives', 'quakes', 'delivered', 'placed', 'lures', 'wages'];
+                     'overdrives', 'quakes', 'delivered', 'placed', 'lures', 'wages',
+                     // M-CONTRACTS: papers signed (every run signs one) and
+                     // the cores the wage added on top of what the run earned
+                     'signed', 'wagePaid'];
   const LIFE_MAX = 1e9;
   function newLife() {
     const o = {};
@@ -90,6 +102,7 @@
     return D.TROPHIES.length;
   }
   function liveryDef(id) { return (D.LIVERY_BY_ID && D.LIVERY_BY_ID[id]) || null; }
+  function contractDef(id) { return (D.CONTRACT_BY_ID && D.CONTRACT_BY_ID[id]) || null; }
 
   function storage() {
     try {
@@ -172,6 +185,13 @@
     if (typeof p.skin === 'string' && liveryDef(p.skin) && liveryUnlocked(f, p.skin)) f.skin = p.skin;
     // ---- M-SOUND field (absent in every save before it) ----
     f.muted = !!p.muted;
+    // ---- M-CONTRACTS fields (absent in v1..v5 saves) ----
+    if (Array.isArray(p.contracts) && D.CONTRACTS) {
+      for (let i = 0; i < D.CONTRACTS.length; i++) {
+        if (p.contracts.indexOf(D.CONTRACTS[i].id) >= 0) f.contracts.push(D.CONTRACTS[i].id);
+      }
+    }
+    if (typeof p.contractLast === 'string' && contractDef(p.contractLast)) f.contractLast = p.contractLast;
     f.v = SAVE_V;
     return f;
   }
@@ -207,11 +227,25 @@
     try { ls.setItem(D.SAVE_KEY, JSON.stringify(profile)); } catch (e) { /* quota etc. */ }
   }
 
+  // M-CONTRACTS: the wage. `result.cores` is what the RUN earned (the sim's
+  // number, untouched); the contract multiplies it here and only here, and
+  // the rounded product is what is banked. `result.paid` is stamped with the
+  // banked figure so the end screens can show the wage without re-deriving
+  // it. Returns the cores banked. STANDARD (wage 1) banks exactly `cores`.
+  function wageOf(id) {
+    const def = contractDef(id);
+    return def && typeof def.wage === 'number' && def.wage > 0 ? def.wage : 1;
+  }
+  function paidFor(cores, id) { return Math.round(Math.max(0, cores) * wageOf(id)); }
   function award(profile, result) {
-    const cores = result && typeof result.cores === 'number' ? Math.max(0, result.cores) : 0;
+    const earned = result && typeof result.cores === 'number' ? Math.max(0, result.cores) : 0;
+    const cid = result && typeof result.contract === 'string' ? result.contract : 'standard';
+    const cores = paidFor(earned, cid);
+    if (result && typeof result === 'object') result.paid = cores;
     profile.cores += cores;
     profile.totalCores += cores;
     profile.runs++;
+    if (result && result.won && contractDef(cid)) signWin(profile, cid);
     if (result && typeof result.depth === 'number' && result.depth > profile.bestDepth) {
       profile.bestDepth = result.depth;
     }
@@ -495,6 +529,9 @@
       if (facts.daily) give('daily_win');
       if (facts.egg) give('high_score');
     }
+    // M-CONTRACTS: signed it and came back
+    if (facts.won && facts.contract === 'hazard') give('hazard_win');
+    if (facts.won && facts.contract === 'warrant') give('warrant_win');
     if (typeof facts.depth === 'number' && facts.depth >= D.TROPHY_DEPTH) give('depth12');
     if (profile.bestDepth >= D.TROPHY_DEPTH) give('depth12');
     if (profile.runs >= D.LIVERY_RUNS) give('company_man');
@@ -540,6 +577,8 @@
       { label: 'CORES REMITTED TO HEAD OFFICE',    value: fmtN(p.totalCores) + ' ◈' },
       { label: 'CORES RETAINED BY OPERATOR',       value: fmtN(p.cores) + ' ◈', note: 'audit pending' },
       { label: 'EMPLOYEE COMPENSATION DISBURSED',  value: (L.wages / 100).toFixed(2) },
+      { label: 'CONTRACTS SIGNED',                 value: fmtN(L.signed),
+        note: L.wagePaid ? 'hazard pay ' + fmtN(L.wagePaid) + ' ◈' : 'standard terms' },
       { label: 'CONDOLENCE LETTERS SENT',          value: fmtN(deaths), note: deaths ? 'bulk rate' : '' },
       { label: 'RESIGNATIONS ACCEPTED',            value: fmtN(L.abandons) },
       { label: 'DAILY SHAFTS RANKED',              value: fmtN(dailyHistory(p).length),
@@ -549,6 +588,52 @@
         note: p.catFound ? 'unauthorised' : '' },
       { label: 'COMMENDATIONS ON FILE',            value: fmtN(trophies(p).length) + ' / ' + fmtN(D.TROPHIES.length) },
     ];
+  }
+
+  // ===================== M-CONTRACTS: the papers =====================
+  // Unlocks are DERIVED, never stored, like the liveries: STANDARD is always
+  // on the desk; HAZARD the moment the profile has a win; the WARRANT once
+  // a win was signed under HAZARD.
+  function contractsWon(profile) {
+    if (!profile) return [];
+    if (!Array.isArray(profile.contracts)) profile.contracts = [];
+    return profile.contracts;
+  }
+  function contractWon(profile, id) { return contractsWon(profile).indexOf(id) >= 0; }
+  function contractUnlocked(profile, id) {
+    const def = contractDef(id);
+    if (!def || !profile) return false;
+    switch (def.unlock) {
+      case null: case undefined: case '': return true;
+      case 'win':       return (profile.wins | 0) > 0;
+      case 'hazardWin': return contractWon(profile, 'hazard');
+    }
+    return false;
+  }
+  // Files a win under a paper. Saves once; award() calls this before its own
+  // save so the whole result lands in one write.
+  function signWin(profile, id) {
+    if (!profile || !contractDef(id) || contractWon(profile, id)) return false;
+    contractsWon(profile).push(id);
+    return true;
+  }
+  function contracts(profile) {
+    return (D.CONTRACTS || []).map(function (c) {
+      return { id: c.id, name: c.name, wage: c.wage, unlocked: contractUnlocked(profile, c.id),
+               won: contractWon(profile, c.id) };
+    });
+  }
+  // The paper the cursor rests on when the screen opens: the last one signed,
+  // if it is still on the desk.
+  function contractLast(profile) {
+    const id = profile && typeof profile.contractLast === 'string' ? profile.contractLast : 'standard';
+    return contractUnlocked(profile, id) ? id : 'standard';
+  }
+  function setContractLast(profile, id) {
+    if (!profile || !contractUnlocked(profile, id)) return false;
+    profile.contractLast = id;
+    save(profile);
+    return true;
   }
 
   // ===================== M-RIGSKINS: liveries =====================
@@ -618,5 +703,7 @@
     life, recordRun, ledger, fmtN,
     // M-RIGSKINS
     liveryUnlocked, liveries, livery, setLivery, cycleLivery,
+    // M-CONTRACTS
+    wageOf, paidFor, contractUnlocked, contractWon, contracts, contractLast, setContractLast,
   };
 })();

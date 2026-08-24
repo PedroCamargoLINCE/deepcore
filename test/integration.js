@@ -1306,7 +1306,7 @@ function engineBarksSection(seed) {
   assert(drawn.some(s => s.indexOf('BEGIN DESCENT') >= 0), 'title menu rendered');
 
   // --- Enter starts the run; runStart bark + §E arrival flash ---
-  key('Enter');
+  key('Enter'); if (st.screen === 'contract') key('Enter');   // M-CONTRACTS: the desk, then sign
   assert(st.screen === 'run' && st.run, 'Enter starts a run');
   const run = st.run;
   assertEq(run.seed, seed, 'engine honored the ?seed= param');
@@ -1602,7 +1602,7 @@ function engineBarksSection(seed) {
   // one-shot fire, and the stratum's best line is gone. The engine now holds
   // the trigger and retries it, so the assertion is that it ARRIVES, not that
   // it was merely attempted.
-  key('Enter');
+  key('Enter'); if (st.screen === 'contract') key('Enter');   // M-CONTRACTS: the desk, then sign
   const lrun = st.run;
   assert(lrun && lrun.landmark, 'the stratum rolled a landmark to talk about');
   const want = B.LANDMARK_LINES[lrun.landmark.id];
@@ -1922,7 +1922,7 @@ function recapSection(seed) {
     key('Enter');
 
     // --- victory: C means copy on the card, Mantle on the stats view ------
-    key('Enter');
+    key('Enter'); if (st.screen === 'contract') key('Enter');   // M-CONTRACTS: the desk, then sign
     const vr = st.run;
     assert(vr && vr !== prac, 'a fresh normal run started');
     assert(vr.inv.ironPlate > D.START_STOCK.ironPlate,
@@ -4040,7 +4040,7 @@ function eventsSection(seed) {
   try {
     DC.Engine.start();
     const st = DC.state;
-    key('Enter');
+    key('Enter'); if (st.screen === 'contract') key('Enter');   // M-CONTRACTS: the desk, then sign
     const run = st.run;
     assert(run, 'a run is running');
 
@@ -4185,7 +4185,7 @@ function eventsSection(seed) {
     // here is that the screen is a real screen with real keys and that the
     // choice reaches the sim, the profile and GRIT's mouth.
     st.screen = 'title';
-    key('Enter');
+    key('Enter'); if (st.screen === 'contract') key('Enter');   // M-CONTRACTS: the desk, then sign
     const vrun = st.run;
     const V = E.VIGNETTES;
     function force(id) {
@@ -4376,7 +4376,7 @@ function wormsSection(seed) {
   try {
     DC.Engine.start();
     const st = DC.state;
-    key('Enter');
+    key('Enter'); if (st.screen === 'contract') key('Enter');   // M-CONTRACTS: the desk, then sign
     const run = st.run;
     assert(run, 'a run is running');
     // Drop the run onto a floor deep enough to have wildlife on it. The engine
@@ -5528,7 +5528,7 @@ function tutorialSection(seed) {
     st.meta = M.newProfile();
     key('Escape');                          // clear the belt tool from the drive
     DC.state.screen = 'title';
-    key('Enter');
+    key('Enter'); if (DC.state.screen === 'contract') key('Enter');   // M-CONTRACTS: the desk, then sign
     const r2 = DC.state.run;
     assert(r2.tutorial && T.active(r2), 'the second run arms it again (meta was fresh)');
     assertEq(r2.instHold, true, 'and freezes instability again');
@@ -5546,7 +5546,7 @@ function tutorialSection(seed) {
     assertEq(DC.state.meta.tutorialSeen, true, 'skipping closes the same door');
     // a third run, same profile: never again
     DC.state.screen = 'title';
-    key('Enter');
+    key('Enter'); if (DC.state.screen === 'contract') key('Enter');   // M-CONTRACTS: the desk, then sign
     assert(!DC.state.run.tutorial, 'a profile that has seen it never sees it again');
     assert(!DC.state.run.instHold, '...and its instability was never frozen');
   }
@@ -5714,7 +5714,9 @@ function achieveSection(seed) {
     assertEq(got.join(','), 'schems_all,logbook_full', 'FULL SET and THE WHOLE BOOK');
     assert(M.allTrophies(p) === false, 'the shelf is not full without the wildlife');
     M.awardTrophy(p, 'wormfood'); M.awardTrophy(p, 'hard_hats');
-    assert(M.allTrophies(p), 'fourteen on the shelf');
+    assert(M.allTrophies(p) === false, '...nor without the papers (M-CONTRACTS)');
+    M.awardTrophy(p, 'hazard_win'); M.awardTrophy(p, 'warrant_win');
+    assert(M.allTrophies(p), 'sixteen on the shelf');
     assert(M.liveryUnlocked(p, 'gold'), '...and SOLID GOLD unlocks on the full shelf');
     assertEq(M.trophies(p).length, D.TROPHIES.length, 'the count agrees');
   }
@@ -5808,7 +5810,7 @@ function achieveSection(seed) {
   DC.Engine.start();
   const st = DC.state;
   assertEq(st.meta.runs, D.LIVERY_RUNS - 1, 'the engine booted the seeded profile');
-  key('Enter');
+  key('Enter'); if (st.screen === 'contract') key('Enter');   // M-CONTRACTS: the desk, then sign
   const run = st.run;
   assert(run && run.tally, 'a run is running, with the engine-owned tally on it');
   run.instHold = true;                 // scaffold: no quake mid-experiment
@@ -6275,7 +6277,7 @@ function audioSection(seed) {
   // Everything a sound hangs off: place, lay, demolish, craft, quake,
   // collapse, worms, the Core, the bell, the cat, breach.
   function drive(st) {
-    key('Enter');
+    key('Enter'); if (st.screen === 'contract') key('Enter');   // M-CONTRACTS: the desk, then sign
     const run = st.run;
     assert(run, 'Enter starts a run');
     const hx = run.hub.x, hy = run.hub.y;

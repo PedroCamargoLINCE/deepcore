@@ -1938,7 +1938,10 @@
   const SHELF_W = TROPHY_COLS * TROPHY_SLOT;  // 98
   const SHELF_X = Math.max(0, (COLS - SHELF_W) >> 1);
   const SHELF_ROW0 = 5;                       // first object's top row
-  const SHELF_PITCH = 7;                      // object 3 + plank 1 + name 1 + air 2
+  // M-CONTRACTS took the shelf to 16 objects: a third row. One row of air
+  // between rows, not two, so the inspection card keeps its place above the
+  // footer (7 x 6 = 3 rows in 18 lines from row 5; the card lands on row 23).
+  const SHELF_PITCH = 6;                      // object 3 + plank 1 + name 1 + air 1
   function drawTrophies(state) {
     const meta = state.meta || {};
     const ui = state.ui || {};

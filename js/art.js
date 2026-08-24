@@ -1741,6 +1741,10 @@
     daily_win:    { color: 'orange',  lines: ['▄▄▄▄▄', '█ T █', '▀▀▀▀▀'] },
     logbook_full: { color: 'gold',    lines: ['┌──┬┐', '│≡≡││', '└──┬┘'] },
     shareholder:  { color: 'magenta', lines: [' ◈◈◈ ', ' ◈◈◈ ', ' ▀▀▀ '] },
+    // M-CONTRACTS: two documents. The rider is a page with a stamp on it; the
+    // warrant is the same page with a cross through the signature line.
+    hazard_win:   { color: 'orange',  lines: ['┌───┐', '│‡ ≡│', '└──▪┘'] },
+    warrant_win:  { color: 'red',     lines: ['┌───┐', '│ × │', '└─▬─┘'] },
   };
   // The object, or a shape-preserving placeholder for an id art has not met.
   A.trophy = function (id) {
