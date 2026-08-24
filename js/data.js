@@ -130,6 +130,15 @@
     // M-GRITPLUS/EGG-420: the botanical wash. Only ever MIXED into a colour
     // that already reads, never painted over one.
     leaf:     '#8ad36a',
+    // M-WORMS: the two things down here that are alive and are not the cat.
+    // Rose, because nothing else on this map is: the ores are steel, orange,
+    // coal-grey and magenta, the terrain is brown/blue/black, magma is fire
+    // and the cat is white. A vein worm can therefore be found in one glance
+    // and can never be read as a belt, which is the whole of §0 law 6 for
+    // this feature. 9.02:1 on bg; the Undertoad's deeper kin-rose is 5.68:1
+    // and is drawn SHADED while it sleeps — a thing seen through rock.
+    worm:     '#e89aa0',
+    toad:     '#d2687e',
   };
 
   // ---------------- directions ----------------
@@ -677,6 +686,50 @@
   D.JURY_DRAIN = 1;
   // Closed Loop: dampers stop burning coal and calm half as much.
   D.CLOSED_LOOP_CALM = 0.5;
+
+  // ---------------- M-WORMS: something lives down here ----------------
+  // Dwarf Fortress wildlife energy with zero combat (SPEC3 §0's lineage note):
+  // hazards you MANAGE, and — once you work out the lure — tools. Every number
+  // here is read by js/worms.js and by nothing else; the module is optional, so
+  // a tree without it is a tree where this table is simply never consulted.
+  //
+  // WHY THE WORM IS A TOOL AND NOT A MONSTER. It cannot touch a machine, a
+  // belt or a structure ("they dislike the taste of the Company"), so the only
+  // ways it can reach you are the two it is FOR: it opens rock you would have
+  // paid four seconds a tile to dig, and it eats five ore out of any vein it
+  // swims through. That is a real cost and a real gift out of one creature,
+  // and `lureCost` is the price of aiming it.
+  D.WORMS = {
+    minDepth: 3,        // s3+ — the tutorial owns stratum 1 and never meets one
+    count: [1, 2],      // per stratum, inclusive (worm season overrides to 3)
+    stepT: 16,          // ticks per tile (2s at 8Hz) — chunky on purpose (law 2)
+    segs: 3,            // '~~o': two tail segments behind the head
+    eat: 5,             // ore taken out of a vein tile the head passes through
+    lureCost: 2,        // coal per lure
+    turn: 0.28,         // chance a wandering worm changes its mind at a step
+    spawnMinD: 11,      // tiles from the rig centre a worm may first appear
+  };
+  // The Undertoad. At most ONE per run, from stratum 6, on 15% of the maps
+  // that are allowed one — the best mining site in the game, priced in
+  // integrity and terror.
+  //
+  // Law 8 is not violated by its quake. Law 8 forbids SCHEDULED dread being
+  // shown as a number; this quake is not scheduled at all — it is caused by
+  // the player's own act, on the tick they commit it, and announced to their
+  // face. Everything the toad will do (where it burrows, how far) is decided
+  // when the map is made and executed with no roll at all, so waking it costs
+  // `run.rng` nothing and the quake schedule does not move under it.
+  D.UNDERTOAD = {
+    minDepth: 6,
+    chance: 0.15,
+    wakeR: 3,           // build or dig within this many tiles and it wakes
+    minD: 10,           // ...and it never sleeps closer than this to the rig
+    tunnel: [6, 10],    // tiles of crystal-lined tunnel it leaves behind
+    dmg: 22,            // integrity, one blow — this is the price
+    inst: 12,           // ...and the planet notices
+    quakeR: 5,          // tiles around the chamber that come down as rubble
+    richMult: 1,        // crystal per tunnel tile, x the stratum's mid richness
+  };
 
   D.SAVE_KEY = 'deepcore_save_v1';
   // Display only (title-screen corner). v1.1 is the shipped feature set —

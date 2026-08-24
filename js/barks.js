@@ -27,7 +27,10 @@
   // M-SCHEMS2: 'insurance' is Deep Insurance paying out — the rig refusing to
   // die is the one moment nothing else on the bar is allowed to outrank.
   const PRIORITY = { death: 1, victory: 1, breachReady: 1, collapse: 1,
-                     insurance: 1 };
+                     insurance: 1,
+                     // M-WORMS: the player just detonated the floor on
+                     // purpose. Nothing on the bar outranks being told so.
+                     undertoad: 1 };
 
   // ---------------- line pools (≤70 chars each) ----------------
   const POOLS = {
@@ -359,6 +362,40 @@
       "She just bolted for the rig. Whatever she heard, it's coming.",
       "Watch the cat, not the gauge. The cat is the gauge. Hold on.",
       "That's her tell. Two seconds. Grab something bolted down.",
+    ],
+    // ---- M-WORMS: the things in the walls ------------------------------
+    // Six lines of disgust, per the brief, and every one of them is a MAN
+    // REACTING rather than a manual explaining (§0 law 3): not one of these
+    // says the worm eats five ore or leaves floor behind it — the SCAN panel
+    // says that, in the boring voice boring facts belong in. GRIT's whole
+    // contribution is that he does not want to be in the room with it.
+    worm: [
+      "Something's chewing the seam. Not us. It has more teeth than us.",
+      "Big pink thing in the wall. I'd call it a worm. I'd rather not.",
+      "It went through solid rock like a spoon through a bad lunch.",
+      "That is a mouth with a body attached. Do not stand in the hole.",
+      "I have seen a lot of holes, kid. None of the others were breathing.",
+      "It ate the vein. Not stole. Ate. I want that on the incident form.",
+    ],
+    // The bait is down. He hates that it works.
+    lure: [
+      "Coal on the floor. We're feeding it now. This is a career low.",
+      "Baiting the thing that eats our ore. Sure. Why not. Nothing matters.",
+      "Two coal to steer a monster. Cheapest excavator the Company owns.",
+      "Put the dinner bell down and step well back, kid. Well back.",
+    ],
+    lureTaken: [
+      "It took the bait whole. No chewing. I heard no chewing.",
+      "Bait's gone. So is the wall behind it. That's the deal, apparently.",
+      "Something just ate two coal and asked for the wine list.",
+      "Dinner's over. It's digging again — our way, for once.",
+    ],
+    // The Undertoad. This one is allowed to stop being funny for one line.
+    undertoad: [
+      "YOU WOKE IT. Hard hats. HARD HATS. Everybody hold something.",
+      "That was not a quake. That was something rolling over in its sleep.",
+      "Whatever that was, it left us a wall of crystal. Take it and RUN.",
+      "It's gone down and away. The floor is still ringing. So am I.",
     ],
     vignette: [
       "Whatever you just decided, it's in the log as YOUR decision.",

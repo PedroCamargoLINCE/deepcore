@@ -788,6 +788,59 @@
       }
     }
 
+    // M-WORMS: the living world's second tenant, drawn over the tiles and
+    // under the cat — she has right of way on her own rig.
+    //
+    // A WORM MUST NEVER READ AS A BELT (§0 law 6, and the whole reason the
+    // glyphs are what they are). Three things separate them and any one of
+    // them would do: the ink is rose, which nothing else on this map is; the
+    // shape is a lowercase 'o' towing '~', which no arrow, ore or structure
+    // uses; and the head is drawn LAST and BRIGHTEST, so the direction it is
+    // travelling is legible in one glance the way a belt arrow's is. The tail
+    // is dimmer than the head on purpose: that gradient is the animal's
+    // heading, and it is honest sim state (law 1) rather than decoration.
+    //
+    // ONE COLLISION, KNOWN AND KEPT. js/fx.js animates magma by swapping '≈'
+    // for '~' on alternate frames (§A1), so a lava pool spends half its life
+    // wearing the worm's tail glyph. The brief names '~~o' and this does not
+    // redesign it: colour is what separates them, which is precisely the
+    // mechanism §0 law 6 names — ember orange against rose, a pool of them
+    // against a chain of three with an 'o' on the front, and the lava's swap
+    // is intermittent where a worm's tail is steady. Flagged here rather than
+    // silently absorbed, because the next person to look at this map will see
+    // it too and should know it was weighed.
+    const cr = run.critters;
+    if (cr) {
+      // The Undertoad first, because it is the closest thing here to terrain:
+      // a 2x2 seen faintly THROUGH the rock long before it can be reached. It
+      // breathes on the blink — it is asleep, not dead, and that is the only
+      // warning the map gives before the tooltip spells it out.
+      if (cr.toad && !cr.toad.gone) {
+        const tc = shade(C.toad, phase ? 0.72 : 0.5);
+        for (let dy = 0; dy < 2; dy++)
+          for (let dx = 0; dx < 2; dx++) {
+            const tx = cr.toad.x + dx, ty = cr.toad.y + dy;
+            const tt = run.grid[ty] && run.grid[ty][tx];
+            if (tt && tt.revealed) mapPut(tx, ty, 'Ω', egg ? eggTint(tc) : tc, xo);
+          }
+      }
+      // The bait, in the player's own amber: everything on this map the
+      // PLAYER put there is amber, so a lure is never mistaken for the coal
+      // seam ('♠', coal-grey) it was paid for.
+      for (const L of cr.lures) {
+        const lt = run.grid[L.y] && run.grid[L.y][L.x];
+        if (lt && lt.revealed) mapPut(L.x, L.y, '♣', egg ? eggTint(C.amber) : C.amber, xo);
+      }
+      const wc = DC.Worms && DC.Worms.cells ? DC.Worms.cells(run) : [];
+      for (let i = wc.length - 1; i >= 0; i--) {
+        const c = wc[i];
+        const wt = run.grid[c.y] && run.grid[c.y][c.x];
+        if (!wt || !wt.revealed) continue;
+        const col = c.head ? C.worm : shade(C.worm, 0.62);
+        mapPut(c.x, c.y, c.head ? 'o' : '~', egg ? eggTint(col) : col, xo);
+      }
+    }
+
     // M-EVENTS: the cat, drawn over the tiles and under the cursor. Her
     // COLOUR is state, the same way every other glyph on this map is: dim
     // while she is wandering, ember while she is sitting on a lit furnace,
@@ -1374,6 +1427,13 @@
       ['D DESC ', ready ? (phase ? C.green : C.white) : C.amberDim],
       ['ESC H', C.amberDim],
     ];
+    // M-WORMS: the bait key, and ONLY on a floor that has something to bait.
+    // It is honest state (law 1 — the hint exists because the wildlife does)
+    // and it is four columns, which is exactly what this line has left before
+    // it would have to start dropping ESC and H. Inserted before those two so
+    // the verbs stay together; on strata 1-2 the bar is the bar it always was.
+    if (DC.Worms && DC.Worms.list(run).length)
+      segs.splice(segs.length - 1, 0, ['L ♣ ', C.amberDim]);
     let x = 0;
     for (const s of segs) {
       if (x + s[0].length > SB - 1) break;

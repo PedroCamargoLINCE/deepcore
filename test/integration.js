@@ -34,6 +34,10 @@ require('../js/art.js');
 require('../js/map.js');
 require('../js/sim.js');
 require('../js/meta.js');
+// M-WORMS: loaded at the top rather than inside one section, because its
+// presence is what un-gates 'worm season' and the Worm Whisperer — the whole
+// tree runs with the wildlife in it, exactly as the browser does.
+require('../js/worms.js');
 const DC = globalThis.DC;
 const D = DC.DATA;
 const S = DC.Sim;
@@ -117,7 +121,8 @@ function dirBetween(a, b) {
 // stratum that fits one) join the v1.1 set from SPEC2 §B.
 const EVENT_TYPES = ['quake', 'magma', 'depleted', 'breachReady', 'death', 'won',
                      'descend', 'core', 'landmark',
-                     'diagnostic'];   // M-ONBOARD: a failure state named itself
+                     'diagnostic',    // M-ONBOARD: a failure state named itself
+                     'worm', 'toad']; // M-WORMS: the wildlife, reporting in
 function mkDrainer(run) {
   const seen = {};              // type -> count
   const samples = {};           // type -> first event object
@@ -1198,9 +1203,16 @@ function endgameSection(seed) {
   assertEq(run.status, 'active', 'active again in the Mantle');
   assert(run.grid && run.hub, 'mantle map generated');
   const ms = D.mantleStratum(9);
-  assertEq(run.breachReq.gear, Math.ceil(ms.breach.gear * run.mods.breachMult),
+  // M-MANTLE: 'the seal' scales the requirement, so the expectation reads the
+  // floor's ACTUAL rule rather than assuming which one the roll dealt. It had
+  // been assuming — and M-WORMS joining the table (one more entry, so a
+  // different pick on this seed) is exactly the kind of change that finds an
+  // assumption like that. Every other mutator leaves breachMult at 1.
+  const mdef = S.mutatorOf(run);
+  const seal = (mdef && mdef.breachMult) || 1;
+  assertEq(run.breachReq.gear, Math.ceil(ms.breach.gear * run.mods.breachMult * seal),
     'depth 9 breachReq.gear from mantleStratum');
-  assertEq(run.breachReq.charge, Math.ceil(ms.breach.charge * run.mods.breachMult),
+  assertEq(run.breachReq.charge, Math.ceil(ms.breach.charge * run.mods.breachMult * seal),
     'depth 9 breachReq.charge from mantleStratum');
   assertEq(run.instability, Math.max(0, preInstab - 45), 'instability vented into the Mantle');
   // the mantle map simulates cleanly
@@ -4297,6 +4309,246 @@ function eventsSection(seed) {
 }
 
 // =========================================================================
+// SECTION 15b — M-WORMS: the wildlife, through the real engine
+// headless.js proves the animal, the lure, the toad and the law-7 property.
+// This proves the WIRING: 'L' at the keyboard cursor really spends coal and
+// really drops bait, the worm and the Undertoad are really drawn on the map
+// (and really hidden by unscanned rock), waking it really reaches GRIT's
+// mouth as a priority line and a flash, and the Worm Whisperer really
+// publishes the cursor from the engine into the sim.
+// =========================================================================
+function wormsSection(seed) {
+  SECTION = 'worms seed=' + seed;
+  require('../js/barks.js');
+  require('../js/fx.js');
+  require('../js/render.js');
+  require('../js/engine.js');
+  const B = DC.Barks, WM = DC.Worms;
+  assert(WM && typeof WM.lure === 'function', 'worms.js is loaded');
+
+  const handlers = {};
+  const drawn = [];
+  const ctxStub = {
+    fillStyle: '', font: '', textBaseline: '', textAlign: '',
+    setTransform: function () {}, fillRect: function () {},
+    save: function () {}, restore: function () {}, scale: function () {},
+    fillText: function (s2) { drawn.push(String(s2)); },
+    measureText: function () { return { width: 10 }; },
+  };
+  const canvasStub = {
+    style: {},
+    getContext: function () { return ctxStub; },
+    addEventListener: function (t, fn) { handlers[t] = fn; },
+    getBoundingClientRect: function () {
+      return { left: 0, top: 0, width: D.COLS * 10, height: D.ROWS * 19 };
+    },
+  };
+  global.window = { addEventListener: function (t, fn) { handlers[t] = fn; } };
+  global.document = { getElementById: function () { return canvasStub; } };
+  global.location = { search: '?seed=' + seed };
+  let rafCb = null;
+  global.requestAnimationFrame = function (fn) { rafCb = fn; };
+  const cell = {};
+  global.localStorage = {
+    getItem: (k) => (k in cell ? cell[k] : null),
+    setItem: (k, v) => { cell[k] = String(v); },
+  };
+  let now = 3e7;
+  function frames(n) {
+    for (let i = 0; i < n; i++) {
+      now += 1000 / HZ;
+      const cb = rafCb;
+      assert(cb, 'rAF loop stays scheduled');
+      rafCb = null;
+      cb(now);
+    }
+  }
+  function key(k) {
+    handlers.keydown({ key: k, shiftKey: false, preventDefault: function () {} });
+  }
+  function paintOnly() {
+    drawn.length = 0;
+    now += 1000 / HZ;
+    DC.Render.frame(DC.state, now);
+  }
+  function at(x, y) { return DC.Render.cellAt(D.MAP_X + x, D.MAP_Y + y); }
+
+  try {
+    DC.Engine.start();
+    const st = DC.state;
+    key('Enter');
+    const run = st.run;
+    assert(run, 'a run is running');
+    // Drop the run onto a floor deep enough to have wildlife on it. The engine
+    // is left in charge of everything else — this is a wiring test, so nothing
+    // below reaches past the public API into the module.
+    run.depth = D.UNDERTOAD.minDepth;
+    DC.Sim.startStratum(run);
+    run.instHold = true;                 // scaffold: no quake mid-experiment
+    for (let y = 0; y < D.MAP_H; y++)
+      for (let x = 0; x < D.MAP_W; x++) run.grid[y][x].revealed = true;
+    const worms = WM.list(run);
+    assert(worms.length > 0, 'the floor has wildlife (' + worms.length + ')');
+
+    // --- the animal is on screen, and it reads as an animal ---------------
+    const w = worms[0];
+    frames(1);
+    paintOnly();
+    const head = at(w.x, w.y);
+    assertEq(head && head.ch, 'o', "the worm's head is drawn on its tile");
+    assertEq(head.fg, D.COLORS.worm, '...in the one ink nothing else on this map uses');
+    // ...and it is never any of the glyphs a belt can be, which is the whole
+    // of §0 law 6 for this feature
+    assert(D.ARROWS.indexOf(head.ch) < 0, 'and it is not a belt arrow');
+    // the tail is dimmer than the head: that gradient IS the heading
+    for (let i = 0; i < 4; i++) frames(D.WORMS.stepT);
+    paintOnly();
+    const cells = WM.cells(run).filter((c) => c.id === w.id);
+    assertEq(cells.length, D.WORMS.segs, "'~~o' is on the map in full");
+    const tail = cells.filter((c) => !c.head)[0];
+    const tc = at(tail.x, tail.y);
+    assertEq(tc.ch, '~', 'the tail segments are ~');
+    assert(DC.Render.contrast(at(w.x, w.y).fg, D.COLORS.bg) >
+           DC.Render.contrast(tc.fg, D.COLORS.bg),
+      'and the head is the brighter end');
+    // unscanned rock hides it, like everything else on this map
+    run.grid[w.y][w.x].revealed = false;
+    paintOnly();
+    assert(at(w.x, w.y).ch !== 'o', 'a worm does not show through unscanned rock');
+    run.grid[w.y][w.x].revealed = true;
+
+    // --- the hint line advertises the key, and does not lose the old ones --
+    // Four columns is exactly what row 30 had spare. If a later brief widens
+    // any other segment this is the assertion that catches ESC/H falling off
+    // the end rather than a player discovering it.
+    {
+      paintOnly();
+      let row = '';
+      for (let c2 = 0; c2 < D.COLS; c2++)
+        row += (DC.Render.cellAt(c2, 30) || { ch: ' ' }).ch;
+      const bar = row.slice(0, D.MAP_W + 3).replace(/\s+$/, '');
+      assert(bar.indexOf('L ♣') >= 0, 'the bait key is on the hint line: "' + bar + '"');
+      assert(/ESC H$/.test(bar), '...and it did not push ESC/H off the end');
+      assert(bar.length <= D.MAP_W + 2, 'the line still stays out of the sidebar');
+    }
+
+    // --- 'L' at the cursor, end to end ------------------------------------
+    // Through the real keydown handler, at the real keyboard cursor, spending
+    // the real inventory. No engine-internal function is called by name.
+    run.inv.coal = D.WORMS.lureCost;
+    let spot = null;
+    for (let y = 2; y < D.MAP_H - 2 && !spot; y++)
+      for (let x = 2; x < D.MAP_W - 2 && !spot; x++) {
+        const t = run.grid[y][x];
+        if (t.t === 'floor' && !t.toad && !t.ore && t.machine === null &&
+            !t.belt && !t.rubble && !t.lm) spot = { x: x, y: y };
+      }
+    assert(spot, 'there is bare floor to bait');
+    st.ui.cursor = { x: spot.x, y: spot.y };
+    st.ui.hover = { x: spot.x, y: spot.y };
+    key('l');
+    assertEq(WM.lures(run).length, 1, "'L' drops the bait under the cursor");
+    assertEq(run.inv.coal, 0, '...and spends the coal to do it');
+    paintOnly();
+    assertEq(at(spot.x, spot.y).ch, '♣', 'the lure is drawn where it was dropped');
+    assertEq(at(spot.x, spot.y).fg, D.COLORS.amber,
+      "...in the player's own amber, never the coal seam's grey");
+    // GRIT answers it through the real event drain
+    run.totalT += 60 * HZ;
+    run.stats.lastPlaceT = run.totalT; run.stats.lastFeedT = run.totalT;
+    frames(2);
+    assert(run.foreman && B.POOLS.lure.indexOf(run.foreman.text) >= 0,
+      'GRIT has an opinion about baiting it: "' +
+      (run.foreman && run.foreman.text) + '"');
+    // a refusal is a LOG line in the sim's flat voice, not a bark
+    const msgs0 = run.messages.length;
+    key('l');
+    assert(run.messages.length > msgs0, 'a second lure on the same tile is refused...');
+    assertEq(WM.lures(run).length, 1, '...and nothing is dropped');
+
+    // --- the Worm Whisperer publishes the cursor --------------------------
+    // The card's whole contract is that the SIM never reads the UI: engine
+    // writes the cursor into run state, worms.js reads a plain {x, y}.
+    assertEq(WM.peek(run).beacon, null, 'no card, no beacon');
+    DC.Sim.installSchematic(run, 's_whisper');
+    st.ui.cursor = { x: 4, y: 4 };
+    frames(1);
+    const bea = WM.peek(run).beacon;
+    assert(bea && bea.x === 4 && bea.y === 4,
+      'with the card the engine publishes the cursor into the run');
+
+    // --- the Undertoad, drawn and woken -----------------------------------
+    // The chamber is seeded by hand here rather than waited for on a lucky
+    // seed: headless.js owns the 15% roll and the placement invariants, and
+    // what is under test on this side is the picture and the announcement.
+    let toad = WM.toad(run);
+    let woke = 'no toad on this floor';
+    for (let s = 0; s < 60 && !toad; s++) {
+      run.depth = D.UNDERTOAD.minDepth + (s % 5);
+      if (run.critters) run.critters.toadSpent = false;
+      DC.Sim.startStratum(run);
+      run.instHold = true;
+      for (let y = 0; y < D.MAP_H; y++)
+        for (let x = 0; x < D.MAP_W; x++) run.grid[y][x].revealed = true;
+      toad = WM.toad(run);
+    }
+    if (toad) {
+      paintOnly();
+      const tc2 = at(toad.x, toad.y);
+      assertEq(tc2.ch, 'Ω', 'the Undertoad is drawn in its chamber');
+      assert(DC.Render.contrast(tc2.fg, D.COLORS.bg) <
+             DC.Render.contrast(D.COLORS.toad, D.COLORS.bg),
+        '...dim, because you are seeing it through rock');
+      run.grid[toad.y][toad.x].revealed = false;
+      paintOnly();
+      assert(at(toad.x, toad.y).ch !== 'Ω', 'and not through unscanned rock at all');
+      run.grid[toad.y][toad.x].revealed = true;
+      // wake it with a real placement at the real cursor
+      run.inv.ironPlate = 999;
+      let near = null;
+      for (let dy = -D.UNDERTOAD.wakeR; dy <= D.UNDERTOAD.wakeR + 1 && !near; dy++)
+        for (let dx = -D.UNDERTOAD.wakeR; dx <= D.UNDERTOAD.wakeR + 1 && !near; dx++) {
+          const x = toad.x + dx, y = toad.y + dy;
+          const t = run.grid[y] && run.grid[y][x];
+          if (t && t.t === 'floor' && !t.toad && !t.ore && t.machine === null &&
+              !t.belt && !t.rubble && !t.lm) near = { x: x, y: y };
+        }
+      assert(near, 'there is ground to build on beside it');
+      st.ui.cursor = { x: near.x, y: near.y };
+      st.ui.hover = { x: near.x, y: near.y };
+      run.totalT += 60 * HZ;
+      run.stats.lastPlaceT = run.totalT; run.stats.lastFeedT = run.totalT;
+      const i0 = run.integrity;
+      key('1');                       // belt tool
+      key('Enter');                   // ...place it
+      assert(WM.toad(run).awake, 'building beside it wakes it');
+      assert(run.integrity < i0, 'and the hull pays');
+      frames(2);
+      assert(run.foreman && B.POOLS.undertoad.indexOf(run.foreman.text) >= 0,
+        'GRIT says it to the player\'s face: "' +
+        (run.foreman && run.foreman.text) + '"');
+      assert(st.ui.flash && /WOKE IT/.test(st.ui.flash.text),
+        '...and the flash says it over the map');
+      paintOnly();
+      assert(at(toad.x, toad.y).ch !== 'Ω', 'and the chamber is empty now');
+      woke = 'toad drawn, woken, announced';
+    }
+
+    // the whole thing renders clean, every frame of it
+    assert(!drawn.some((x) => x.indexOf('RENDER ERROR') >= 0),
+      'the map renders clean with wildlife on it');
+    return worms.length + (worms.length === 1 ? ' worm' : ' worms') +
+           ' drawn, L baits through the real keydown, ' + woke;
+  } finally {
+    delete global.window;
+    delete global.document;
+    delete global.location;
+    delete global.requestAnimationFrame;
+    delete global.localStorage;
+  }
+}
+
+// =========================================================================
 // SECTION 16 — M-WIDE: the game at COLS columns, every screen
 // The widening's whole risk is a screen that was laid out against 80 and
 // silently stayed there: still legal, still un-crashing, and pinned to the
@@ -5350,6 +5602,10 @@ try {
   const wonders = wondersSection(SEED + 47);
   const events = eventsSection(SEED + 53);
   const wide = wideSection(SEED + 59);
+  // After wideSection on purpose: this one boots the real engine, wakes an
+  // Undertoad and leaves js/fx.js's particle list full of falling dust, and
+  // wideSection's law-8 check compares two frames pixel for pixel.
+  const worms = wormsSection(SEED + 57);
   // Last: it boots the real engine a second time and leaves DC.state pointed at
   // its own run, so anything that ran after it would inherit a tutorial.
   const onboard = tutorialSection(SEED + 61);
@@ -5365,6 +5621,7 @@ try {
       ' | core gate 3 beats | ' + walls + ' walls' +
       ' | wonders ' + wonders +
       ' | events ' + events +
+      ' | worms: ' + worms +
       ' | wide ' + wide +
       ' | onboard ' + onboard +
       ' | cadence 16/12/10 | overdrive x2 | damper ok | charge+bronze ok | mantle ok' +

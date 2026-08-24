@@ -10,7 +10,12 @@
     return { t: t, ore: null, oreAmt: 0, machine: null, belt: null,
              rubble: false, digT: 0, revealed: false,
              // M-WONDERS: { id, g } when this tile belongs to a landmark.
-             lm: null };
+             lm: null,
+             // M-WORMS: true for the four cells the Undertoad sleeps in. It is
+             // a flag and not a terrain because the ground under it is ordinary
+             // floor the moment the tenant leaves — js/worms.js carves the
+             // chamber after mapgen has finished and clears this on burrow.
+             toad: false };
   }
 
   // `mutator` is M-MANTLE's floor rule, decided by sim.js BEFORE this runs

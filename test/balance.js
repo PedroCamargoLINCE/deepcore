@@ -72,6 +72,10 @@ require('../js/meta.js');
 // The finds roll on their own derived stream, so this changes what the bot
 // FINDS, never when the quakes land (see the header of js/events.js).
 require('../js/events.js');
+// M-WORMS: worms eat ore and dig free tunnel, so they MOVE this sweep. The
+// module is loaded here on purpose — a balance number measured without the
+// wildlife would be measuring a game nobody plays.
+require('../js/worms.js');
 const DC = globalThis.DC;
 const D = DC.DATA;
 const S = DC.Sim;
@@ -1372,10 +1376,27 @@ console.log(`
   SPEC §12 target                  checked on            last known good
   ---------------------------------------------------------------------------
   s1 breach 90-150s +~40s build    naked, standard       med 137s      OK
-  first runs bank 2-5 cores        naked                 med 3         OK
-  survive stratum 2 >= 80%         naked                 100% / 93%    OK
-  full win in 15-25 min            full Foundry, std     2/14 @ 21.7m DILUTED
+  first runs bank 2-5 cores        naked                 med 2         OK
+  survive stratum 2 >= 80%         naked                 86% / 100%    OK
+  full win in 15-25 min            full Foundry, std     2/14 @ 21.9m DILUTED
   camping ~1.5x pace dies s6-s7    full Foundry, camper  med 5   DRIFTED
+
+  M-WORMS moved four of those five, and the movement is the FEATURE and not a
+  regression. Worms eat 5 ore out of any vein they cross and open rock as they
+  go, so the naked bot — which lays a fixed opening and never re-routes — loses
+  seams it had budgeted for, while a full-Foundry run that survives long enough
+  gets free tunnel and the Undertoad's crystal out of the same creature. Both
+  halves show up:
+
+    naked, standard   deaths med 4 -> 3   cores med 3 -> 2   s2 100% -> 86%
+    naked, camper     deaths med 5 -> 4   cores med 4 -> 3   s2  93% -> 100%
+    full, standard    deaths med 5 -> 8   cores med 5 -> 7   wins 2/14 both
+    full, camper      deaths med 5 -> 5   wins 2/14 both (23.5 -> 23.4m)
+
+  Every §12 target above still holds, so NO data.js VALUE MOVED (the M-HUMANBAL
+  ledger rule: report, never retune). The two that are closest to their edge —
+  naked cores at the bottom of the 2-5 band, s2 survival at 86% against an 80%
+  floor — are the ones to watch if anything else is added to strata 3-5.
 
   The win target is deliberately NOT checked on a naked rig. SPEC §12 scopes it
   to "competent play", and the Foundry is the game's answer to a first run that

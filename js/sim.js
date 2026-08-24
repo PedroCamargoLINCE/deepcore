@@ -362,6 +362,11 @@
     run.magmaCap = Math.floor(magma * D.MAGMA.growthCap);
     run._feed = [];
     run._lastRevealR = -1;
+    // M-WORMS: the floor's wildlife, on a finished map and AFTER the mutator
+    // has been rolled ('worm season' is a count, so it must already be known).
+    // Guarded, so a tree without js/worms.js starts exactly the stratum it
+    // always did — and the module owns every draw it spends (§0 law 7).
+    if (DC.Worms && DC.Worms.start) DC.Worms.start(run);
     // M-MANTLE/'the dark rises' hands you the whole floor exactly once, the
     // way Deep Sonar does — and then spends the stratum taking it back.
     if (run.mods.fullReveal || isMut(run, 'dark')) {
@@ -620,6 +625,10 @@
       const m = run.machines[id];
       if (m) stepMachine(run, m);
     }
+    // M-WORMS: the critters step after the machines and before the hazards —
+    // a worm never opens ground a machine has already read this tick, and a
+    // quake lands on the map the worms just left.
+    if (DC.Worms && DC.Worms.tick) DC.Worms.tick(run);
     if (run.t % D.BELT_PERIOD === 0) stepBelts(run);
     if (run.t % drillPeriod(run) === 0) stepDrill(run);
     // M-ONBOARD Part 2: the pressure pause. While `instHold` is set the floor
@@ -1808,6 +1817,10 @@
         // zone; the rest are solid anyway and would have said 'needs open
         // floor', which tells the player nothing about what they are looking at.
         if (t.lm) return { ok: false, reason: 'landmark ground' };
+        // M-WORMS: the Undertoad's chamber is floor, and sealed, and occupied.
+        // Building on the tenant is refused outright; building NEAR it is not,
+        // because that is the whole transaction the creature is offering.
+        if (t.toad) return { ok: false, reason: 'something is asleep there' };
         if (t.t !== 'floor') return { ok: false, reason: 'needs open floor' };
         if (t.rubble) return { ok: false, reason: 'blocked by rubble' };
         if (t.machine !== null) return { ok: false, reason: 'blocked by structure' };
@@ -1833,6 +1846,7 @@
     }
     if (type === 'belt') {
       run.grid[y][x].belt = { dir: facing, item: null, moved: false };
+      if (DC.Worms && DC.Worms.disturb) DC.Worms.disturb(run, x, y);
       return true;
     }
     const id = run.nextId++;
@@ -1851,6 +1865,10 @@
     for (let ty = y; ty < y + B.h; ty++)
       for (let tx = x; tx < x + B.w; tx++) run.grid[ty][tx].machine = id;
     if (type === 'tunnel') pairTunnel(run, m);
+    // M-WORMS: ...and if that was within three tiles of the Undertoad, the
+    // player has just found out. Announced on the tick they caused it, which
+    // is why it is not the scheduled dread §0 law 8 protects.
+    if (DC.Worms && DC.Worms.disturb) DC.Worms.disturb(run, x, y);
     return true;
   }
 
@@ -1889,12 +1907,16 @@
     if (t.rubble) {
       if (t.digT > 0) return { ok: false, reason: 'already clearing' };
       t.digT = D.DIG_RUBBLE;
+      if (DC.Worms && DC.Worms.disturb) DC.Worms.disturb(run, x, y);
       return { ok: true };
     }
     if (t.t === 'rock') {
       if (!t.revealed) return { ok: false, reason: 'unscanned ground' };
       if (t.digT > 0) return { ok: false, reason: 'already excavating' };
       t.digT = D.DIG_ROCK;
+      // M-WORMS: the pick going IN is what wakes it, not the hole coming out —
+      // four seconds of warning would be a timer, and law 8 has opinions.
+      if (DC.Worms && DC.Worms.disturb) DC.Worms.disturb(run, x, y);
       return { ok: true };
     }
     if (t.t === 'obsidian' || t.t === 'chasm' || t.t === 'magma')
@@ -2159,6 +2181,11 @@
     const t = tileAt(run, x, y);
     if (!t) return [];
     if (!t.revealed) return [{ text: 'unscanned depths', color: D.COLORS.darkgray }];
+    // M-WORMS: something alive on a tile outranks the dirt it is standing on.
+    if (DC.Worms && DC.Worms.describe) {
+      const cw = DC.Worms.describe(run, x, y);
+      if (cw) return cw.slice(0, 5);
+    }
     const L = [];
     if (t.machine !== null && run.machines[t.machine]) {
       const m = run.machines[t.machine];
@@ -2278,6 +2305,10 @@
     // (worst case filled in) so the suites can hold the lot to the LOG panel;
     // STATUS_HINT is the '!' legend the SCAN panel draws.
     diagLine: diagLine, diagLines: diagLines, STATUS_HINT: STATUS_HINT,
+    // M-WORMS: the Undertoad's one quake damages machines through the same
+    // door every other hazard in this file does, rather than growing a second
+    // idea of what "damaged" means.
+    damage: damageMachine,
     // M-MANTLE: this floor's rule, as its data.js entry (null on strata 1-8),
     // and the table it was rolled from — which is filtered by what is loaded,
     // so a suite can assert that an absent module is absent from the deck.
