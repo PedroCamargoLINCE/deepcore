@@ -753,6 +753,10 @@ function checkSave() {
       'the daily history round-trips through the save');
     assert(back.logbook.join(',') === '11', 'the logbook round-trips through the save');
     assert(back.catFound === true, 'the cat round-trips through the save');
+    // M-SOUND: the mute flag is a profile field, off by default
+    assert(M.newProfile().muted === false, 'a fresh profile is not muted');
+    old.muted = true; M.save(old);
+    assert(M.load().muted === true, 'the mute round-trips through the save');
     // and a save full of nonsense is sanitized, never trusted
     cell[D.SAVE_KEY] = JSON.stringify({ logbook: [3, 3, -1, 'x', 999, 2], catFound: 'yes' });
     const junk = M.load();
@@ -760,6 +764,7 @@ function checkSave() {
       'a corrupt logbook is filtered and deduped, not repaired (got ' +
       junk.logbook.join(',') + ')');
     assert(junk.catFound === true, 'a truthy cat flag reads as a cat');
+    assert(junk.muted === false, 'a missing mute flag reads as sound on');
 
     // a save corrupted in the NEW fields must degrade, never throw
     cell[D.SAVE_KEY] = JSON.stringify({

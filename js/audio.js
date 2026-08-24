@@ -363,11 +363,13 @@
   // Once per rendered frame. Continuous voices only.
   const levels = { drillLoop: 0, collapse: 0, title: 0, purr: 0 };
   function frame(st) {
-    if (!st) return levels;
-    const run = st.run;
-    const live = st.screen === 'run' && run && !st.ui.paused &&
+    // `levels` reports what is actually being emitted: nothing before the
+    // first gesture (no context yet), nothing while muted.
+    const on = !!st && ready() && !mutedFlag;
+    const run = st && st.run;
+    const live = on && st.screen === 'run' && run && !st.ui.paused &&
       (run.status === 'active' || run.status === 'breachReady');
-    levels.title = st.screen === 'title' ? LEVELS.title : 0;
+    levels.title = on && st.screen === 'title' ? LEVELS.title : 0;
     levels.drillLoop = live ? drillLevel(run) * LEVELS.drill : 0;
     levels.collapse = live && run.instability >= 99 ? LEVELS.klaxon : 0;
     levels.purr = live && catPerched(run) ? LEVELS.purr : 0;
@@ -377,7 +379,7 @@
     setLoop('purr', levels.purr, 0.3);
     // overdrive raises the churn a major third
     const dl = loops.drillLoop;
-    if (dl && ready()) {
+    if (dl && on) {
       const f = dl.base * (live && run.overdrive ? 1.26 : 1);
       try { dl.sine.frequency.setTargetAtTime(f, ctx.currentTime, 0.1); } catch (e) {}
     }

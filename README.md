@@ -44,6 +44,7 @@ The mouse is optional: every action has a keyboard route through the map cursor.
 | `Space` | pause |
 | `Esc` | disarm lay-mode → cancel tool → pause menu |
 | `H` | manual |
+| `M` | mute / unmute the rig (any screen; remembered) |
 
 Clicking (or `Enter` with no tool) a damaged machine repairs it, an assembler
 switches recipe, the rig toggles overdrive.
