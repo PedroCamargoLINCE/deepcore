@@ -57,8 +57,8 @@ with `git add -A`).
 | 4.7 | ~~M-ONBOARD Part 2 (the tutorial)~~ ✅ **merged 2026-08-17** | — | — |
 | 5 | ~~M-TIER2 (alone)~~ ✅ **merged 2026-08-18** — worker died at its session limit with all checkpoints pushed; rescued from its worktree, one finished diff committed for it | ~~M-MANTLE + M-SCHEMS2~~ ✅ **merged 2026-08-19** — survived THREE worker deaths (ECONNRESET, connection drop, rate limit-on-wrong-model) with zero pushed work lost | — |
 | 6 | ~~M-WORMS~~ ✅ **merged 2026-08-19** | ~~M-ACHIEVE + M-RIGSKINS~~ ✅ **merged 2026-08-23** (first Fable worker, by order) | ~~M-SOUND~~ ✅ **merged 2026-08-23** (ran in parallel with B; M1 spec recovered from git history) |
-| 6.5 | **next: M-CONTRACTS** (SPEC3 M-HUMANBAL Finding 12, promoted to its own brief) | — | — |
-| 7 | **M-HUMANBAL — alone, LAST** (SPEC3 §M-HUMANBAL) — the director's playtest ledger | — | — |
+| 6.5 | ~~M-CONTRACTS~~ ✅ **merged 2026-08-24** (Fable, by order; first monitored worker) | — | — |
+| 7 | **M-HUMANBAL — alone, LAST — NEXT** (SPEC3 §M-HUMANBAL): thirteen findings decided as a set; everything else is merged | — | — |
 
 **M-HUMANBAL is a running ledger, not a queued brief.** Every balance problem
 the director hits while actually playing gets appended to SPEC3's M-HUMANBAL
