@@ -90,6 +90,27 @@
   const LETTERS = 'abcdefghi';
   const HUB_ART = ['╔═╗', '║D║', '╚═╝'];
   const EMBER = '#ff7a45';           // v1.1 §E title sweep endpoint (stratum-6 ember)
+  // M-RIGSKINS: the chrome palette. Everything that is FRAME rather than
+  // WORLD — the rig portrait, panel edges and titles, the header block, the
+  // GEAR gauge, the title art, the Foundry — reads these four (SK) instead of
+  // C.amber / C.amberDim / C.orange / EMBER, and a livery swaps them at the
+  // top of the frame. Nothing on the map reads CH: machines, veins, belts,
+  // worms and hazards keep their colours on every skin (§0 law 6).
+  let SK = { amber: C.amber, dim: C.amberDim, hi: C.orange, ember: EMBER };
+  let liveryId = 'amber';
+  function applyLivery(meta) {
+    let id = 'amber';
+    if (DC.Meta && typeof DC.Meta.livery === 'function') {
+      try { id = DC.Meta.livery(meta); } catch (e) { id = 'amber'; }
+    }
+    const def = (D.LIVERY_BY_ID && D.LIVERY_BY_ID[id]) || null;
+    liveryId = def ? id : 'amber';
+    const c = (def && def.chrome) || {};
+    SK = {
+      amber: c.amber || C.amber, dim: c.dim || C.amberDim,
+      hi: c.hi || C.orange, ember: c.ember || EMBER,
+    };
+  }
 
   // v1.1 §C.2 — compact sidebar glyph per owned meta upgrade: [glyph, color key]
   const UP_GLYPHS = {
@@ -553,17 +574,17 @@
     const phase = Math.floor(run.t / 4) % 2;
 
     // header (row 0)
-    put(0, 0, '▌', C.amber);
-    text(1, 0, 'DEEPCORE', C.bg, C.amber);
-    put(9, 0, '▐', C.amber);
+    put(0, 0, '▌', SK.amber);
+    text(1, 0, 'DEEPCORE', C.bg, SK.amber);
+    put(9, 0, '▐', SK.amber);
     const sl = 'STRATUM ' + run.depth;
-    text(12, 0, sl, C.amber);
+    text(12, 0, sl, SK.amber);
     text(12 + sl.length + 1, 0, '— ' + st.name, accent);
     text(46, 0, 'DEPTH -' + (run.depth * D.DEPTH_M) + 'm', C.gray);
     textR(COLS - 1, 0, 'ELAPSED ' + fmtTime(run.totalT / D.TICK_HZ), C.gray);
 
     // thin rule (row 1, under the map column only — sidebar starts here)
-    text(0, 1, '─'.repeat(SB - 1), C.amberDim);
+    text(0, 1, '─'.repeat(SB - 1), SK.dim);
     // M-MANTLE: from stratum 9 that rule carries the floor's one rule. It is
     // drawn INTO the existing divider rather than on a row of its own — the
     // run screen has no spare rows, and a mutator is not a fifth panel, it is
@@ -895,13 +916,13 @@
   function panelEdge(col, w, row, kind, title, titleColor) {
     const l = kind === 'top' ? '┌' : kind === 'bot' ? '└' : '├';
     const r = kind === 'top' ? '┐' : kind === 'bot' ? '┘' : '┤';
-    text(col, row, l + '─'.repeat(w - 2) + r, C.amberDim);
-    if (title) text(col + 2, row, (' ' + title + ' ').slice(0, w - 4), titleColor || C.amber);
+    text(col, row, l + '─'.repeat(w - 2) + r, SK.dim);
+    if (title) text(col + 2, row, (' ' + title + ' ').slice(0, w - 4), titleColor || SK.amber);
     return row + 1;
   }
   function panelWalls(col, w, row) {
-    put(col, row, '│', C.amberDim);
-    put(col + w - 1, row, '│', C.amberDim);
+    put(col, row, '│', SK.dim);
+    put(col + w - 1, row, '│', SK.dim);
   }
   function sideEdge(row, kind, title, titleColor) {
     return panelEdge(SB, SBW, row, kind, title, titleColor);
@@ -959,8 +980,8 @@
     }
     sideWalls(y);
     text(SBC, y, 'GEAR', C.gray);
-    bar(SBC + 5, y, 12, req.gear ? run.gearsFed / req.gear : 1, C.amber);
-    textR(SB + SBW - 2, y, run.gearsFed + '/' + req.gear + gGlyph, C.amber);
+    bar(SBC + 5, y, 12, req.gear ? run.gearsFed / req.gear : 1, SK.amber);
+    textR(SB + SBW - 2, y, run.gearsFed + '/' + req.gear + gGlyph, SK.amber);
     y++;
     if (req.charge > 0) {
       sideWalls(y);
@@ -1245,7 +1266,7 @@
       for (let j = 0; j < ln.length; j++) {
         if (ln[j] === ' ') continue;
         const rock = i >= RIG_GROUND_ROW && GROUND_CH.indexOf(ln[j]) >= 0;
-        put(ox + j, y + i, ln[j], rock ? ground : C.amber);
+        put(ox + j, y + i, ln[j], rock ? ground : SK.amber);
       }
     }
     // published for fx.js and the suites: where the in-run rig actually landed
@@ -1604,7 +1625,7 @@
     const lines = art('title');
     // Logo rows sweep amber → orange → ember, 3-tone (v1.1 §E): never mono-color.
     const logoRows = Math.min(5, lines.length);
-    const sweep = [C.amber, C.amber, C.orange, C.orange, EMBER];
+    const sweep = [SK.amber, SK.amber, SK.hi, SK.hi, SK.ember];
     for (let i = 0; i < logoRows; i++) {
       const ln = lines[i];
       text(Math.max(0, (COLS - ln.length) >> 1), 1 + i, ln, sweep[i] || EMBER);
@@ -1616,7 +1637,7 @@
     layout.title = { rig: null, enter: null };
     if (rig) {
       const rx = blockX(rig, COLS), ry = 7;
-      for (let i = 0; i < rig.length && ry + i < 24; i++) text(rx, ry + i, rig[i], C.amber);
+      for (let i = 0; i < rig.length && ry + i < 24; i++) text(rx, ry + i, rig[i], SK.amber);
       below = Math.min(ry + Math.min(rig.length, 24 - ry) + 1, 24);
       // published for fx.js: the drill string idles inside this block
       layout.title.rig = { x: rx, y: ry, w: blockWidth(rig), h: Math.min(rig.length, 24 - ry) };
@@ -1812,7 +1833,7 @@
     const rows = Math.min(rig.length, 12);
     // published for fx.js: the spark burst goes off around the bolted part
     layout.foundryRig = { x: ox, y: y0, w: blockWidth(rig), h: rows };
-    for (let i = 0; i < rows; i++) text(ox, y0 + i, rig[i].slice(0, w), C.amber);
+    for (let i = 0; i < rows; i++) text(ox, y0 + i, rig[i].slice(0, w), SK.amber);
     if (!flash) return;
     const p = DC.Art && DC.Art.rigParts && DC.Art.rigParts[flash.id];
     if (p && Array.isArray(p.lines)) {
@@ -1833,7 +1854,7 @@
     const meta = state.meta || { cores: 0, upgrades: {} };
     const ui = state.ui || {};
     const lines = art('foundry');
-    drawArt(lines, 1, artColor('foundry', C.orange));
+    drawArt(lines, 1, liveryId === 'amber' ? artColor('foundry', C.orange) : SK.hi);
     ctext(Math.min(1 + lines.length + 1, 8), '◈ ' + (meta.cores || 0) + ' CORES', C.magenta);
 
     // Two columns — the rig, and what can be bolted to it — CENTRED as one
@@ -1842,8 +1863,33 @@
     // centred over a page pinned to the left edge.
     const py = 10;
     const fx0 = Math.max(0, (COLS - (FOUNDRY_RIG_W + FOUNDRY_GAP + FOUNDRY_LIST_W)) >> 1);
-    box(fx0, py, FOUNDRY_RIG_W, 14, C.amberDim, 'YOUR RIG', C.amber);
+    box(fx0, py, FOUNDRY_RIG_W, 14, SK.dim, 'YOUR RIG', SK.amber);
     drawRigPortrait(fx0 + 1, py + 1, FOUNDRY_RIG_W - 2, meta.upgrades, activeFlash(ui));
+    // M-RIGSKINS: the livery row, under the rig it paints. Five dots, one per
+    // livery in data.js order; the worn one is solid, an earned one is
+    // hollow, an unearned one is dust — and its unlock rule is the caption
+    // when the cursor is not on the worn one... which it always is, so the
+    // caption is the NEXT locked rule instead: the shelf tells you what to do.
+    {
+      const lv = (DC.Meta && DC.Meta.liveries) ? DC.Meta.liveries(meta) : [];
+      const cur = liveryId;
+      let dots = '';
+      let name = 'COMPANY AMBER', next = null;
+      for (let i = 0; i < lv.length; i++) {
+        const l = lv[i];
+        dots += (l.id === cur ? '◆' : l.unlocked ? '◇' : '·') + ' ';
+        if (l.id === cur) name = l.name;
+        if (!l.unlocked && !next) next = l;
+      }
+      const ly = py + 14;
+      text(fx0, ly, 'LIVERY', C.gray);
+      text(fx0 + 8, ly, name.slice(0, FOUNDRY_RIG_W - 8), SK.amber);
+      text(fx0, ly + 1, dots, SK.dim);
+      // the next rule to satisfy, kept inside the left column (the upgrade
+      // list starts at lx and is not this row's to write in)
+      if (next) text(fx0, ly + 2, ('next: ' + next.unlock).slice(0, FOUNDRY_RIG_W + FOUNDRY_GAP - 1), C.darkgray);
+      layout.livery = { x: fx0, y: ly, id: cur };
+    }
 
     // right column: upgrade list (2 rows each: stat line + dim desc)
     const lx = fx0 + FOUNDRY_RIG_W + FOUNDRY_GAP;
@@ -1872,8 +1918,134 @@
     const fb = typeof fbRaw === 'string' ? fbRaw : (fbRaw && fbRaw.line);
     if (fb) ctext(28, 'GRIT ▸ ' + String(fb).slice(0, 70), C.cyan);
 
-    ctext(29, 'lifetime cores ' + (meta.totalCores || 0) + '   runs ' + (meta.runs || 0), C.darkgray);
-    ctext(31, '[A-I] FORGE UPGRADE   [L] LOGBOOK   [ESC] RETURN TO SURFACE', C.amber);
+    // M-ACHIEVE: the shelf count rides the stats line — a number that goes up
+    // (Cookie Clicker) beside the door to the picture that changes (law 5).
+    const nT = (DC.Meta && DC.Meta.trophies) ? DC.Meta.trophies(meta).length : 0;
+    const totT = (D.TROPHIES || []).length;
+    ctext(29, 'lifetime cores ' + (meta.totalCores || 0) + '   runs ' + (meta.runs || 0) +
+      '   shelf ' + nT + '/' + totT, C.darkgray);
+    ctext(31, '[A-I] FORGE   [S] LIVERY   [T] TROPHIES   [K] LEDGER   [L] LOGBOOK   [ESC] SURFACE', SK.amber);
+  }
+
+  // ================= THE TROPHY SHELF (M-ACHIEVE) =================
+  // Two planks of seven, each earned milestone standing on the shelf as an
+  // object (§0 law 5). The unearned ones are there too, as dust in the shape
+  // of the thing — the page has to read as a shelf with gaps, not a list
+  // with locks. ←/→ walk a cursor along the objects; the Company states the
+  // requirement, and GRIT inspects what is actually there.
+  const TROPHY_COLS = 7;
+  const TROPHY_SLOT = 14;                     // columns per object
+  const SHELF_W = TROPHY_COLS * TROPHY_SLOT;  // 98
+  const SHELF_X = Math.max(0, (COLS - SHELF_W) >> 1);
+  const SHELF_ROW0 = 5;                       // first object's top row
+  const SHELF_PITCH = 7;                      // object 3 + plank 1 + name 1 + air 2
+  function drawTrophies(state) {
+    const meta = state.meta || {};
+    const ui = state.ui || {};
+    const list = D.TROPHIES || [];
+    const have = (DC.Meta && DC.Meta.trophies) ? DC.Meta.trophies(meta) : [];
+    const fresh = Array.isArray(state.newTrophies) ? state.newTrophies : [];
+    const A = DC.Art;
+    const TW = (A && A.TROPHY_W) || 5, TH = (A && A.TROPHY_H) || 3;
+    const cur = Math.max(0, Math.min(list.length - 1, ui.trophyCursor | 0));
+    const dust = mix(C.gray, C.bg, 0.5);
+
+    ctext(1, 'THE TROPHY SHELF', SK.amber);
+    ctext(2, "commendations on file — the Foundry's back room", C.gray);
+    text(SHELF_X, 3, '─'.repeat(SHELF_W), mix(SK.amber, C.bg, 0.42));
+
+    layout.trophies = [];
+    for (let i = 0; i < list.length; i++) {
+      const t = list[i];
+      const col = i % TROPHY_COLS, rowN = Math.floor(i / TROPHY_COLS);
+      const x0 = SHELF_X + col * TROPHY_SLOT, y0 = SHELF_ROW0 + rowN * SHELF_PITCH;
+      const earned = have.indexOf(t.id) >= 0;
+      const isNew = earned && fresh.indexOf(t.id) >= 0;
+      const obj = (A && A.trophy) ? A.trophy(t.id) : { color: 'gray', lines: ['     ', '  ?  ', '     '] };
+      const ox = x0 + ((TROPHY_SLOT - TW) >> 1);
+      const oc = resolveColor(obj.color) || C.amber;
+      for (let r = 0; r < TH && r < obj.lines.length; r++) {
+        const ln = obj.lines[r];
+        for (let j = 0; j < ln.length; j++) {
+          if (ln[j] === ' ') continue;
+          if (earned) put(ox + j, y0 + r, ln[j], isNew && !(Math.floor(frameN / 15) % 2) ? C.white : oc);
+          else put(ox + j, y0 + r, '·', dust);
+        }
+      }
+      // the plank this object stands on
+      text(x0, y0 + TH, '═'.repeat(TROPHY_SLOT), SK.dim);
+      // the name plate: earned in the object's colour, unearned in dust,
+      // and the cursor's in brackets either way
+      const label = earned ? t.name : '? ? ?';
+      const nx = x0 + Math.max(0, (TROPHY_SLOT - label.length) >> 1);
+      const nc = i === cur ? C.white : earned ? SK.amber : C.darkgray;
+      text(nx, y0 + TH + 1, label, nc);
+      if (i === cur) {
+        put(x0, y0 + TH + 1, '▸', C.white);
+        put(x0 + TROPHY_SLOT - 1, y0 + TH + 1, '◀', C.white);
+      }
+      layout.trophies.push({ col: x0, row: y0, w: TROPHY_SLOT, h: TH + 2, id: t.id, index: i });
+    }
+
+    // the inspection card
+    const sel = list[cur];
+    const iy = SHELF_ROW0 + Math.ceil(list.length / TROPHY_COLS) * SHELF_PITCH;
+    text(SHELF_X, iy, '─'.repeat(SHELF_W), mix(SK.amber, C.bg, 0.42));
+    if (sel) {
+      const earned = have.indexOf(sel.id) >= 0;
+      ctext(iy + 1, (earned ? '◈ ' : '· ') + sel.name + (earned ? '' : '  —  NOT ON FILE'),
+        earned ? SK.amber : C.gray);
+      ctext(iy + 2, 'THE COMPANY REQUIRES: ' + sel.how, C.gray);
+      if (earned && sel.grit) ctext(iy + 4, 'GRIT ▸ ' + String(sel.grit).slice(0, 70), C.cyan);
+      else ctext(iy + 4, 'GRIT ▸ ' + "Nothing there. Don't touch the dust.", mix(C.cyan, C.bg, 0.45));
+    }
+    const n = have.length, tot = list.length;
+    ctext(ROWS - 3, 'ON THE SHELF ' + n + ' / ' + tot +
+      (n >= tot && tot > 0 ? '  —  the whole shelf' : ''),
+      n >= tot && tot > 0 ? C.green : C.gray);
+    ctext(ROWS - 1, '←→ INSPECT   [ESC] BACK TO THE FOUNDRY', SK.amber);
+  }
+
+  // ================= THE COMPANY LEDGER (M-ACHIEVE) =================
+  // Lifetime stats as the form the Company keeps on you. Papers, Please:
+  // dread delivered on a document — dotted leaders, a right-hand column of
+  // figures, a stamp. Every figure is composed by DC.Meta.ledger from a real
+  // counter; this side draws leaders and never a number of its own.
+  const LEDGER_W = 78;
+  const LEDGER_X = Math.max(0, (COLS - LEDGER_W) >> 1);
+  const LEDGER_ROW0 = 5;
+  function drawLedger(state) {
+    const meta = state.meta || {};
+    const rows = (DC.Meta && DC.Meta.ledger) ? DC.Meta.ledger(meta) : [];
+    const rule = mix(SK.amber, C.bg, 0.42);
+    const dots = mix(C.gray, C.bg, 0.55);
+    const x = LEDGER_X, w = LEDGER_W;
+
+    ctext(1, 'DEEPCORE MINING CONCERN  ·  FORM 7-B', SK.amber);
+    ctext(2, 'LIFETIME ACCOUNT OF OPERATOR  —  retain until death, whichever is sooner', C.gray);
+    text(x, 3, '═'.repeat(w), rule);
+    let y = LEDGER_ROW0;
+    for (let i = 0; i < rows.length && y < ROWS - 5; i++, y++) {
+      const r = rows[i];
+      const label = String(r.label || ''), val = String(r.value || '');
+      const noteS = r.note ? '  ' + r.note : '';
+      // label, leaders, value right-aligned to the column, note after it
+      const valCol = x + w - 22;
+      text(x, y, label, C.gray);
+      const lead = valCol - (x + label.length) - 1 - val.length;
+      if (lead > 0) text(x + label.length + 1, y, '·'.repeat(lead), dots);
+      textR(valCol - 1, y, val, C.gold);
+      if (noteS) text(valCol + 1, y, noteS.slice(0, 20), C.darkgray);
+    }
+    text(x, y, '═'.repeat(w), rule);
+    y++;
+    text(x, y, 'FILED BY: THE COMPANY', C.gray);
+    textR(x + w - 1, y, 'OPERATOR SIGNATURE: ' + '_'.repeat(14), C.gray);
+    // the stamp
+    const stamp = '[ AUDITED ]';
+    text(x + w - 19, LEDGER_ROW0 - 1, stamp, shade(C.red, 0.9));
+    ctext(ROWS - 3, "Discrepancies are the operator's. Figures are the Company's.", C.darkgray);
+    ctext(ROWS - 1, '[ESC] BACK TO THE FOUNDRY', SK.amber);
   }
 
   // ================= THE VIGNETTE SCREEN (M-EVENTS) =================
@@ -2053,6 +2225,22 @@
     text(V, row + 3, '+' + res.cores + ' ◈', C.magenta);
   }
 
+  // M-ACHIEVE: what this run put on the shelf, said once on the end screen
+  // (the shelf itself is a Foundry page). Drawn only into an empty row —
+  // the epitaph and the cat's line own the rows above the footer first.
+  function drawNewTrophies(state, row) {
+    const ids = Array.isArray(state.newTrophies) ? state.newTrophies : [];
+    if (!ids.length || row < 0 || row >= ROWS) return;
+    for (let c = 0; c < COLS; c++) if (chB[row][c] !== ' ') return;
+    const names = [];
+    for (let i = 0; i < ids.length; i++) {
+      const t = (D.TROPHY_BY_ID || {})[ids[i]];
+      if (t) names.push(t.name);
+    }
+    if (!names.length) return;
+    ctext(row, ('◈ NEW ON THE SHELF: ' + names.join(' · ')).slice(0, COLS - 2), C.gold);
+  }
+
   function drawGameover(state, phase) {
     const lines = art('gameover');
     drawArt(lines, 1, artColor('gameover', C.red));
@@ -2079,6 +2267,7 @@
       const cl = (DC.Barks && DC.Barks.CAT_EPITAPH) || null;
       if (cl && y + 5 + epi.length < 30) ctext(y + 5 + epi.length + 1, cl, C.gray);
     }
+    drawNewTrophies(state, 29);
     ctext(30, '[TAB] RUN RECAP CARD', C.amberDim);
     ctext(31, '[ENTER] RETURN TO THE SURFACE', phase ? C.white : C.amber);
   }
@@ -2165,6 +2354,7 @@
     // the run's seed — render must never draw from run.rng, and on this screen
     // the run is still live (the Mantle is one keypress away).
     if (full && typed.length >= full.length) drawReveal(state.run, y + 9);
+    drawNewTrophies(state, 29);
     ctext(30, '[TAB] RUN RECAP CARD', C.amberDim);
     ctext(31, '[ENTER] ASCEND      [C] CONTINUE INTO THE MANTLE', C.amber);
   }
@@ -2535,6 +2725,10 @@
       get chain() { return layout.chain; },
     },
     LOGBOOK_W: LOG_W,
+    // M-RIGSKINS: the chrome in force for the last frame, and its livery id
+    chrome: function () { return { id: liveryId, amber: SK.amber, dim: SK.dim, hi: SK.hi, ember: SK.ember }; },
+    // M-ACHIEVE: the shelf's geometry, for the suites
+    TROPHY_COLS: TROPHY_COLS,
     // The prose panels' text contract (LOG at SCW columns, Foreman bar at 41),
     // exported so test/barks_test.js can prove no authored line — sim message
     // or GRIT bark — is ever cut mid-word by either one.
@@ -2655,6 +2849,7 @@
       advanceClock(nowMs);
       const phase = Math.floor(frameN / 30) % 2;   // 1 Hz blink, wall time
       clearBuf();
+      applyLivery(state.meta);   // M-RIGSKINS: the chrome for this frame
       // SPEC3 §A: fx.js advances its frame clock and takes its per-frame read
       // of the world BEFORE anything draws; its overlay lands after everything.
       if (DC.FX && DC.FX.begin) {
@@ -2666,6 +2861,8 @@
           case 'descend':  drawDescend(state); break;
           case 'foundry':  drawFoundry(state); break;
           case 'logbook':  drawLogbook(state); break;   // M-EVENTS
+          case 'trophies': drawTrophies(state); break;  // M-ACHIEVE
+          case 'ledger':   drawLedger(state); break;    // M-ACHIEVE
           case 'vignette': drawVignette(state); break;  // M-EVENTS
           case 'help':     drawHelp(state); break;
           case 'gameover': drawGameover(state, phase); break;

@@ -1717,6 +1717,37 @@
          '        │  ?           ?  │', '        └──────────────┘'];
   };
 
+  // ---------------- M-ACHIEVE: the trophy shelf ----------------
+  // One object per trophy, 5 x 3, drawn ON the shelf in the Foundry's back
+  // room. Glyphs are drawn from the inventory the vendored font already
+  // carries (tools/glyphs.js) — a trophy that renders as tofu on the one
+  // machine we cannot see is not a reward. `color` is a D.COLORS key; the
+  // unearned silhouette is drawn by render as the same shape in dust.
+  A.TROPHY_W = 5;
+  A.TROPHY_H = 3;
+  A.trophies = {
+    first_win:    { color: 'gold',    lines: ['  ◈  ', ' ▐█▌ ', ' ▀▀▀ '] },
+    sub15:        { color: 'white',   lines: ['  ▪  ', '┌─┬─┐', '└─15┘'] },
+    no_repair:    { color: 'steel',   lines: ['╔╗   ', '║╠══╡', '╚╝   '] },
+    scenic:       { color: 'cyan',    lines: ['┌───┐', '│▒☼ │', '└───┘'] },
+    depth12:      { color: 'red',     lines: ['  †  ', ' ▄█▄ ', ' ▀▀▀ '] },
+    cat:          { color: 'white',   lines: ['  ▲▲ ', '  c  ', ' ▬▬▬ '] },
+    schems_all:   { color: 'blue',    lines: [' ▄▄▄ ', '(≡≡≡)', ' ▀▀▀ '] },
+    wormfood:     { color: 'worm',    lines: [' ~~o ', '     ', ' ♠♠  '] },
+    hard_hats:    { color: 'amber',   lines: [' ▄█▄ ', '▐███▌', '▀▀▀▀▀'] },
+    high_score:   { color: 'leaf',    lines: ['  ♣  ', ' ┌┬┐ ', ' └─┘ '] },
+    company_man:  { color: 'amber',   lines: ['┌───┐', '│ 10│', '└─┬─┘'] },
+    daily_win:    { color: 'orange',  lines: ['▄▄▄▄▄', '█ T █', '▀▀▀▀▀'] },
+    logbook_full: { color: 'gold',    lines: ['┌──┬┐', '│≡≡││', '└──┬┘'] },
+    shareholder:  { color: 'magenta', lines: [' ◈◈◈ ', ' ◈◈◈ ', ' ▀▀▀ '] },
+  };
+  // The object, or a shape-preserving placeholder for an id art has not met.
+  A.trophy = function (id) {
+    const t = A.trophies[id];
+    if (t && Array.isArray(t.lines)) return t;
+    return { color: 'gray', lines: ['┌───┐', '│ ? │', '└───┘'] };
+  };
+
   A.center = function (lines, width) {
     let w = 0;
     for (let i = 0; i < lines.length; i++) if (lines[i].length > w) w = lines[i].length;

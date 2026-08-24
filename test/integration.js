@@ -5001,6 +5001,35 @@ function wideSection(seed) {
   assert(longest > 0 && DC.Render.LOGBOOK_W >= longest,
     'the logbook page is wide enough for its longest entry (' + longest + ')');
 
+  // M-ACHIEVE: the two Foundry pages, at the full width
+  SCREEN = 'trophies';
+  state.screen = 'trophies';
+  state.ui.trophyCursor = 3;
+  rows = frame(state);
+  assertCentred(rows, 1, D.ROWS - 3, 3);
+  assert(rows[1].indexOf('THE TROPHY SHELF') > 30, 'the shelf masthead is centred');
+  assertEq(DC.Render.layout.trophies.length, D.TROPHIES.length, 'every trophy has a slot on the shelf');
+  {
+    const last = DC.Render.layout.trophies[DC.Render.layout.trophies.length - 1];
+    assert(last.col + last.w <= D.COLS && last.row + last.h < D.ROWS - 4, 'the last slot is on the page');
+    for (const t of D.TROPHIES)
+      assert(t.name.length <= DC.Render.layout.trophies[0].w, t.id + ': the name plate fits its slot');
+  }
+  SCREEN = 'ledger';
+  state.screen = 'ledger';
+  rows = frame(state);
+  assertCentred(rows, 1, D.ROWS - 3, 3);
+  {
+    const L2 = M.ledger(meta);
+    assert(L2.length >= 12, 'the Ledger has at least a dozen lines');
+    for (const r of L2) {
+      const line = rows.filter((l) => l.indexOf(r.label) >= 0)[0];
+      assert(line, 'the Ledger prints ' + r.label);
+      assert(line.indexOf(r.value) > line.indexOf(r.label), '...with its figure to the right');
+      if (r.note) assert(line.indexOf(r.note) > line.indexOf(r.value), '...and its note after the figure, whole: ' + r.note);
+    }
+  }
+
   SCREEN = 'vignette';
   state.screen = 'vignette';
   run.status = 'active';                   // the end screens above ended it
@@ -5012,7 +5041,7 @@ function wideSection(seed) {
   assert(ch.length >= 1 && ch[0].col >= 20,
     'the vignette choices sit under the panel, not out in the dark');
 
-  return D.COLS + 'x' + D.ROWS + ', ' + 12 + ' screens, ' +
+  return D.COLS + 'x' + D.ROWS + ', ' + 14 + ' screens, ' +
     D.MUTATORS.length + ' mutator banners';
 }
 
@@ -5575,6 +5604,557 @@ function tutorialSection(seed) {
     ' on a ' + D.MAP_W + '-wide map, replayable from the title';
 }
 
+
+// =========================================================================
+// SECTION — M-ACHIEVE + M-RIGSKINS: the trophy shelf, the Company Ledger,
+// and the liveries.
+// Three contracts, each pinned where it actually lives:
+//   1. meta: a v1..v4 save loads unchanged (empty shelf, zeroed ledger,
+//      Company Amber); the shelf is shelf-ordered; every trophy rule names a
+//      counter that exists; the Ledger is COMPOSED from those counters.
+//   2. engine: each trophy is earned through the real path — the keydown
+//      handler, the event drain, the award — never by calling awardTrophy
+//      from the test. The Mantle path (awarded twice) adds to the ledger by
+//      delta, not twice.
+//   3. render: a livery recolours chrome ONLY. The run screen is drawn at the
+//      same instant in every livery and the map's cells are compared one by
+//      one; Void — the white-on-black case — must leave every map cell
+//      untouched and must not push a single cell below the readability floor
+//      that Company Amber clears.
+// =========================================================================
+function achieveSection(seed) {
+  SECTION = 'achieve seed=' + seed;
+  require('../js/barks.js');
+  require('../js/events.js');
+  require('../js/fx.js');
+  require('../js/render.js');
+  require('../js/engine.js');
+  const M = DC.Meta, R = DC.Render, B = DC.Barks;
+  assert(Array.isArray(D.TROPHIES) && D.TROPHIES.length >= 12,
+    'data.js declares the shelf (' + D.TROPHIES.length + ' trophies)');
+  assert(Array.isArray(D.LIVERIES) && D.LIVERIES.length === 5, 'data.js declares five liveries');
+  for (const t of D.TROPHIES) {
+    assert(t.id && t.name && t.how && t.grit, t.id + ': id, name, requirement and GRIT line');
+    assert(t.grit.length <= 70, t.id + ": GRIT's inspection line fits the 70-column bar");
+    assert(DC.Art.trophies[t.id], t.id + ' has an object on the shelf (art.js)');
+    for (const ln of DC.Art.trophies[t.id].lines)
+      assertEq(ln.length, DC.Art.TROPHY_W, t.id + ': object rows are TROPHY_W wide');
+    // the voice guardrails (SPEC3 rule 5) — the same lint barks_test runs
+    assert(!/\b(retard|fag|tranny|nigg|spic|kike|chink)/i.test(t.grit), t.id + ': no slurs');
+  }
+
+  // ---- 1. meta ------------------------------------------------------------
+  const cell = {};
+  Object.defineProperty(globalThis, 'localStorage', {
+    value: {
+      getItem: (k) => (Object.prototype.hasOwnProperty.call(cell, k) ? cell[k] : null),
+      setItem: (k, v) => { cell[k] = String(v); },
+    }, configurable: true, writable: true,
+  });
+  assertEq(D.SAVE_KEY, 'deepcore_save_v1', 'SAVE_KEY has not moved');
+  {
+    // a v1 save: no `v`, none of the fields four briefs have added since
+    const v1 = { cores: 7, upgrades: { m_hull: 1 }, bestDepth: 5, wins: 1, runs: 12, totalCores: 30 };
+    cell[D.SAVE_KEY] = JSON.stringify(v1);
+    const p = M.load();
+    assertEq(p.cores, 7, 'a v1 save loads its cores');
+    assertEq(p.runs, 12, '...and its runs');
+    assertEq(p.v, M.SAVE_V, '...stamped at the current version');
+    assertEq(M.trophies(p).length, 0, '...with an empty shelf');
+    assertEq(M.livery(p), 'amber', '...wearing Company Amber');
+    for (const k of M.LIFE_KEYS) assertEq(M.life(p)[k], 0, '...and ledger counter ' + k + ' at zero');
+    // a v4 save (M-ONBOARD shape) — same
+    const v4 = Object.assign({ v: 4, bestSplits: { 1: 90 }, dailyHistory: [], logbook: [3], catFound: true,
+      tutorialSeen: true }, v1);
+    cell[D.SAVE_KEY] = JSON.stringify(v4);
+    const p4 = M.load();
+    assertEq(p4.tutorialSeen, true, 'a v4 save keeps tutorialSeen');
+    assertEq(p4.catFound, true, '...and the cat');
+    assertEq(M.trophies(p4).length, 0, '...and has no trophies yet (they are earned, not inferred)');
+    // a skin the save has not earned is not a skin
+    cell[D.SAVE_KEY] = JSON.stringify(Object.assign({}, v1, { skin: 'void', trophies: ['first_win', 'bogus'] }));
+    const px = M.load();
+    assertEq(M.livery(px), 'amber', 'an unearned livery in the save falls back to amber');
+    assertEq(M.trophies(px).join(','), 'first_win', 'an unknown trophy id is dropped, a real one kept');
+    // gunmetal at 12 runs is earned, and survives the round trip
+    cell[D.SAVE_KEY] = JSON.stringify(Object.assign({}, v1, { skin: 'gunmetal' }));
+    assertEq(M.livery(M.load()), 'gunmetal', 'an earned livery in the save is worn');
+  }
+  {
+    // the shelf keeps shelf order, and an award is new exactly once
+    const p = M.newProfile();
+    assertEq(M.awardTrophy(p, 'sub15'), true, 'FIFTEEN FLAT goes on the shelf');
+    assertEq(M.awardTrophy(p, 'first_win'), true, 'FIRST LIGHT goes on the shelf');
+    assertEq(M.awardTrophy(p, 'first_win'), false, '...once');
+    assertEq(M.awardTrophy(p, 'nope'), false, 'an unknown trophy is refused');
+    assertEq(p.trophies.join(','), 'first_win,sub15', 'the shelf is in shelf order, not award order');
+    const back = M.load();
+    assertEq(back.trophies.join(','), 'first_win,sub15', '...and the save round-trips it');
+  }
+  {
+    // every end-of-run rule, positive and negative, on a bare profile
+    const p = M.newProfile();
+    const won = (facts) => M.checkTrophies(p, facts);
+    let got = won({ won: false, timeSec: 500, depth: 3, repairs: 0, overdrives: 0 });
+    assertEq(got.length, 0, 'a death earns nothing');
+    got = won({ won: true, timeSec: 900, depth: 8, repairs: 1, overdrives: 1 });
+    assertEq(got.join(','), 'first_win', 'a slow, repaired, overdriven win is FIRST LIGHT only (900s is not under 15:00)');
+    got = won({ won: true, timeSec: 899, depth: 8, repairs: 0, overdrives: 0, daily: true, egg: true });
+    assertEq(got.join(','), 'sub15,no_repair,scenic,daily_win,high_score',
+      'FIFTEEN FLAT, PRISTINE, SCENIC ROUTE, HIGH SCORE and RANKED each name their counter');
+    got = won({ won: false, depth: D.TROPHY_DEPTH });
+    assertEq(got.join(','), 'depth12', 'TWELVE DOWN is depth ' + D.TROPHY_DEPTH + ', win or die');
+    p.runs = D.LIVERY_RUNS; p.totalCores = D.SHAREHOLDER_CORES; p.catFound = true;
+    got = won({});
+    assertEq(got.join(','), 'company_man,shareholder,cat', 'STOWAWAY, COMPANY MAN and SHAREHOLDER read the profile');
+    assertEq(M.seeSchematics(p, D.SCHEMATICS.map((x) => x.id).concat(['fake'])), D.SCHEMATICS.length,
+      'every real schematic is seen once; a fake id is not');
+    for (let i = 0; i < DC.Events.LOGS.length; i++) M.recordLog(p, i);
+    got = won({});
+    assertEq(got.join(','), 'schems_all,logbook_full', 'FULL SET and THE WHOLE BOOK');
+    assert(M.allTrophies(p) === false, 'the shelf is not full without the wildlife');
+    M.awardTrophy(p, 'wormfood'); M.awardTrophy(p, 'hard_hats');
+    assert(M.allTrophies(p), 'fourteen on the shelf');
+    assert(M.liveryUnlocked(p, 'gold'), '...and SOLID GOLD unlocks on the full shelf');
+    assertEq(M.trophies(p).length, D.TROPHIES.length, 'the count agrees');
+  }
+  {
+    // the Ledger is composed, never typed
+    const p = M.newProfile();
+    p.runs = 11; p.wins = 2; p.cores = 12; p.totalCores = 1234; p.catFound = true;
+    M.recordDaily(p, { date: '2026-08-20', depth: 8, timeSec: 900, won: true, cores: 18 });
+    M.recordRun(p, { timeSec: 12345, breaches: 40, deaths: 9, abandons: 1, repairs: 12,
+                     overdrives: 3, quakes: 31, delivered: 4821, placed: 610, lures: 2 });
+    const L = M.life(p);
+    assertEq(L.delivered, 4821, 'recordRun adds the delta to the counter');
+    M.recordRun(p, { delivered: 179, bogus: 5, wages: -100 });
+    assertEq(L.delivered, 5000, '...cumulatively');
+    assertEq(L.wages, 0, 'a negative delta is refused; a counter never goes down');
+    assertEq(L.bogus, undefined, 'an unknown counter is not a counter');
+    const rows = M.ledger(p);
+    const find = (lab) => rows.filter((r) => r.label === lab)[0];
+    assertEq(find('TOTAL VALUE EXTRACTED').value, '5,000 units', 'value extracted = items delivered, with thousands');
+    assertEq(find('SHIFTS LOGGED').value, '11', 'shifts = runs');
+    assertEq(find('CONDOLENCE LETTERS SENT').value, '9', 'letters = deaths');
+    assertEq(find('CONDOLENCE LETTERS SENT').note, 'bulk rate', '...bulk rate');
+    assertEq(find('EMPLOYEE COMPENSATION DISBURSED').value, '0.00', 'compensation = the wages counter, which nothing ever adds to');
+    assertEq(find('CORES REMITTED TO HEAD OFFICE').value, '1,234 ◈', 'remitted = totalCores');
+    assertEq(find('STRATA BREACHED').note, M.fmtN(40 * D.DEPTH_M) + ' m of hole', 'metres of hole = breaches x DEPTH_M');
+    assertEq(find('HOURS ON THE CLOCK').value, '3h 25m', '12345s is 3h 25m');
+    assertEq(find('CATS ON PAYROLL').value, '1', 'the cat is on the payroll');
+    assertEq(find('DAILY SHAFTS RANKED').note, '1 concluded', 'a won daily is counted from the history');
+    assert(M.liveryUnlocked(p, 'orange'), 'SAFETY ORANGE: a won ranked daily');
+    assert(M.liveryUnlocked(p, 'gunmetal'), 'GUNMETAL: ten shifts');
+    assert(!M.liveryUnlocked(p, 'void'), 'VOID needs stratum 12');
+    p.bestDepth = D.TROPHY_DEPTH;
+    M.checkTrophies(p, {});
+    assert(M.hasTrophy(p, 'depth12') && M.liveryUnlocked(p, 'void'), '...and has it, through TWELVE DOWN');
+    assertEq(M.setLivery(p, 'gold'), false, 'SOLID GOLD cannot be worn before it is earned');
+    assertEq(M.cycleLivery(p), 'orange', '[S] walks to the next earned livery');
+    assertEq(M.cycleLivery(p), 'gunmetal', '...and the next');
+    assertEq(M.cycleLivery(p), 'void', '...and the next');
+    assertEq(M.cycleLivery(p), 'amber', '...skipping the unearned gold, back to amber');
+  }
+
+  // ---- 2. the real engine ---------------------------------------------------
+  const handlers = {};
+  const ctxStub = {
+    fillStyle: '', font: '', textBaseline: '', textAlign: '',
+    setTransform: function () {}, fillRect: function () {},
+    save: function () {}, restore: function () {}, scale: function () {},
+    fillText: function () {}, measureText: function () { return { width: 10 }; },
+  };
+  const canvasStub = {
+    style: {},
+    getContext: function () { return ctxStub; },
+    addEventListener: function (t, fn) { handlers[t] = fn; },
+    getBoundingClientRect: function () {
+      return { left: 0, top: 0, width: D.COLS * 10, height: D.ROWS * 19 };
+    },
+  };
+  global.window = { addEventListener: function (t, fn) { handlers[t] = fn; } };
+  global.document = { getElementById: function () { return canvasStub; } };
+  global.location = { search: '?seed=' + seed };
+  let rafCb = null;
+  global.requestAnimationFrame = function (fn) { rafCb = fn; };
+  let now = 4e7;
+  function frames(n) {
+    for (let i = 0; i < n; i++) {
+      now += 1000 / HZ;
+      const cb = rafCb;
+      assert(cb, 'rAF loop stays scheduled');
+      rafCb = null;
+      cb(now);
+    }
+  }
+  function key(k) {
+    handlers.keydown({ key: k, shiftKey: false, preventDefault: function () {} });
+  }
+  function paint() { now += 1000 / HZ; R.frame(DC.state, now); }
+  function gridRows() {
+    const out = [];
+    for (let r = 0; r < D.ROWS; r++) {
+      let line = '';
+      for (let c = 0; c < D.COLS; c++) line += (R.cellAt(c, r) || { ch: ' ' }).ch;
+      out.push(line);
+    }
+    return out;
+  }
+  function shown(needle) { return gridRows().some((l) => l.indexOf(needle) >= 0); }
+
+  // a returning player, one shift short of COMPANY MAN, already inducted
+  cell[D.SAVE_KEY] = JSON.stringify({ cores: 3, upgrades: {}, bestDepth: 6, wins: 0,
+    runs: D.LIVERY_RUNS - 1, totalCores: 9, tutorialSeen: true });
+  DC.Engine.start();
+  const st = DC.state;
+  assertEq(st.meta.runs, D.LIVERY_RUNS - 1, 'the engine booted the seeded profile');
+  key('Enter');
+  const run = st.run;
+  assert(run && run.tally, 'a run is running, with the engine-owned tally on it');
+  run.instHold = true;                 // scaffold: no quake mid-experiment
+  for (let y = 0; y < D.MAP_H; y++)
+    for (let x = 0; x < D.MAP_W; x++) run.grid[y][x].revealed = true;
+
+  // --- the player's acts are counted: overdrive and repair ----------------
+  key('c');
+  assert(run.overdrive, "'c' engages overdrive");
+  assertEq(run.tally.overdrives, 1, '...and the tally counts the engagement');
+  key('c');
+  assertEq(run.tally.overdrives, 1, 'disengaging is not an incident');
+  {
+    // an extractor placed through the real keys, damaged, repaired with Enter
+    let spot = null;
+    for (let y = 1; y < D.MAP_H - 1 && !spot; y++)
+      for (let x = 1; x < D.MAP_W - 1 && !spot; x++)
+        if (run.grid[y][x].ore === 'ironOre' && S.canPlace(run, 'extractor', x, y, 1).ok) spot = { x, y };
+    assert(spot, 'an iron vein to build on');
+    st.ui.cursor = { x: spot.x, y: spot.y };
+    key('2'); key('Enter'); key('Escape');
+    const m = run.grid[spot.y][spot.x].machine;
+    assert(m !== null && run.machines[m], 'the extractor is placed at the cursor');
+    run.machines[m].hp = 1;             // scaffold: quake damage
+    run.inv.ironPlate = 10;
+    key('Enter');
+    assertEq(run.machines[m].hp, D.BUILDINGS.extractor.hp, 'Enter on a damaged machine repairs it');
+    assertEq(run.tally.repairs, 1, '...and the repair is invoiced');
+    key('Enter');
+    assertEq(run.tally.repairs, 1, 'a click on a healthy machine is not a repair');
+  }
+
+  // --- the wildlife: WORMFOOD and HARD HATS through the event drain -------
+  // js/worms.js pushes exactly these events ('worm'/'lure' when a lure is
+  // taken whole, 'toad'/'wake' when the Undertoad wakes); wormsSection proves
+  // the real creatures push them, this proves what the engine does with them.
+  assert(/pushEvent\(run, 'worm', \{ act: 'lure' \}\)/.test(require('fs').readFileSync(__dirname + '/../js/worms.js', 'utf8')),
+    "worms.js still names the 'lure taken' event the trophy keys on");
+  run.events.push({ type: 'worm', t: run.t, data: { act: 'bait' } });
+  frames(1);
+  assert(!M.hasTrophy(st.meta, 'wormfood'), 'dropping bait is not feeding the worm');
+  const msgsBefore = run.messages.length;
+  run.events.push({ type: 'worm', t: run.t, data: { act: 'lure' } });
+  frames(1);
+  assert(M.hasTrophy(st.meta, 'wormfood'), 'a lure taken whole is WORMFOOD');
+  assertEq(run.tally.lures, 1, '...and livestock fed');
+  assert(run.messages.slice(msgsBefore).some((mm) => /TROPHY — WORMFOOD/.test(mm.text)),
+    'the LOG says the trophy went on the shelf');
+  assertEq(st.newTrophies.indexOf('wormfood') >= 0, true, 'the run remembers it was new');
+  run.events.push({ type: 'toad', t: run.t, data: { act: 'wake', tiles: 6, rubble: 3 } });
+  frames(1);
+  assert(M.hasTrophy(st.meta, 'hard_hats'), 'waking the Undertoad is HARD HATS');
+  run.events.push({ type: 'quake', t: run.t, data: { dmg: 3 } });
+  run.events.push({ type: 'quake', t: run.t, data: { dmg: 9 } });
+  frames(1);
+  assertEq(run.tally.quakes, 2, 'quakes are counted off the drain, big and small');
+  assertEq(JSON.parse(cell[D.SAVE_KEY]).trophies.indexOf('wormfood') >= 0, true,
+    'a mid-run trophy is on disk the moment it is earned');
+
+  // --- the pick screen: FULL SET counts hands SEEN, not cards taken --------
+  {
+    const seen0 = M.schemsSeen(st.meta).length;
+    run.pendingOffers = ['s_drill', 's_coal', 's_veins'];
+    st.screen = 'descend';
+    st.ui.descendAnim = 9999;
+    key('1');
+    assertEq(st.screen === 'run' || st.screen === 'vignette', true, 'the pick lands on the next floor');
+    assertEq(M.schemsSeen(st.meta).length, seen0 + 3, 'all three dealt cards are seen, one was taken');
+    if (st.screen === 'vignette') { st.screen = 'run'; }
+    run.instHold = true;
+    // deal the rest of the deck, one hand at a time, and the shelf fills
+    const rest = D.SCHEMATICS.map((x) => x.id).filter((id) => M.schemsSeen(st.meta).indexOf(id) < 0);
+    const depthWas = run.depth;
+    while (rest.length) {
+      run.pendingOffers = rest.splice(0, 3);
+      st.screen = 'descend'; st.ui.descendAnim = 9999;
+      key('1');
+      if (st.screen === 'vignette') st.screen = 'run';
+      run.instHold = true;
+    }
+    assert(M.allSchemsSeen(st.meta), 'the whole deck has been dealt');
+    assert(M.hasTrophy(st.meta, 'schems_all'), 'FULL SET is on the shelf');
+    assert(run.depth > depthWas, 'the walk took the run down (stratum ' + run.depth + ')');
+    // ...and on down to stratum 12 — TWELVE DOWN is awarded on arrival, mid-run
+    assert(!M.hasTrophy(st.meta, 'depth12'), 'not yet: stratum ' + run.depth);
+    while (run.depth < D.TROPHY_DEPTH) {
+      run.pendingOffers = ['s_drill', 's_coal', 's_veins'];
+      st.screen = 'descend'; st.ui.descendAnim = 9999;
+      key('1');
+      if (st.screen === 'vignette') st.screen = 'run';
+      run.instHold = true;
+    }
+    assertEq(run.depth, D.TROPHY_DEPTH, 'the run is at stratum ' + D.TROPHY_DEPTH);
+    assert(M.hasTrophy(st.meta, 'depth12'), 'TWELVE DOWN is awarded on arrival, not at the end');
+    assert(M.liveryUnlocked(st.meta, 'void'), 'VOID follows TWELVE DOWN, the moment it lands');
+  }
+
+  // --- the win: awarded once, the ledger by delta, the shelf by fact ------
+  {
+    const t0 = M.life(st.meta).timeSec;
+    run.depth = D.STRATA_COUNT; run.mantle = false; run.mutator = null;
+    S.startStratum(run);
+    run.instHold = true;
+    run.gearsFed = run.breachReq.gear; run.chargesFed = run.breachReq.charge;   // scaffold
+    frames(1);
+    assertEq(run.status, 'breachReady', 'the Core Gate is open');
+    run.totalT = 10 * 60 * HZ;                      // scaffold: a 10:00 run
+    key('d');
+    assertEq(st.screen, 'victory', "'d' at stratum 8 wins");
+    assert(M.hasTrophy(st.meta, 'first_win'), 'FIRST LIGHT');
+    assert(M.hasTrophy(st.meta, 'sub15'), 'FIFTEEN FLAT (10:00)');
+    assert(!M.hasTrophy(st.meta, 'no_repair'), 'not PRISTINE — a repair was invoiced');
+    assert(!M.hasTrophy(st.meta, 'scenic'), 'not SCENIC ROUTE — overdrive was engaged');
+    assert(M.hasTrophy(st.meta, 'company_man'), 'COMPANY MAN — this was the tenth shift');
+    assertEq(st.meta.runs, D.LIVERY_RUNS, '...the run count agrees');
+    assert(M.liveryUnlocked(st.meta, 'gunmetal'), 'GUNMETAL unlocked with it');
+    assert(M.liveryUnlocked(st.meta, 'void'), 'VOID still unlocked after the award');
+    const L = M.life(st.meta);
+    assertEq(L.timeSec - t0, run.result.timeSec, 'the ledger clocked the run once');
+    assertEq(L.repairs, 1, '...one repair');
+    assertEq(L.overdrives, 1, '...one overdrive incident');
+    assertEq(L.quakes, 2, '...two quakes');
+    assertEq(L.lures, 1, '...one worm fed');
+    assertEq(L.breaches, run.breaches, '...the breaches');
+    assertEq(L.deaths, 0, 'no letter home for a win');
+    assert(L.placed >= 1, 'the extractor was erected');
+    // the victory screen wears the news
+    paint();
+    assert(shown('FIRST LIGHT'), 'the victory screen names the new trophies');
+    // into the Mantle, and out: the second award adds only what is new
+    key('c');
+    assertEq(st.screen, 'descend', 'C continues into the Mantle');
+    st.ui.descendAnim = 9999;
+    key('1');
+    if (st.screen === 'vignette') st.screen = 'run';
+    run.instHold = true;
+    const tw = L.timeSec, bw = L.breaches;
+    run.totalT += 120 * HZ;                          // scaffold: two more minutes
+    // ...breach stratum 9 for real, land on 10, and walk away there
+    run.gearsFed = run.breachReq.gear; run.chargesFed = run.breachReq.charge;   // scaffold
+    frames(1);
+    assertEq(run.status, 'breachReady', 'stratum 9 breach ready');
+    key('d');
+    assertEq(st.screen, 'descend', 'the Mantle deals a hand');
+    st.ui.descendAnim = 9999;
+    key('1');
+    if (st.screen === 'vignette') st.screen = 'run';
+    assertEq(run.depth, D.STRATA_COUNT + 2, 'on stratum 10');
+    key(' '); key('a');
+    assertEq(st.screen, 'gameover', 'walking away ends the run');
+    assertEq(L.timeSec - tw, 120, 'the Mantle death adds exactly the new two minutes, not the whole run again');
+    assertEq(L.breaches - bw, 1, '...and the one new breach');
+    assertEq(L.abandons, 1, '...as a resignation, not a letter home');
+    assertEq(L.deaths, 0, '...');
+    assertEq(st.meta.runs, D.LIVERY_RUNS, 'and it is still one shift');
+  }
+
+  // --- the Foundry: [T] [K] [S], through the real keys ------------------
+  key('Enter');
+  assertEq(st.screen, 'title', 'back on the surface');
+  key('f');
+  paint();
+  assert(shown('[T] TROPHIES') && shown('[K] LEDGER') && shown('[S] LIVERY'),
+    'the Foundry floor advertises the shelf, the ledger and the livery');
+  assert(shown('[L] LOGBOOK') && shown('[A-I] FORGE'), '...and lost none of its old keys');
+  assert(shown('LIVERY  COMPANY AMBER'), 'the livery row names the one worn');
+  key('t');
+  assertEq(st.screen, 'trophies', 'T opens the shelf');
+  paint();
+  assert(shown('THE TROPHY SHELF'), 'the shelf has its masthead');
+  assert(!shown('RENDER ERROR'), 'the shelf renders clean');
+  const nT = M.trophies(st.meta).length;
+  assert(shown('ON THE SHELF ' + nT + ' / ' + D.TROPHIES.length), 'the shelf counts itself');
+  for (const id of M.trophies(st.meta))
+    assert(shown(D.TROPHY_BY_ID[id].name), 'an earned trophy is named on the plank: ' + id);
+  assert(shown('? ? ?'), 'an unearned one is a name plate with no name');
+  {
+    // the object is DRAWN, in its own colour; the unearned one is dust
+    const slots = R.layout.trophies;
+    assertEq(slots.length, D.TROPHIES.length, 'every trophy has a slot');
+    const rows = gridRows();
+    const objAt = (sl) => rows.slice(sl.row, sl.row + DC.Art.TROPHY_H).map((l) => l.slice(sl.col, sl.col + sl.w)).join('');
+    const earned = slots.filter((sl) => M.hasTrophy(st.meta, sl.id))[0];
+    const bare = slots.filter((sl) => !M.hasTrophy(st.meta, sl.id))[0];
+    assert(earned && bare, 'one of each to compare');
+    const art = DC.Art.trophy(earned.id).lines.join('').replace(/ /g, '');
+    for (const ch of art) assert(objAt(earned).indexOf(ch) >= 0, earned.id + ': the object is drawn (' + ch + ')');
+    assert(/^[ ·]+$/.test(objAt(bare)), bare.id + ': the unearned object is dust in the shape of the thing');
+    const inkCells = objAt(bare).replace(/ /g, '').length;
+    assertEq(inkCells, DC.Art.trophy(bare.id).lines.join('').replace(/ /g, '').length, '...cell for cell');
+  }
+  // the cursor walks the shelf and GRIT inspects what is there
+  st.ui.trophyCursor = 0;
+  paint();
+  assert(shown('GRIT ▸ ' + D.TROPHIES[0].grit), 'GRIT inspects FIRST LIGHT: ' + D.TROPHIES[0].grit);
+  key('ArrowRight'); key('ArrowRight');
+  assertEq(st.ui.trophyCursor, 2, '→ walks the shelf');
+  paint();
+  assert(shown('THE COMPANY REQUIRES: ' + D.TROPHIES[2].how), 'the Company states the requirement');
+  assert(!shown('GRIT ▸ ' + D.TROPHIES[2].grit), '...and GRIT has nothing to inspect on an empty plank');
+  key('ArrowDown');
+  assertEq(st.ui.trophyCursor, 2 + R.TROPHY_COLS, '↓ drops to the lower plank');
+  key('Escape');
+  assertEq(st.screen, 'foundry', 'ESC returns to the Foundry');
+  key('k');
+  assertEq(st.screen, 'ledger', 'K opens the Ledger');
+  paint();
+  assert(shown('FORM 7-B'), 'the Ledger is a form');
+  assert(shown('[ AUDITED ]'), '...stamped');
+  for (const r of M.ledger(st.meta)) {
+    assert(shown(r.label), 'the Ledger prints ' + r.label);
+    assert(gridRows().some((l) => l.indexOf(r.label) >= 0 && l.indexOf(r.value) > l.indexOf(r.label)),
+      '...with its composed figure on the same line: ' + r.value);
+  }
+  assert(shown('1'), 'a figure on the form');
+  key('Escape');
+  assertEq(st.screen, 'foundry', 'ESC returns to the Foundry');
+  // [S]: only the earned liveries, and the chrome follows on the next frame
+  key('s');
+  assertEq(M.livery(st.meta), 'gunmetal', 'S cycles to the next EARNED livery (orange is not earned: no daily won)');
+  paint();
+  assertEq(R.chrome().id, 'gunmetal', 'the chrome wears it on the very next frame');
+  assert(shown('LIVERY  GUNMETAL'), '...and the row says so');
+  key('s');
+  assertEq(M.livery(st.meta), 'void', '...then VOID');
+  key('s');
+  assertEq(M.livery(st.meta), 'amber', '...then back to amber, skipping the unearned gold');
+  assertEq(JSON.parse(cell[D.SAVE_KEY]).skin, 'amber', 'the livery is in the save');
+
+  // ---- 3. render: chrome only, every livery, and the Void case -------------
+  const meta = M.newProfile();
+  meta.runs = 20; meta.bestDepth = 12; meta.upgrades = { m_stock: 1, m_scan: 1 };
+  meta.dailyHistory = [{ date: '2026-08-20', depth: 8, timeSec: 900, won: true, cores: 18 }];
+  for (const t of D.TROPHIES) M.awardTrophy(meta, t.id);
+  for (const l of D.LIVERIES) assert(M.liveryUnlocked(meta, l.id), 'the render profile has earned ' + l.id);
+  const rr = S.newRun(M.effects(meta), seed + 1);
+  for (let i = 0; i < 200; i++) S.tick(rr);
+  rr.schematics = ['s_extract'];
+  const state = { screen: 'run', meta: meta, run: rr, today: '2026-08-23',
+    ui: { tool: null, facing: 1, cursor: { x: rr.hub.x, y: rr.hub.y } } };
+  const L = R.LAYOUT;
+  // fx.js is taken off the frame for the comparison: its particles step on
+  // every call whatever the clock says, and a dust mote drifting across a
+  // floor cell is not a livery touching the map. Restored at the end.
+  const FX = DC.FX;
+  DC.FX = null;
+  const snap = (lv, screen) => {
+    meta.skin = lv;
+    state.screen = screen || 'run';
+    R.frame(state, 6e7);                       // the SAME instant for every livery
+    assertEq(R.chrome().id, lv, 'frame drawn in ' + lv);
+    const cells = [];
+    for (let r = 0; r < D.ROWS; r++) {
+      const row = [];
+      for (let c = 0; c < D.COLS; c++) row.push(R.cellAt(c, r));
+      cells.push(row);
+    }
+    assert(cells[1].map((c) => c.ch).join('').indexOf('RENDER ERROR') < 0, lv + ': frame threw');
+    return cells;
+  };
+  const amber = snap('amber');
+  const rig = L.runRig;
+  const belowFloor = (cells) => {
+    let n = 0;
+    for (let r = 0; r < D.ROWS; r++) for (let c = 0; c < D.COLS; c++) {
+      const k = cells[r][c];
+      if (!k || k.ch === ' ' || !k.fg) continue;
+      if (R.contrast(k.fg, k.bg || D.COLORS.bg) < R.MIN_CONTRAST) n++;
+    }
+    return n;
+  };
+  const amberBelow = belowFloor(amber);
+  for (const lv of D.LIVERIES) {
+    if (lv.id === 'amber') continue;
+    const before = snap('amber');
+    const cells = snap(lv.id);
+    const after = snap('amber');
+    // 1. the map is untouched: every cell inside the map box, glyph AND
+    //    both colours, is what Company Amber drew. fx.js steps its particles
+    //    on every call whatever the clock says, so the livery frame is
+    //    bracketed by two amber frames and a cell has to match ONE of them:
+    //    a drifting dust mote passes, a recoloured machine never can.
+    const same = (a, b) => a.ch === b.ch && a.fg === b.fg && a.bg === b.bg;
+    for (let y = 0; y < D.MAP_H; y++) for (let x = 0; x < D.MAP_W; x++) {
+      const r = D.MAP_Y + y, c = D.MAP_X + x;
+      const b = cells[r][c];
+      assert(same(before[r][c], b) || same(after[r][c], b),
+        lv.id + ': map cell (' + x + ',' + y + ') changed — ' + JSON.stringify(before[r][c]) +
+        ' vs ' + JSON.stringify(b));
+    }
+    // 2. the chrome did change: the rig portrait is in the livery's amber
+    //    (the ground rows under it are rock texture, not chrome, so the test
+    //    is "the derrick is in the livery and nothing is left in the old amber")
+    let rigCells = 0, rigInLivery = 0, rigInOld = 0;
+    for (let r = rig.y; r < rig.y + rig.h; r++) for (let c = rig.x; c < rig.x + rig.w; c++) {
+      const k = cells[r][c];
+      if (!k || k.ch === ' ') continue;
+      rigCells++;
+      if (k.fg === lv.chrome.amber) rigInLivery++;
+      if (k.fg === D.COLORS.amber) rigInOld++;
+    }
+    assert(rigCells > 20 && rigInLivery >= 40 && rigInOld === 0,
+      lv.id + ': the in-run rig portrait wears the livery (' + rigInLivery + '/' + rigCells +
+      ' in livery, ' + rigInOld + ' still Company Amber)');
+    assertEq(cells[1][L.sb].fg, lv.chrome.dim, lv.id + ': the panel frame wears the livery');
+    // 3. and nothing got harder to read than it was in amber
+    const below = belowFloor(cells);
+    assert(below <= amberBelow,
+      lv.id + ': ' + below + ' cells under the readability floor vs ' + amberBelow + ' in amber');
+    // 4. every chrome cell clears the TEXT floor outright
+    for (let r = 0; r < D.ROWS; r++) for (let c = 0; c < D.COLS; c++) {
+      const k = cells[r][c];
+      if (!k || k.ch === ' ' || (k.fg !== lv.chrome.amber && k.fg !== lv.chrome.hi)) continue;
+      assert(R.contrast(k.fg, k.bg || D.COLORS.bg) >= R.MIN_CONTRAST,
+        lv.id + ': chrome cell (' + c + ',' + r + ') "' + k.ch + '" is below the text floor');
+    }
+    // the other screens the chrome touches draw clean in it too
+    for (const scr of ['title', 'foundry', 'trophies', 'ledger']) snap(lv.id, scr);
+  }
+  // Void, specifically: white-on-black, and the map's inks are still there
+  {
+    const v = snap('void');
+    assertEq(D.LIVERY_BY_ID.void.chrome.amber, D.COLORS.white, 'VOID chrome is white');
+    let seen = {};
+    for (let y = 0; y < D.MAP_H; y++) for (let x = 0; x < D.MAP_W; x++) {
+      const k = v[D.MAP_Y + y][D.MAP_X + x];
+      if (k && k.ch !== ' ') seen[k.fg] = true;
+    }
+    assert(Object.keys(seen).length >= 3, 'the Void map still has at least three inks on it (' + Object.keys(seen).length + ')');
+    const a2 = snap('amber');
+    let whiteA = 0, whiteV = 0;
+    for (let y = 0; y < D.MAP_H; y++) for (let x = 0; x < D.MAP_W; x++) {
+      if (a2[D.MAP_Y + y][D.MAP_X + x].fg === D.COLORS.white) whiteA++;
+      if (v[D.MAP_Y + y][D.MAP_X + x].fg === D.COLORS.white) whiteV++;
+    }
+    assert(Math.abs(whiteV - whiteA) <= 2, 'no map cell turned white that was not white in amber (' + whiteV + ' vs ' + whiteA + ')');
+  }
+  meta.skin = 'amber';
+  DC.FX = FX;
+
+  delete globalThis.localStorage;
+  delete global.window;
+  return D.TROPHIES.length + ' trophies through the engine, ledger composed, ' +
+    D.LIVERIES.length + ' liveries, map untouched under Void';
+}
+
 // -------------------------------------------------------------------- main
 const SEED = process.env.DC_SEED ? (parseInt(process.env.DC_SEED, 10) | 0) : 1337;
 try {
@@ -5606,6 +6186,9 @@ try {
   // Undertoad and leaves js/fx.js's particle list full of falling dust, and
   // wideSection's law-8 check compares two frames pixel for pixel.
   const worms = wormsSection(SEED + 57);
+  // M-ACHIEVE + M-RIGSKINS: boots the engine a third time on a seeded save.
+  // Before tutorialSection for the reason that one is last.
+  const achieve = achieveSection(SEED + 67);
   // Last: it boots the real engine a second time and leaves DC.state pointed at
   // its own run, so anything that ran after it would inherit a tutorial.
   const onboard = tutorialSection(SEED + 61);
@@ -5624,6 +6207,7 @@ try {
       ' | worms: ' + worms +
       ' | wide ' + wide +
       ' | onboard ' + onboard +
+      ' | achieve ' + achieve +
       ' | cadence 16/12/10 | overdrive x2 | damper ok | charge+bronze ok | mantle ok' +
       ' | engine+barks ok | ' + (Date.now() - t0) + 'ms');
     process.exit(0);

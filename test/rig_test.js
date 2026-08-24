@@ -29,6 +29,25 @@ for (let i = 0; i < A.rigBase.length; i++) {
     'rigBase row ' + i + ' must be ' + RW + ' wide (got ' + A.rigBase[i].length + ')');
 }
 
+// ------------------------------------------ M-ACHIEVE: one object per trophy
+assert(A.trophies && typeof A.trophies === 'object', 'trophies must exist');
+assert(Array.isArray(D.TROPHIES) && D.TROPHIES.length >= 12, 'data.js declares the shelf');
+for (const t of D.TROPHIES) {
+  const o = A.trophies[t.id];
+  assert(o && Array.isArray(o.lines), 'trophies missing an object for ' + t.id);
+  assert(o.lines.length === A.TROPHY_H, t.id + ' object must be ' + A.TROPHY_H + ' tall');
+  for (const ln of o.lines) {
+    assert(typeof ln === 'string' && ln.length === A.TROPHY_W,
+      t.id + ' object rows must be ' + A.TROPHY_W + ' wide (got ' + ln.length + ')');
+  }
+  assert(o.lines.join('').trim().length > 0, t.id + ' object must have ink');
+  assert(D.COLORS[o.color], t.id + ' object colour must be a palette key (' + o.color + ')');
+}
+for (const id in A.trophies) {
+  assert(D.TROPHY_BY_ID[id], 'trophies has an object for an unknown trophy ' + id);
+}
+assert(A.trophy('nope').lines.length === A.TROPHY_H, 'an unknown trophy gets a placeholder object');
+
 // ------------------------------------------- rigParts: one per meta upgrade
 assert(A.rigParts && typeof A.rigParts === 'object', 'rigParts must exist');
 const metaIds = D.META_UPGRADES.map(function (u) { return u.id; });

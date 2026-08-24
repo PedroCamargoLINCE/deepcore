@@ -28,11 +28,16 @@
   // id is held here and retried until GRIT actually says something about it.
   let mutPending = null;
   let helpFrom = 'title';    // screen to return to from help
+  const TROPHY_COLS = 7;     // M-ACHIEVE: objects per shelf (render agrees)
   let recapFrom = 'gameover';// screen to return to from the recap card
   let gesture = {};          // "x,y" -> true: belts placed in the current drag/lay gesture
   let pauseAt = 0;           // rAF timestamp the current pause began (0 = running)
   let smoked = false;        // GRIT already took his smoke break on this pause
   let eggBuf = '';           // EGG-420: the last few digits typed, in order
+  // M-ACHIEVE: what of this run has already been added to the lifetime
+  // ledger. The Mantle path awards twice (victory, then the Mantle death),
+  // so recordRun hands meta the DELTA since this snapshot rather than the run.
+  let tallied = null;
   let eggKeyAt = 0;          // rAF-clock stamp of the last digit (buffer decay)
 
   // ---------------- startup ----------------
@@ -207,7 +212,10 @@
     for (let i = 0; i < evs.length; i++) {
       const ev = evs[i];
       if (!ev) continue;
-      if (ev.type === 'quake' && ev.data && ev.data.dmg >= 8) bark('bigQuake', ev.data);
+      if (ev.type === 'quake') {
+        if (run.tally) run.tally.quakes++;
+        if (ev.data && ev.data.dmg >= 8) bark('bigQuake', ev.data);
+      }
       else if (ev.type === 'magma') bark('magmaSpread');
       else if (ev.type === 'depleted') bark('veinDepleted');
       // M-SCHEMS2/Deep Insurance: the rig just refused to die. GRIT's heart
@@ -230,14 +238,23 @@
         bark(ev.data.act === 'flee' ? 'catFlee' : 'cat');
       // M-WORMS: the wildlife. 'eat' is the one that matters — a vein going
       // down without an extractor on it is news the player cannot see.
-      else if (ev.type === 'worm' && ev.data)
+      else if (ev.type === 'worm' && ev.data) {
         bark(ev.data.act === 'eat' ? 'worm'
            : ev.data.act === 'lure' ? 'lureTaken' : 'lure');
+        // M-ACHIEVE: WORMFOOD is "a lure a worm actually ate" — the 'lure'
+        // act is pushed by js/worms.js only when the coal is taken, so this
+        // is the one event that names it.
+        if (ev.data.act === 'lure') {
+          if (run.tally) run.tally.lures++;
+          trophy(run, 'wormfood');
+        }
+      }
       // ...and the Undertoad, which is a PRIORITY line and a flash: the
       // player caused this on the tick they caused it, and nothing on the bar
       // outranks being told so.
       else if (ev.type === 'toad' && ev.data) {
         bark('undertoad');
+        trophy(run, 'hard_hats');
         if (DC.state && DC.state.ui) {
           DC.state.ui.flash = {
             text: '!! YOU WOKE IT — HARD HATS !!',
@@ -388,6 +405,14 @@
     st.run.daily = daily;
     st.run.splits = [];
     st.run.startedAt = Date.now();
+    // M-ACHIEVE: engine-owned counters for the shelf and the Ledger. The sim
+    // knows nothing about them; they count the PLAYER'S acts (a repair the
+    // Repair Swarm does is not a repair invoiced to the operator) plus the
+    // quakes drained off run.events. Everything the Ledger prints that is not
+    // already on the run comes from here.
+    st.run.tally = { repairs: 0, overdrives: 0, quakes: 0, lures: 0 };
+    tallied = null;
+    st.newTrophies = [];
     // M-EVENTS: once she has been found, the cat comes on every run. Quietly
     // — she is only news the first time — and only ever as decoration plus
     // the quake tell, so a profile with a cat in it is not a profile with an
@@ -459,6 +484,7 @@
       DC.Meta.award(st.meta, res);
       awarded = true;
       awardedCores = res.cores || 0;
+      recordRun(st);
     } else {
       // Already banked at victory; a Mantle death only credits the new breaches.
       const delta = (res.cores || 0) - awardedCores;
@@ -469,6 +495,7 @@
       }
       if (res.depth > st.meta.bestDepth) st.meta.bestDepth = res.depth;
       DC.Meta.save(st.meta);
+      recordRun(st);
     }
   }
 
@@ -514,19 +541,76 @@
     st.ui.copied = 'NO CLIPBOARD HERE — SELECT IT BY HAND';
   }
 
-  // EGG-420's trophy (SPEC3 M-ACHIEVE: "High Score" — win a run that included
-  // the window). M-ACHIEVE may not exist in this tree, so the hook is a hard
-  // no-op unless meta.js grew an award function; the run still records
-  // run.eggSeen either way, which is all a later dispatch needs.
-  function eggTrophy(st) {
-    const M = DC.Meta;
-    if (!st.run || !st.run.eggSeen || !M || typeof M.awardTrophy !== 'function') return;
-    try { M.awardTrophy(st.meta, 'high_score'); } catch (e) {}
+  // M-ACHIEVE: a trophy earned MID-RUN (the cat, the worm, the toad, twelve
+  // down). Filed the instant it happens, like a foreman's log — a rig that
+  // dies on the next tick keeps it — and said in the LOG in the Core's gold,
+  // because the flash bar is usually busy with the thing that earned it.
+  function trophy(run, id) {
+    const st = DC.state, M = DC.Meta;
+    if (!st || !M || typeof M.awardTrophy !== 'function') return false;
+    let fresh = false;
+    try { fresh = M.awardTrophy(st.meta, id); } catch (e) { return false; }
+    if (!fresh) return false;
+    const def = (D.TROPHY_BY_ID || {})[id];
+    if (run && def && DC.Sim.msg) {
+      DC.Sim.msg(run, '◈ TROPHY — ' + def.name + '. It goes on the shelf.', D.COLORS.gold);
+    }
+    if (Array.isArray(st.newTrophies)) st.newTrophies.push(id);
+    return true;
+  }
+
+  // The lifetime ledger and the end-of-run trophies. Idempotent by DELTA:
+  // `tallied` remembers what this run has already contributed, so the Mantle
+  // path (victory, then death) adds only the strata, time and items that are
+  // new. One-shot facts (the shift itself, the letter home) go in once.
+  function runFacts(run) {
+    const t = run.tally || {};
+    const placed = (run.stats && run.stats.placed) || {};
+    let built = 0;
+    for (const k in placed) built += placed[k] || 0;
+    return {
+      timeSec: run.result ? run.result.timeSec : Math.round(run.totalT / D.TICK_HZ),
+      breaches: run.breaches || 0,
+      delivered: (run.stats && run.stats.delivered) || 0,
+      placed: built,
+      repairs: t.repairs || 0, overdrives: t.overdrives || 0,
+      quakes: t.quakes || 0, lures: t.lures || 0,
+    };
+  }
+  function recordRun(st) {
+    const run = st.run, M = DC.Meta;
+    if (!run || !run.result || !M || typeof M.recordRun !== 'function') return;
+    const now = runFacts(run);
+    const was = tallied || {};
+    const delta = {};
+    for (const k in now) delta[k] = now[k] - (was[k] || 0);
+    if (!tallied) {
+      const dead = run.status === 'dead';
+      const abandoned = dead && run.integrity > 0;
+      delta.deaths = dead && !abandoned ? 1 : 0;
+      delta.abandons = abandoned ? 1 : 0;
+    } else if (run.status === 'dead') {
+      // a Mantle death after a banked victory is still a letter home
+      delta.deaths = run.integrity > 0 ? 0 : 1;
+      delta.abandons = run.integrity > 0 ? 1 : 0;
+    }
+    tallied = now;
+    try { M.recordRun(st.meta, delta); } catch (e) { /* meta stays optional */ }
+    let fresh = [];
+    try {
+      fresh = M.checkTrophies(st.meta, {
+        won: !!run.result.won, timeSec: run.result.timeSec, depth: run.result.depth,
+        repairs: now.repairs, overdrives: now.overdrives,
+        daily: !!(run.daily && !run.daily.practice),
+        egg: !!run.eggSeen,
+      }) || [];
+    } catch (e) { fresh = []; }
+    if (!Array.isArray(st.newTrophies)) st.newTrophies = [];
+    for (let i = 0; i < fresh.length; i++) st.newTrophies.push(fresh[i]);
   }
 
   function handleWon(st) {
     awardRun(st);
-    eggTrophy(st);
     bark('victory');
     st.screen = 'victory';
   }
@@ -561,8 +645,17 @@
     if (!offers || i < 0 || i >= offers.length) return;
     if (st.ui.descendAnim < animLen()) return; // wait out the descent animation
     const id = offers[i];
+    // M-ACHIEVE: the hand was SEEN — every card on it, taken or not. FULL SET
+    // is "all schematics seen dealt", which is this moment and no other.
+    if (DC.Meta.seeSchematics) {
+      try {
+        DC.Meta.seeSchematics(st.meta, offers);
+        if (DC.Meta.allSchemsSeen(st.meta)) trophy(run, 'schems_all');
+      } catch (e) { /* meta stays optional */ }
+    }
     DC.Sim.applySchematic(run, id);
     bark('schematicPick', id);
+    if (run.depth >= D.TROPHY_DEPTH) trophy(run, 'depth12');
     breachFlashed = false;
     lmPending = null;   // the last floor's wonder is behind us (M-WONDERS)
     mutPending = null;  // ...and its rule (M-MANTLE); the new one re-announces
@@ -597,6 +690,7 @@
       bark('vignette', ev.id + ':' + i);
       if (chosen.fx && chosen.fx.cat && DC.Meta && DC.Meta.findCat) {
         try { DC.Meta.findCat(st.meta); } catch (e) { /* meta stays optional */ }
+        trophy(run, 'cat');
       }
     }
     st.ui.hoverChoice = -1;
@@ -683,6 +777,19 @@
         // M-EVENTS: the logbook. It hangs off the Foundry because that is the
         // one screen between runs where you are already reading your record.
         else if (lk === 'l') st.screen = 'logbook';
+        // M-ACHIEVE: the shelf and the Ledger hang off the same floor.
+        else if (lk === 't') { st.screen = 'trophies'; st.ui.trophyCursor = 0; }
+        else if (lk === 'k') st.screen = 'ledger';
+        // M-RIGSKINS: [S] cycles through the liveries this profile has earned.
+        else if (lk === 's') {
+          if (DC.Meta.cycleLivery) DC.Meta.cycleLivery(st.meta);
+          // GRIT has one opinion about liveries, and it is about the gold one.
+          const lv = (D.LIVERY_BY_ID || {})[DC.Meta.livery ? DC.Meta.livery(st.meta) : ''];
+          if (lv && lv.grit) {
+            if (!st.foundryBark) st.foundryBark = { ctx: foundryCtx(), line: null };
+            st.foundryBark.line = lv.grit;
+          }
+        }
         else {
           const i = 'abcdefghi'.indexOf(lk);
           if (i >= 0 && i < D.META_UPGRADES.length) {
@@ -713,6 +820,23 @@
       // way out of it goes back to the floor you opened it from.
       case 'logbook':
         if (k === 'Escape' || k === 'Enter' || lk === 'l') st.screen = 'foundry';
+        else handled = false;
+        break;
+      // M-ACHIEVE: the shelf is a reading screen with a cursor — ←/→ walk the
+      // objects so GRIT can inspect each one; every way out is the Foundry.
+      case 'trophies': {
+        const n = (D.TROPHIES || []).length;
+        const cur = st.ui.trophyCursor | 0;
+        if (k === 'Escape' || k === 'Enter' || lk === 't') st.screen = 'foundry';
+        else if (k === 'ArrowRight' && n) st.ui.trophyCursor = (cur + 1) % n;
+        else if (k === 'ArrowLeft' && n) st.ui.trophyCursor = (cur + n - 1) % n;
+        else if (k === 'ArrowDown' && n) st.ui.trophyCursor = Math.min(n - 1, cur + TROPHY_COLS);
+        else if (k === 'ArrowUp' && n) st.ui.trophyCursor = Math.max(0, cur - TROPHY_COLS);
+        else handled = false;
+        break;
+      }
+      case 'ledger':
+        if (k === 'Escape' || k === 'Enter' || lk === 'k') st.screen = 'foundry';
         else handled = false;
         break;
       case 'help':
@@ -817,6 +941,7 @@
       case 'r': ui.facing = (ui.facing + 1) % 4; return true;
       case 'c':
         DC.Sim.toggleOverdrive(run);
+        if (run.overdrive && run.tally) run.tally.overdrives++;
         bark(run.overdrive ? 'overdriveOn' : 'overdriveOff');
         return true;
       case 'd': tryDescend(st); return true;
@@ -903,9 +1028,15 @@
   }
 
   function doClickTile(st, x, y) {
+    const odWas = !!st.run.overdrive;
     const r = DC.Sim.clickTile(st.run, x, y);
     if (r && r.handled && r.msg) DC.Sim.msg(st.run, r.msg, D.COLORS.amber);
-    if (r && r.handled && r.kind === 'repair') bark('repair');
+    if (r && r.handled && r.kind === 'repair') {
+      if (st.run.tally) st.run.tally.repairs++;
+      bark('repair');
+    }
+    // the hub tile toggles overdrive through the sim; count it the same way
+    if (!odWas && st.run.overdrive && st.run.tally) st.run.tally.overdrives++;
   }
 
   // ---------------- belt gesture (mouse drag & keyboard lay-mode) ----------------

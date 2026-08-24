@@ -731,6 +731,85 @@
     richMult: 1,        // crystal per tunnel tile, x the stratum's mid richness
   };
 
+  // ---------------- M-ACHIEVE: the trophy shelf ----------------
+  // Every trophy is a REAL event that exists today (see docs/prompts); the
+  // engine awards them through DC.Meta.awardTrophy, and the shelf in the
+  // Foundry draws each one as an object (§0 law 5: reward = picture changes).
+  // `how` is the Company's requirement, `grit` is the foreman's inspection
+  // line once it is on the shelf. Order here is shelf order.
+  D.TROPHIES = [
+    { id: 'first_win',    name: 'FIRST LIGHT',
+      how:  'Reach the Core.',
+      grit: "You broke through. The Company will bill you for the hole." },
+    { id: 'sub15',        name: 'FIFTEEN FLAT',
+      how:  'Reach the Core in under 15:00.',
+      grit: "Under fifteen. I hadn't finished my smoke." },
+    { id: 'no_repair',    name: 'PRISTINE',
+      how:  'Reach the Core without repairing a single machine.',
+      grit: "Never touched the wrench. Good, or lucky. Same paycheck." },
+    { id: 'scenic',       name: 'SCENIC ROUTE',
+      how:  'Reach the Core without ever engaging overdrive.',
+      grit: "No overdrive, the whole way down. My ears thank you." },
+    { id: 'depth12',      name: 'TWELVE DOWN',
+      how:  'Reach stratum 12 in the Mantle.',
+      grit: "Twelve. There's no map for twelve. There's barely a word." },
+    { id: 'cat',          name: 'STOWAWAY',
+      how:  'Find the cat.',
+      grit: "She outranks you. Don't argue, she's asleep on the manifest." },
+    { id: 'schems_all',   name: 'FULL SET',
+      how:  'See every schematic in the deck dealt.',
+      grit: "Every blueprint in the deck. You could open a shop. Down here." },
+    { id: 'wormfood',     name: 'WORMFOOD',
+      how:  'Bait a lure that a vein worm actually takes.',
+      grit: "Fed the damn worm. Now it knows your name." },
+    { id: 'hard_hats',    name: 'HARD HATS',
+      how:  'Wake the Undertoad.',
+      grit: "I said hard hats. I meant coffins." },
+    { id: 'high_score',   name: 'HIGH SCORE',
+      how:  'Reach the Core after the Botanical Incident.',
+      grit: "High score. Every sense of it. Not writing that on the form." },
+    { id: 'company_man',  name: 'COMPANY MAN',
+      how:  'Clock ten shifts.',
+      grit: "Ten shifts. You get a pin. Nobody's going to hand it to you." },
+    { id: 'daily_win',    name: 'RANKED',
+      how:  'Reach the Core on a ranked Daily Shaft.',
+      grit: "Same hole as everybody else, and you got out of it." },
+    { id: 'logbook_full', name: 'THE WHOLE BOOK',
+      how:  "Recover every dead foreman's log.",
+      grit: "Twenty dead foremen, cover to cover. Learn anything? Me neither." },
+    { id: 'shareholder',  name: 'SHAREHOLDER',
+      how:  'Bank 100 cores over your career.',
+      grit: "A hundred cores. The Company got the cores. You got a shelf." },
+  ];
+  D.TROPHY_BY_ID = {};
+  for (let i = 0; i < D.TROPHIES.length; i++) D.TROPHY_BY_ID[D.TROPHIES[i].id] = D.TROPHIES[i];
+  D.SUB15_SEC = 15 * 60;         // FIFTEEN FLAT: strictly under this
+  D.TROPHY_DEPTH = 12;           // TWELVE DOWN (and the Void livery)
+  D.SHAREHOLDER_CORES = 100;     // lifetime cores for SHAREHOLDER
+
+  // ---------------- M-RIGSKINS: liveries ----------------
+  // Chrome colours only: the rig portrait, panel frames, gauges and title
+  // art. render.js reads `chrome` for exactly those and NOTHING on the map —
+  // machines, veins, belts, worms and hazards keep their colours on every
+  // skin (§0 law 6). `dim` is the frame colour; `hi` is the accent the title
+  // sweep ends on. `unlock` names the rule; DC.Meta.liveryUnlocked checks it.
+  D.LIVERIES = [
+    { id: 'amber',    name: 'COMPANY AMBER',  unlock: 'issued',
+      chrome: { amber: D.COLORS.amber, dim: D.COLORS.amberDim, hi: D.COLORS.orange, ember: '#ff7a45' } },
+    { id: 'orange',   name: 'SAFETY ORANGE',  unlock: 'win a ranked Daily Shaft',
+      chrome: { amber: '#ff9a3c', dim: '#7a4a1e', hi: '#ffd23d', ember: '#e05545' } },
+    { id: 'gunmetal', name: 'GUNMETAL',       unlock: 'clock ten shifts',
+      chrome: { amber: '#b8c0cc', dim: '#525a66', hi: '#e8e6df', ember: '#7aa5e0' } },
+    { id: 'void',     name: 'VOID',           unlock: 'reach stratum 12',
+      chrome: { amber: '#e8e6df', dim: '#8a877c', hi: '#ffffff', ember: '#c8c6bf' } },
+    { id: 'gold',     name: 'SOLID GOLD',     unlock: 'fill the trophy shelf',
+      chrome: { amber: '#ffe9a8', dim: '#8a7a3c', hi: '#ffd23d', ember: '#ffb347' },
+      grit: 'Tacky. I love her.' },
+  ];
+  D.LIVERY_BY_ID = {};
+  for (let i = 0; i < D.LIVERIES.length; i++) D.LIVERY_BY_ID[D.LIVERIES[i].id] = D.LIVERIES[i];
+  D.LIVERY_RUNS = 10;            // GUNMETAL
+
   D.SAVE_KEY = 'deepcore_save_v1';
   // Display only (title-screen corner). v1.1 is the shipped feature set —
   // GRIT, the rig portrait, keyboard play — plus this polish round. The save
