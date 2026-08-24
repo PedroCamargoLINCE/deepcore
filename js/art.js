@@ -643,15 +643,16 @@
         ['D',     'descend when BREACH READY'],
         ['SPACE', 'pause the run'],
         ['H',     'this manual'],
+        ['M',     'mute the rig (any screen)'],
         ['ESC',   'drop tool · then pause'],
       ];
       for (let i = 0; i < keys.length; i++) {
         p.capR(CB + CAPF, 5 + i, keys[i][0]);
         p.put(CB + CAPF + 2, 5 + i, keys[i][1], 'body');
       }
-      p.put(CB, 15, 'ENTER on the rig: overdrive', 'body');
-      p.put(CB, 16, 'ENTER on an assembler: recipe', 'body');
-      p.put(CB, 17, 'mouse: hover moves · drag lays', 'body');
+      p.put(CB, 16, 'ENTER on the rig: overdrive', 'body');
+      p.put(CB, 17, 'ENTER on an assembler: recipe', 'body');
+      p.put(CB, 18, 'mouse: hover moves · drag lays', 'body');
 
       // --- THE LINE: the centrepiece. Ore falls down the page into the rig.
       p.head(CA, 19, W - CA - 1, 'THE LINE');

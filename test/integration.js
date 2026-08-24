@@ -6155,6 +6155,299 @@ function achieveSection(seed) {
     D.LIVERIES.length + ' liveries, map untouched under Void';
 }
 
+// =========================================================================
+// M-SOUND — js/audio.js: procedural audio, output only.
+// Boots the real engine with a recording WebAudio stub on `window` and drives
+// every sound's trigger through the public handlers. Proves: the module is
+// silent before the first gesture, every play() name maps to a real event
+// fired in a driven run, the craftDone throttle holds, M mutes and the mute
+// persists through Meta.save/load, master sits at -12 dB behind one
+// compressor — and that the SAME driven script leaves the run byte-for-byte
+// identical with DC.Audio deleted, which is the whole "output only" contract.
+// Runs LAST: it boots the engine and, like the sections before it, leaves
+// DC.state pointed at its own run.
+// =========================================================================
+function audioSection(seed) {
+  SECTION = 'audio seed=' + seed;
+  require('../js/barks.js');
+  require('../js/events.js');
+  require('../js/worms.js');
+  require('../js/fx.js');
+  require('../js/render.js');
+  require('../js/engine.js');
+  require('../js/audio.js');
+  const A = DC.Audio;
+  assert(A && typeof A.play === 'function' && typeof A.init === 'function' &&
+         typeof A.setMuted === 'function', 'DC.Audio registers init/play/setMuted');
+  assert(!A.ready(), 'no context before any gesture (and none in bare node)');
+
+  // ---- a recording WebAudio stub ------------------------------------------
+  const made = { osc: 0, noise: 0, comp: 0 };
+  function param(v) {
+    const p = { value: v, targets: [] };
+    p.setValueAtTime = function (x) { p.value = x; return p; };
+    p.linearRampToValueAtTime = function (x) { p.value = x; return p; };
+    p.exponentialRampToValueAtTime = function (x) { p.value = x; return p; };
+    p.setTargetAtTime = function (x) { p.value = x; p.targets.push(x); return p; };
+    p.cancelScheduledValues = function () { return p; };
+    return p;
+  }
+  function node(kind) {
+    return { kind: kind, outs: [], connect: function (n) { this.outs.push(n); return n; },
+             start: function () {}, stop: function () {} };
+  }
+  function FakeCtx() {
+    this.state = 'suspended'; this.currentTime = 0; this.sampleRate = 8000;
+    this.destination = node('destination');
+    this.resumed = 0;
+  }
+  FakeCtx.prototype.resume = function () { this.state = 'running'; this.resumed++; };
+  FakeCtx.prototype.createOscillator = function () {
+    made.osc++; const n = node('osc'); n.type = 'sine'; n.frequency = param(440); return n;
+  };
+  FakeCtx.prototype.createGain = function () { const n = node('gain'); n.gain = param(1); return n; };
+  FakeCtx.prototype.createBiquadFilter = function () {
+    const n = node('filter'); n.type = 'lowpass'; n.frequency = param(350); n.Q = param(1); return n;
+  };
+  FakeCtx.prototype.createBufferSource = function () { made.noise++; const n = node('noise'); return n; };
+  FakeCtx.prototype.createBuffer = function (ch, len) {
+    const d = new Float32Array(len);
+    return { getChannelData: function () { return d; }, length: len };
+  };
+  FakeCtx.prototype.createDynamicsCompressor = function () {
+    made.comp++; const n = node('comp');
+    n.threshold = param(-24); n.knee = param(30); n.ratio = param(12);
+    n.attack = param(0.003); n.release = param(0.25);
+    return n;
+  };
+
+  const handlers = {};
+  const ctxStub = {
+    fillStyle: '', font: '', textBaseline: '', textAlign: '',
+    setTransform: function () {}, fillRect: function () {},
+    save: function () {}, restore: function () {}, scale: function () {},
+    fillText: function () {}, measureText: function () { return { width: 10 }; },
+  };
+  const canvasStub = {
+    style: {}, getContext: function () { return ctxStub; },
+    addEventListener: function (t, fn) { handlers[t] = fn; },
+    getBoundingClientRect: function () {
+      return { left: 0, top: 0, width: D.COLS * 10, height: D.ROWS * 19 };
+    },
+  };
+  const cell = {};
+  global.localStorage = {
+    getItem: (k) => (k in cell ? cell[k] : null),
+    setItem: (k, v) => { cell[k] = String(v); },
+  };
+  // a profile that has seen the induction: the run below must be an ordinary one
+  cell[D.SAVE_KEY] = JSON.stringify({ tutorialSeen: true, runs: 1 });
+  global.window = { addEventListener: function (t, fn) { handlers[t] = fn; },
+                    AudioContext: FakeCtx };
+  global.document = { getElementById: function () { return canvasStub; } };
+  global.location = { search: '?seed=' + seed };
+  let rafCb = null;
+  global.requestAnimationFrame = function (fn) { rafCb = fn; };
+  let now = 5e7;
+  A.clock = function () { return now; };          // the throttle reads this clock
+  const peak = {};                                // continuous voices: max level seen
+  function frames(n) {
+    for (let i = 0; i < n; i++) {
+      now += 1000 / HZ;
+      const cb = rafCb;
+      assert(cb, 'rAF loop stays scheduled');
+      rafCb = null;
+      cb(now);
+      for (const k in A.levels) peak[k] = Math.max(peak[k] || 0, A.levels[k]);
+    }
+  }
+  function key(k) {
+    handlers.keydown({ key: k, shiftKey: false, preventDefault: function () {} });
+  }
+  function mouseAt(tx, ty, type) {
+    const ev = { clientX: (D.MAP_X + tx) * 10 + 5, clientY: (D.MAP_Y + ty) * 19 + 9 };
+    handlers.mousemove(ev);
+    if (type) handlers[type](ev);
+  }
+  function fired(name) { return (A.counts[name] || 0); }
+
+  // The driven script, shared by the with-audio and without-audio passes.
+  // Everything a sound hangs off: place, lay, demolish, craft, quake,
+  // collapse, worms, the Core, the bell, the cat, breach.
+  function drive(st) {
+    key('Enter');
+    const run = st.run;
+    assert(run, 'Enter starts a run');
+    const hx = run.hub.x, hy = run.hub.y;
+    frames(2);
+    key('3');
+    for (let i = 0; i < 3; i++) key('ArrowLeft');
+    for (let i = 0; i < 3; i++) key('ArrowUp');
+    key('Enter');                                      // smelter at (hx-2, hy-2)
+    key('1');
+    for (let i = 0; i < 6; i++) key('ArrowDown');
+    key('Enter');                                      // arm lay-mode
+    for (let i = 0; i < 3; i++) key('ArrowRight');
+    key('Escape');
+    key('x');
+    mouseAt(hx - 1, hy + 4, 'mousedown');              // demolish a belt with the mouse
+    handlers.mouseup();
+    key('Escape');
+    // a smelter mid-smelt, kept lit: the press lands on its own schedule
+    const smT = run.grid[hy - 2][hx - 2];
+    const sm = run.machines[smT.machine];
+    assert(sm && sm.type === 'smelter', 'the smelter stands');
+    for (let i = 0; i < D.RECIPES.smeltIron.ticks * 3 + 6; i++) {
+      sm.input.ironOre = 6; sm.fuel = 9;
+      frames(1);
+      sm.out.length = 0;                               // scaffold: an unseen belt takes the plate
+    }
+    // feed the drill so the churn has something to report, then overdrive it
+    run.inv.gear = 40;
+    frames(3 * HZ);
+    key('c');
+    frames(HZ);
+    key('c');
+    // the cat, perched on the lit smelter
+    const cat = DC.Events.grantCat(run, true);
+    cat.x = sm.x; cat.y = sm.y; cat.mode = 'perch'; cat.hold = 9999; cat.target = null;
+    frames(2);
+    // a quake, then a collapse quake
+    run.shake = true; frames(1);
+    const inst0 = run.instability;
+    run.instability = 99; run.shake = true; frames(2);
+    run.instability = inst0;
+    // the planet speaks (M-CORELORE intrusion, through the real bark path)
+    DC.Barks.core(run, 'intrusion', 0); frames(2);
+    // the bell is struck somewhere on this floor (the landmark event itself)
+    run.events.push({ type: 'landmark', t: run.totalT, data: { act: 'use', id: 'bell' } });
+    frames(2);
+    // wildlife: down to a floor that has it, everything revealed, let it walk
+    run.depth = D.UNDERTOAD.minDepth;
+    DC.Sim.startStratum(run);
+    run.instHold = true;
+    for (let y = 0; y < D.MAP_H; y++)
+      for (let x = 0; x < D.MAP_W; x++) run.grid[y][x].revealed = true;
+    frames(D.WORMS.stepT * 6);
+    // breach: feed the requirement and go
+    run.gearsFed = run.breachReq.gear; run.chargesFed = run.breachReq.charge;
+    frames(2);
+    assertEq(run.status, 'breachReady', 'the floor is breach-ready');
+    key('d');
+    return run;
+  }
+  function fingerprint(run) {
+    return JSON.stringify({
+      t: run.t, totalT: run.totalT, depth: run.depth, status: run.status,
+      inv: run.inv, inst: run.instability, quakeAt: run.quakeAt, integ: run.integrity,
+      machines: run.machines, offers: run.pendingOffers, msgs: run.messages,
+      worms: DC.Worms.list(run).map(w => [w.id, w.x, w.y]),
+      next: run.rng(),
+    });
+  }
+
+  // ---- pass 1: WITH audio --------------------------------------------------
+  let fpWith, muteChecks;
+  {
+    A.reset();
+    DC.Engine.start();
+    const st = DC.state;
+    assert(!A.ready(), 'the engine does not start audio by itself (no gesture yet)');
+    frames(2);
+    assertEq(A.levels.title, 0, 'the title drone is silent before the first gesture');
+    A.play('place');
+    assert(fired('place') === 1, 'play() is logged even before a context exists');
+    A.reset();
+    key('Escape');                                   // any key is the gesture
+    assert(A.ready(), 'the first key press creates the AudioContext');
+    assert(made.comp === 1, 'exactly one compressor');
+    frames(1);
+    assert(A.levels.title > 0, 'the title drone hums on the title screen');
+    assert(A.levels.title < 0.1, '...barely (level ' + A.levels.title + ')');
+
+    const run = drive(st);
+    assert(A.levels.title === 0, 'the drone stops when the run starts');
+    // every name maps to a real event
+    for (const n of A.NAMES) {
+      const ok = fired(n) > 0 || (peak[n] || 0) > 0;
+      assert(ok, "sound '" + n + "' fired in the driven run");
+    }
+    assert(fired('squelch') >= 3, 'a squelch preceded each bark (' + fired('squelch') + ')');
+    assert(fired('place') >= 4, 'the smelter and the belts each clunked (' + fired('place') + ')');
+    assertEq(fired('demolish'), 1, 'one crumble for one demolition');
+    assert(fired('craftDone') >= 2, 'the press pinged per smelt (' + fired('craftDone') + ')');
+    assertEq(fired('quake'), 1, 'one rumble for the quake');
+    assertEq(fired('collapse'), 1, 'and the collapse quake logged as collapse');
+    assert(peak.collapse > 0, 'the klaxon sounded while instability sat at 99');
+    assertEq(A.levels.collapse, 0, '...and stopped when it fell back');
+    assert(peak.drillLoop > 0 && peak.drillLoop <= 1, 'the churn tracked the feed (' + peak.drillLoop.toFixed(2) + ')');
+    assert(peak.purr > 0 && peak.purr < 0.1, 'the cat purred on the furnace, barely');
+    // two gold lines: the intrusion, and the planet answering the bell early
+    assertEq(fired('coreVoice'), 2, 'a sub-bass swell under each gold line');
+    assertEq(fired('bell'), 1, 'the bell rang once');
+    assert(fired('wormMove') >= 1, 'a worm moved and the rock said so');
+    const br = A.history.filter(h => h.name === 'breach');
+    assertEq(br.length, 1, 'one breach on descent');
+    assertEq(st.screen, 'descend', 'and the descent is playing');
+    fpWith = fingerprint(run);
+
+    // the throttle: 4 craftDone per second, on the module's clock
+    A.reset();
+    let acc = 0;
+    for (let i = 0; i < 12; i++) if (A.play('craftDone')) acc++;
+    assertEq(acc, A.THROTTLE.craftDone, 'craftDone is capped at ' + A.THROTTLE.craftDone + '/s');
+    now += 1001;
+    assert(A.play('craftDone'), 'and opens again a second later');
+
+    // M: mute, persisted; M again: back
+    key('m');
+    assert(A.muted(), 'M mutes');
+    assert(st.meta.muted === true, 'the mute lands on the profile');
+    assert(JSON.parse(cell[D.SAVE_KEY]).muted === true, 'and is saved');
+    assert(DC.Meta.load().muted === true, 'and loads back muted');
+    key('m');
+    assert(!A.muted() && st.meta.muted === false, 'M again unmutes');
+    assert(DC.Meta.load().muted === false, 'and that persists too');
+    muteChecks = true;
+  }
+
+  // ---- master gain + compressor: -12 dB, one compressor, chain intact ----
+  {
+    const g = Math.pow(10, A.MASTER_DB / 20);
+    assertEq(A.MASTER_DB, -12, 'master default is -12 dB');
+    assert(Math.abs(g - 0.2512) < 0.001, 'which is a gain of ~0.25');
+  }
+
+  // ---- pass 2: WITHOUT audio, same seed, same script -> same run ----------
+  {
+    A.reset();
+    for (const k in peak) delete peak[k];
+    const saved = DC.Audio;
+    delete DC.Audio;
+    try {
+      DC.Engine.start();
+      const st = DC.state;
+      frames(2);                                      // same title frames as pass 1
+      key('Escape');
+      frames(1);
+      const run = drive(st);
+      const fpWithout = fingerprint(run);
+      if (fpWithout !== fpWith && process.env.DC_DEBUG) {
+        let i = 0; while (i < fpWith.length && fpWith[i] === fpWithout[i]) i++;
+        console.log('WITH   ', fpWith.slice(Math.max(0, i - 150), i + 150));
+        console.log('WITHOUT', fpWithout.slice(Math.max(0, i - 150), i + 150));
+      }
+      assert(fpWithout === fpWith, 'the run is identical with DC.Audio absent (output only)');
+      key('m');                                       // M with no audio: harmless
+      assertEq(st.screen, 'descend', 'M is a no-op without the module');
+    } finally {
+      DC.Audio = saved;
+    }
+  }
+  return 'every name fired, throttle ' + A.THROTTLE.craftDone + '/s, mute persists' +
+    (muteChecks ? '' : '?') + ', absent = identical';
+}
+
 // -------------------------------------------------------------------- main
 const SEED = process.env.DC_SEED ? (parseInt(process.env.DC_SEED, 10) | 0) : 1337;
 try {
@@ -6192,6 +6485,8 @@ try {
   // Last: it boots the real engine a second time and leaves DC.state pointed at
   // its own run, so anything that ran after it would inherit a tutorial.
   const onboard = tutorialSection(SEED + 61);
+  // M-SOUND: after the tutorial section for the same reason it is last.
+  const audio = audioSection(SEED + 67);
   // The webfont section is the one asynchronous check in the suite — a
   // document.fonts.ready handler cannot be driven synchronously — so the
   // PASS line waits on it rather than racing it.
@@ -6207,6 +6502,7 @@ try {
       ' | worms: ' + worms +
       ' | wide ' + wide +
       ' | onboard ' + onboard +
+      ' | audio: ' + audio +
       ' | achieve ' + achieve +
       ' | cadence 16/12/10 | overdrive x2 | damper ok | charge+bronze ok | mantle ok' +
       ' | engine+barks ok | ' + (Date.now() - t0) + 'ms');

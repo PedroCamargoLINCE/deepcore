@@ -809,6 +809,13 @@
   D.LIVERY_BY_ID = {};
   for (let i = 0; i < D.LIVERIES.length; i++) D.LIVERY_BY_ID[D.LIVERIES[i].id] = D.LIVERIES[i];
   D.LIVERY_RUNS = 10;            // GUNMETAL
+  // ---------------- M-SOUND ----------------
+  // Procedural audio (js/audio.js). Output only: nothing here moves the sim.
+  D.SOUND = {
+    masterDb: -12,                                  // master gain, everything via one compressor
+    throttle: { craftDone: 4, place: 8, wormMove: 6, squelch: 6 },   // max per second
+    levels: { drill: 0.55, klaxon: 0.45, title: 0.06, purr: 0.05 },  // continuous voices
+  };
 
   D.SAVE_KEY = 'deepcore_save_v1';
   // Display only (title-screen corner). v1.1 is the shipped feature set —

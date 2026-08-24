@@ -75,6 +75,8 @@
         copied: null,          // M-RECAP: the recap card's clipboard notice
       },
     };
+    // M-SOUND: the saved mute lands before the first gesture can start audio.
+    if (DC.Audio) DC.Audio.setMuted(!!(DC.state.meta && DC.state.meta.muted));
     window.addEventListener('keydown', onKey);
     // M-HIRES Phase 1: the canvas fits the viewport, so it has to be told when
     // the viewport changes. Debounced — a drag-resize fires this continuously,
@@ -127,6 +129,7 @@
       acc = 0;
     }
     smokeBreak(st, now);
+    if (DC.Audio) DC.Audio.frame(st);           // M-SOUND: continuous voices read state
     // NOTE: ui.descendAnim is advanced by Render.frame (SPEC §7), not here —
     // incrementing in both places played the descent animation at double speed.
     // The rAF timestamp drives render's and fx.js's animation clocks: this
@@ -169,8 +172,10 @@
         };
       }
       bark(collapse ? 'collapse' : 'quake');
+      if (DC.Audio) DC.Audio.play(collapse ? 'collapse' : 'quake', { big: collapse });
     }
     drainEvents(run);
+    if (DC.Audio) DC.Audio.tick(run);           // M-SOUND: presses, worms, the Core
     // M-ONBOARD Part 2: the induction's step machine. After the sim tick and
     // after the events, so a beat that is gated on something the tick just did
     // (the first ore reaching the rig) passes on the same frame the player sees
@@ -285,8 +290,10 @@
       else if (ev.type === 'landmark' && ev.data) {
         lmPending = { trigger: ev.data.act === 'find' ? 'landmarkFound' : 'landmarkUse',
                       id: ev.data.id };
-        if (ev.data.act !== 'find' && ev.data.id === 'bell')
+        if (ev.data.act !== 'find' && ev.data.id === 'bell') {
           coreBeat(run, { kind: 'intrusion' });
+          if (DC.Audio) DC.Audio.play('bell');
+        }
       }
     }
   }
@@ -350,7 +357,10 @@
     if (!trigger || !B || !B.fire || !st || !st.run) return null;
     // Returns the line that landed, or null if the cooldown swallowed it —
     // which is how the M-WONDERS retry above knows to try again.
-    try { return B.fire(st.run, trigger, ctx); } catch (e) { return null; }
+    let line = null;
+    try { line = B.fire(st.run, trigger, ctx); } catch (e) { return null; }
+    if (line && DC.Audio) DC.Audio.play('squelch');   // M-SOUND: the radio opens
+    return line;
   }
 
   // M-POLISH backlog: GRIT's 9 bespoke foundryBuy lines were unreachable —
@@ -621,6 +631,7 @@
     if (!DC.Sim.beginDescent(run)) return;
     recordSplit(run);
     bark('descend');
+    if (DC.Audio) DC.Audio.play('breach', { dur: animLen() / 60 });   // synced to the descent
     if (run.status === 'won') { handleWon(st); return; }
     if (run.pendingOffers) {
       st.ui.tool = null;
@@ -744,6 +755,15 @@
     const k = e.key;
     const lk = k.length === 1 ? k.toLowerCase() : k;
     let handled = true;
+    // M-SOUND: any key is the gesture browsers want before audio may start;
+    // M itself is the mute, on every screen, and it lives in the meta save.
+    if (DC.Audio) DC.Audio.init();
+    if (lk === 'm' && DC.Audio) {
+      st.meta.muted = DC.Audio.toggle();
+      try { DC.Meta.save(st.meta); } catch (err) { /* storage stays optional */ }
+      e.preventDefault();
+      return;
+    }
     switch (st.screen) {
       case 'title':
         if (k === 'Enter') newRun(st);
@@ -1005,7 +1025,9 @@
       if (/cost|afford|plate|need/i.test(reason)) bark('brokeAttempt', reason);
       return false;
     }
-    return DC.Sim.place(run, type, x, y, st.ui.facing);
+    const ok = DC.Sim.place(run, type, x, y, st.ui.facing);
+    if (ok && DC.Audio) DC.Audio.play('place');
+    return ok;
   }
 
   // M-WORMS: the lure. Refusals are said in the LOG in the sim's flat voice,
@@ -1024,6 +1046,7 @@
   function doDemolish(st, x, y) {
     const r = DC.Sim.demolishAt(st.run, x, y);
     if (r && r.ok) bark('demolish');
+    if (r && r.ok && DC.Audio) DC.Audio.play('demolish');
     else if (r && r.reason) DC.Sim.msg(st.run, r.reason, D.COLORS.red);
   }
 
@@ -1049,7 +1072,10 @@
   function beginGesture(st, x, y) {
     gesture = {};
     st.ui.dragLast = { x, y };
-    if (DC.Sim.place(st.run, 'belt', x, y, st.ui.facing)) gesture[x + ',' + y] = true;
+    if (DC.Sim.place(st.run, 'belt', x, y, st.ui.facing)) {
+      gesture[x + ',' + y] = true;
+      if (DC.Audio) DC.Audio.play('place');
+    }
   }
 
   // The pointer/cursor entered (x, y) mid-gesture; step through intermediate
@@ -1079,6 +1105,7 @@
     ui.facing = dir;
     if (DC.Sim.place(run, 'belt', nx, ny, dir)) {
       gesture[nx + ',' + ny] = true;
+      if (DC.Audio) DC.Audio.play('place');
     } else {
       // Retracing our own line: just re-aim the existing gesture belt.
       const t = tileAt(run, nx, ny);
@@ -1134,6 +1161,7 @@
   function onMouseDown(e) {
     const st = DC.state;
     if (!st) return;
+    if (DC.Audio) DC.Audio.init();              // M-SOUND: a click is a gesture too
     const c = cellFromEvent(e);
     if (!c) return;
     if (st.screen === 'run' && !st.ui.paused) {

@@ -70,6 +70,8 @@
       // M-RIGSKINS: which livery the chrome wears. Unlocks are not stored —
       // they are a pure function of the rest of the profile (liveryUnlocked).
       skin: 'amber',
+      // M-SOUND: the M key. Optional and off by default; engine.js owns it.
+      muted: false,
     };
   }
 
@@ -168,6 +170,8 @@
     // A livery the profile has not earned (or one that no longer exists)
     // falls back to Company Amber — the save is never the way to a skin.
     if (typeof p.skin === 'string' && liveryDef(p.skin) && liveryUnlocked(f, p.skin)) f.skin = p.skin;
+    // ---- M-SOUND field (absent in every save before it) ----
+    f.muted = !!p.muted;
     f.v = SAVE_V;
     return f;
   }
