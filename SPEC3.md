@@ -1452,6 +1452,20 @@ Principles for whoever builds it (numbers are illustrative, not decided):
   STANDARD TERMS only, with the harder contracts checked for "winnable at
   all" rather than banded.
 
+#### Finding 13 (TUNING) — worms eat from the first-run margin
+
+Measured at M-WORMS's merge (2026-08-19), canonical 14 seeds, not tuned
+against: naked standard **cores med 3 -> 2** (bottom of the 2-5 band) and
+**survive-s2 100% -> 86%** (over the 80% floor, but no longer far over).
+Worms eat 5 ore from any vein they cross and the naked bot never re-routes,
+so a first run loses seams it budgeted for; a full-Foundry run that lives
+long enough gets free tunnel and Undertoad crystal from the same creature
+(full standard death depth med 5 -> 8). The feature is right; the cost lands
+on exactly the player Findings 1, 2, 5 and 6 are protecting. Decide worms'
+appetite (5 ore) and spawn floor (s3) together with those — e.g. a worm that
+skirts the vein your extractor is standing on is a different first run from
+one that eats it.
+
 **Contracts:** `js/data.js` (values — this brief and M-POLISH are the only two
 that may change them), `js/sim.js` (refund/undo window), `js/render.js` (CHAIN's
 colour rule), `test/balance.js`, `test/headless.js` (constructed dead-end).
