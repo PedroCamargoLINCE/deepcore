@@ -872,6 +872,22 @@ output.
    next note.
 7. Dispatch the next wave.
 
+**The Frankenstein hazard — never keep-both a conflict inside a function.**
+Two parallel workers each appended a test section that began with the same
+forty lines of engine-stub scaffolding (both cloned the template above them).
+git's merge interleaved the two near-identical preambles into ONE conflict
+region, and a mechanical keep-both resolution produced a single function with
+two `let now`, two `global.window`, two stub canvases — a Frankenstein that
+parses on a good day and lies on a bad one. The rule: **a conflict that
+starts inside a function body is never resolved by keep-both.** Take each
+worker's section WHOLE from its own branch (`git show origin/<branch>:file`,
+find the function's first and last line, transplant), add its main() call and
+PASS-line fragment by hand, and run the suite. Keep-both is only ever right
+for conflicts between top-level, self-contained blocks (a data table appended
+twice, two optional save fields). Also, and cheaper: parallel workers should
+be told to REUSE the suite's existing boot helper rather than clone it, and to
+name their section distinctively — identical preambles are what git trips on.
+
 **Stale-brief hazard — the one that actually keeps biting.** A queued prompt is
 a snapshot of the tree at the moment it was written, and every merge ages it.
 M-WIDE took `COLS` from 80 to 112; the M-ONBOARD-2 prompt sitting in the queue
