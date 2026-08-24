@@ -83,6 +83,10 @@
     return o;
   }
   function trophyDef(id) { return (D.TROPHY_BY_ID && D.TROPHY_BY_ID[id]) || null; }
+  function trophyIndex(id) {
+    for (let i = 0; i < D.TROPHIES.length; i++) if (D.TROPHIES[i].id === id) return i;
+    return D.TROPHIES.length;
+  }
   function liveryDef(id) { return (D.LIVERY_BY_ID && D.LIVERY_BY_ID[id]) || null; }
 
   function storage() {
@@ -409,7 +413,7 @@
     const t = trophies(profile);
     t.push(id);
     // shelf order, always
-    t.sort(function (a, b) { return D.TROPHIES.indexOf(a) - D.TROPHIES.indexOf(b); });
+    t.sort(function (a, b) { return trophyIndex(a) - trophyIndex(b); });
     save(profile);
     return true;
   }
@@ -553,7 +557,9 @@
       case 'amber':    return true;
       case 'orange':   return dailyHistory(profile).some(function (e) { return e && e.won; });
       case 'gunmetal': return profile.runs >= D.LIVERY_RUNS;
-      case 'void':     return profile.bestDepth >= D.TROPHY_DEPTH;
+      // TWELVE DOWN itself: the trophy lands the moment the rig arrives on
+      // stratum 12 (or from bestDepth at award), so the livery follows it.
+      case 'void':     return hasTrophy(profile, 'depth12');
       case 'gold':     return allTrophies(profile);
     }
     return false;

@@ -2225,6 +2225,22 @@
     text(V, row + 3, '+' + res.cores + ' ◈', C.magenta);
   }
 
+  // M-ACHIEVE: what this run put on the shelf, said once on the end screen
+  // (the shelf itself is a Foundry page). Drawn only into an empty row —
+  // the epitaph and the cat's line own the rows above the footer first.
+  function drawNewTrophies(state, row) {
+    const ids = Array.isArray(state.newTrophies) ? state.newTrophies : [];
+    if (!ids.length || row < 0 || row >= ROWS) return;
+    for (let c = 0; c < COLS; c++) if (chB[row][c] !== ' ') return;
+    const names = [];
+    for (let i = 0; i < ids.length; i++) {
+      const t = (D.TROPHY_BY_ID || {})[ids[i]];
+      if (t) names.push(t.name);
+    }
+    if (!names.length) return;
+    ctext(row, ('◈ NEW ON THE SHELF: ' + names.join(' · ')).slice(0, COLS - 2), C.gold);
+  }
+
   function drawGameover(state, phase) {
     const lines = art('gameover');
     drawArt(lines, 1, artColor('gameover', C.red));
@@ -2251,6 +2267,7 @@
       const cl = (DC.Barks && DC.Barks.CAT_EPITAPH) || null;
       if (cl && y + 5 + epi.length < 30) ctext(y + 5 + epi.length + 1, cl, C.gray);
     }
+    drawNewTrophies(state, 29);
     ctext(30, '[TAB] RUN RECAP CARD', C.amberDim);
     ctext(31, '[ENTER] RETURN TO THE SURFACE', phase ? C.white : C.amber);
   }
@@ -2337,6 +2354,7 @@
     // the run's seed — render must never draw from run.rng, and on this screen
     // the run is still live (the Mantle is one keypress away).
     if (full && typed.length >= full.length) drawReveal(state.run, y + 9);
+    drawNewTrophies(state, 29);
     ctext(30, '[TAB] RUN RECAP CARD', C.amberDim);
     ctext(31, '[ENTER] ASCEND      [C] CONTINUE INTO THE MANTLE', C.amber);
   }
