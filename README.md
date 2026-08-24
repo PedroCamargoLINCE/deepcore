@@ -58,6 +58,9 @@ switches recipe, the rig toggles overdrive.
 | `1`–`4` | descent screen: take that schematic |
 | `A`–`I` | Foundry: forge that upgrade |
 | `L` | Foundry: the logbook — what the dead foremen wrote down |
+| `T` | Foundry: the trophy shelf — ←/→ to let GRIT inspect one |
+| `K` | Foundry: the Company Ledger — your lifetime, as the form they file it on |
+| `S` | Foundry: cycle the rig's livery (chrome only; the map never recolours) |
 | `A` | pause menu: abandon the run (banks your cores) |
 | `C` | victory screen: continue into the Mantle |
 | `Esc` | back / resume |
