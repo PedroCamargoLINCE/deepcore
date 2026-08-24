@@ -159,7 +159,7 @@ the moment it launches.** A worker that dies to a connection drop sits idle at
 its prompt, silently, until somebody looks — M-CONTRACTS lost an hour that way
 and was only found because the director asked "how is it going". The
 orchestrator arms a persistent Monitor on the worker's tmux pane and branch,
-polling every 30s and emitting on exactly the states it would act on:
+polling every 5 minutes (director's call — 30s was too chatty) and emitting on exactly the states it would act on:
 `ERROR:` (API Error / Connection lost / limit / Overloaded — the nudge is
 `tmux send-keys -t laborer "<continue>" Enter Enter`), `STALLED:` (idle at the
 prompt 5+ min), `DEAD:` (tmux session gone — resume the session by id with
