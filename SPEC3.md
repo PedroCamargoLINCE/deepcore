@@ -1108,6 +1108,78 @@ parses and reports its size delta.
 
 ---
 
+### M-CONTRACTS — Sign Here (P1; promoted from M-HUMANBAL Finding 12)
+
+> Director, 2026-08-18: *"3 levels of difficulty with different rewards (meta
+> progression wise, harder difficulties are more rewarding) but i dont want the
+> classic easy normal hard selector, think of another cool way to select
+> difficulties, like the chips options in balatro."* — and, on the proposal:
+> *"i loved the company contracts!"*
+
+**Pitch.** You work for the Company, so difficulty is the **contract you
+sign** before you descend. Papers Please for the paper, Balatro for the pick:
+three documents, each with a Company-form name, two or three lines of terms
+you can hold in your head, and a **wage** — a multiplier on every core you
+bank. You choose a card, not a slider.
+
+```
+  ┌─ STANDARD TERMS ────────────┐ ┌─ HAZARD CLAUSE ─────────────┐ ┌─ DEATH WARRANT ─────────────┐
+  │ The shift as posted.        │ │ Quakes 25% harder.          │ │ Quakes 50% harder.          │
+  │ Wage x1.0                   │ │ Start with 30 plates.       │ │ Nothing salvaged, ever.     │
+  │                             │ │ Wage x1.5                   │ │ Start with 20 plates.       │
+  │ [signed]                    │ │ [sign?]                     │ │ Wage x2.0                   │
+  └─────────────────────────────┘ └─────────────────────────────┘ └─ LOCKED: win HAZARD first ──┘
+```
+(Numbers illustrative; the worker measures them.)
+
+**Rules, decided:**
+
+1. **Reward is meta-side**, as asked: the wage multiplies cores banked at
+   `Meta.award`. Harder contracts are the fast lane through the Foundry.
+   The Ledger (M-ACHIEVE) gains a `CONTRACTS SIGNED` line and a wage total.
+2. **Terms are named, concrete, few** — two or three lines each, never a
+   stat sheet. Each is a real knob the sim already has: `instMult`, start
+   stock, `salvage`, `integrityBonus`, quake damage. GRIT reads each contract
+   aloud on signing, once, in his induction-script register (the Company
+   wrote it; he hates it; he is contractually obliged).
+3. **Mechanism**: a contract is an *effects layer* applied in `Sim.newRun`
+   alongside Foundry effects — the same shape `Meta.effects()` returns, so
+   the sim needs no new concept. `run.contract` records the id; `run.mods`
+   carries the result. Law 7: no rng anywhere in it. Law 8: no new readouts.
+4. **The Daily always signs STANDARD TERMS** — ranked runs stay equal. The
+   first-run induction (profile with zero runs) also never sees the screen:
+   STANDARD is signed silently, the tutorial begins. `[I]` replay likewise.
+5. **Unlock by deeds**, which is meta-progression in itself: HAZARD unlocks
+   on the first win; DEATH WARRANT on a HAZARD win. Locked cards are shown
+   with their lock condition — a locked card you can read is a goal.
+   Persist: optional meta fields, `SAVE_V` 5 -> 6, `SAVE_KEY` unmoved,
+   v1..v5 saves load and default to STANDARD unlocked only.
+6. **Where**: a `contract` screen between the title's `[ENTER]` and the run,
+   drawn with the card grammar the `descend` schematic screen already uses,
+   at 112 columns. In the run, the header carries the contract's mark the
+   way the Mantle carries its `†` — one glyph, law 6, nothing else.
+7. **Trophies**: two new ones on the shelf — signed HAZARD and won; signed
+   WARRANT and won. GRIT: *"Death Warrant. Signed it. Read it after."*
+8. **`test/balance.js`** grows a `DC_BAL_CONTRACT=standard|hazard|warrant`
+   knob. STANDARD numbers must be **byte-identical** before and after — a
+   silent STANDARD contract is the same run it always was, which is the whole
+   gate. HAZARD and WARRANT are checked for *winnable at all* on a full
+   Foundry, not banded; report them, and log anything that looks like a
+   tuning call to M-HUMANBAL rather than tuning.
+
+**Contracts:** `js/data.js` (additive CONTRACTS table), `js/sim.js` (effects
+layer in newRun), `js/meta.js` (unlocks, wage at award, v6), `js/engine.js`
+(the screen's keys, the signing flow), `js/render.js` (the card screen, the
+header mark), `js/barks.js` (three signing lines + two trophy lines),
+`test/*` (screen at 112 cols, unlock ladder, wage arithmetic, Daily/tutorial
+exemptions, old-save loading, balance identity on STANDARD).
+**Acceptance:** all five suites green; STANDARD sweep byte-identical; every
+card's text on screen whole; a v5 save loads with STANDARD only; the Daily
+and the induction never show the screen.
+**Size:** ~250 lines + art.
+
+---
+
 ### M-HUMANBAL — Final Balance: the pass a bot cannot do (P0 — dispatch LAST)
 
 > Director, 2026-08-17, after playing: *"everything i tell you we will add to a
@@ -1420,7 +1492,7 @@ sparks on quake frames, the whole panel dimming with §A2 when collapse nears.
 State-driven, never random-scheduled: the portrait animating what the sim is
 DOING makes it an instrument; ambient wiggle makes it a screensaver.
 
-#### Finding 12 (CRAFT, big — likely its own brief) — difficulty as CONTRACTS
+#### Finding 12 (CRAFT) — difficulty as CONTRACTS — PROMOTED to its own brief, see M-CONTRACTS above
 
 > Director, 2026-08-18: *"3 levels of difficulty with different rewards (meta
 > progression wise, harder difficulties are more rewarding) but i dont want
