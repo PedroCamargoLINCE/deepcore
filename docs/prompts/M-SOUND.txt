@@ -1,0 +1,84 @@
+You are a worker session on the DEEPCORE project, implementing M-SOUND. You
+are in your own git worktree on branch M-SOUND — do ALL work there; the
+orchestrator owns the main working copy. ANOTHER WORKER IS RUNNING IN
+PARALLEL (M-ACHIEVE + M-RIGSKINS, in meta.js / art.js / render.js's Foundry
+pages) — see the collision rules below.
+
+Read SPEC.md, SPEC2.md, SPEC3.md section M-SOUND and §0's EIGHT laws plus the
+lineage note, js/engine.js, js/meta.js, js/data.js, docs/STATE.md.
+
+THE BRIEF — the old ROADMAP M1, absorbed unchanged, plus SPEC3's hooks:
+
+  Procedural audio, zero files. A new js/audio.js registering DC.Audio with
+  init() (on first user gesture — browsers require it), play(name),
+  setMuted(bool), and an M key binding in engine.js. All sounds synthesized
+  with WebAudio oscillators / noise buffers in a muffled industrial register
+  (low sine thuds, filtered brown noise, metallic FM pings):
+    place / demolish   soft clunk / crumble
+    craftDone          faint press ping (throttle: max 4/s globally)
+    quake              low rumble swell 1.5s + integrity-hit thump
+    breach             rising drone -> punch-through boom, synced to the
+                       descent animation
+    drillLoop          continuous low churn whose VOLUME tracks the feed
+                       rate; overdrive raises the pitch a third
+    collapse           alarm klaxon while instability >= 99
+    title drone        two detuned saws through a lowpass, barely audible
+  SPEC3's new hooks — every one of these systems now EXISTS in the repo:
+    worm rumble        low brown-noise slide when a worm moves on screen
+                       (js/worms.js, run.critters.worms)
+    the Core's voice   a sub-bass swell under gold Core text — felt, not
+                       heard (M-CORELORE, DC.Barks.CORE / the core gate)
+    GRIT radio squelch a 2-frame click before each bark (engine bark())
+    cat purr           near a warm smelter, barely audible (js/events.js cat)
+    the Bell           one clean struck note, long decay — the ONLY pure
+                       tone in the game; that is why it is scary. Find the
+                       Bell landmark in M-WONDERS (js/map.js / sim.js
+                       landmarks) and hook its trigger.
+  Constraints: master gain -12 dB default, everything through one
+  compressor, DC.Audio fully OPTIONAL — the game runs identically with the
+  file absent; engine guards every call (`DC.Audio && DC.Audio.play(...)`).
+  Off by default until the first user gesture. Persist mute in the meta save.
+
+WHAT HAS LANDED SINCE, AND THE COLLISION RULES:
+
+- meta.js: add ONE optional field (`muted`) in newProfile() and sanitize(),
+  defaulting false, following the tutorialSeen pattern — and DO NOT BUMP
+  SAVE_V or touch anything else in meta.js: the parallel worker is adding
+  its own fields there and the orchestrator reconciles the version at merge.
+  NEVER move SAVE_KEY.
+- engine.js: your hooks go at the EVENT sites (afterTick's quake/collapse
+  flash, bark(), place/demolish handlers, the drill feed, descend) — small,
+  guarded, one line each. The parallel worker edits the Foundry key handler
+  and awardRun; stay out of those.
+- render.js: do not edit it, except at most one keycap for M on the hints
+  line if there is room — the parallel worker owns the Foundry pages and
+  chrome colours. If M does not fit, document M in the manual keys instead.
+- index.html AND tools/build.js: add js/audio.js to both script lists (the
+  bundler inlines from its own list — a file missing there ships silently
+  absent from dist/deepcore.html).
+- Determinism: audio is OUTPUT ONLY. It reads run state and NEVER writes it,
+  never touches run.rng (law 7), never gates a sim decision. Sim, map, meta,
+  art, barks stay DOM-free — audio.js is the ONLY file allowed to touch
+  window.AudioContext, and it must load and no-op cleanly in bare node
+  (typeof guards), because every suite runs headless.
+- Law 1 (animation is honest) applies to sound: every sound reports TRUE sim
+  state. drillLoop's volume IS the feed rate; a rumble means a worm moved.
+- test/balance.js must come out BYTE-IDENTICAL before and after: audio
+  cannot move a number. If it does, you wrote to the run.
+- js/data.js additive only (sound constants welcome). No CDN; file:// works.
+
+Gate: five suites green, tools/build.js parses and the bundle includes
+audio.js, headless/integration extended: every play() name maps to a real
+event fired in a driven run, the throttle holds, mute persists through a
+save/load, and the whole module no-ops when absent (delete it from the
+require list in a test and assert nothing changes).
+
+Checkpoint-commit AND PUSH after every green milestone with a
+"Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>" trailer. Ship the
+engine + the seven M1 sounds + M mute first, then the SPEC3 hooks one at a
+time, the Bell last.
+
+When done: push your branch and STOP — do not merge, rebase or force-push;
+the orchestrator merges. Report: what you built, sound by sound, your
+before/after balance numbers (must be identical), deviations and why, and
+your final test output.
