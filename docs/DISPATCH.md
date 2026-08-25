@@ -213,6 +213,14 @@ Four rules, each paid for:
    local bug (three sessions, same repo, different worktree dirs); treat
    banners and ListAgents names as unreliable, identify workers by tmux
    session name and branch.
+   The mechanism, found 2026-08-25: names live in `~/.claude/sessions/
+   <pid>.json`, one file per live session, each with its own `name`, `cwd`
+   and `sessionId` — storage is per-session, but the `/rename` broadcast
+   WRITES to every session file whose cwd shares the family tree (the
+   director's diagnosis: master runs in games/, workers in games/<worktree>).
+   The repair that works: write the correct `name` straight into each
+   worker's sessions/<pid>.json and verify with ListAgents. And simply do
+   not `/rename` anything while workers are running.
 
 ### Running a brief in a CLOUD session (laptop closed)
 
