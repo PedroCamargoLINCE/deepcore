@@ -1810,6 +1810,13 @@ SECTION = 'prose-panels';
     'A pre-collapse cache — 15 plates, still greased.',
     'Gas pocket — the air goes sour (+99 pressure).',
     'A dead rig, gutted. Salvage: +99 plates.',
+    // M-ROCKORE: the spoil line is BUILT by concatenation and its long form
+    // (said once a run, M-ONBOARD Part 1's discipline) is the longest thing
+    // events.js ever puts in the LOG. The scrape above only sees the two
+    // fragments, so the assembled worst case — widest item name, widest
+    // number — is spelled out here or it is not checked at all.
+    '2 ' + longestItem + ' in the dig spoil. Rock carries traces. Veins carry seams.',
+    '2 ' + longestItem + ' in the dig spoil.',
   ];
   for (const t of evLits.concat(evDyn)) checkWrap(t, LW, LR, 'LOG event message');
   PROSE_N = allLines.length * 2 + lits.length + dyn.length +
