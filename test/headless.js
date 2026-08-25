@@ -854,7 +854,21 @@ function checkDigFinds() {
         revealed: countRevealed(run),
         msgs: run.messages.length,
       };
+      const spoils0 = (run.ev && run.ev.spoils) || 0;
       const got = E.rollDig(run, p.x, p.y);
+      // M-ROCKORE: the spoil rolls on the SAME excavation, independently, and
+      // pays into the same crate — that is the design (both can land on one
+      // dig). It is not part of the find's payload, so it is folded into the
+      // BEFORE snapshot and every case below still measures what the FIND
+      // paid, which is the thing under test.
+      if (run.ev && run.ev.spoils > spoils0) {
+        let sp = null;
+        for (let j = run.events.length - 1; j >= 0 && !sp; j--)
+          if (run.events[j].type === 'rockOre') sp = run.events[j].data;
+        assert(sp && sp.id && sp.n > 0, 'a spoil payout files its own event');
+        before.inv[sp.id] = (before.inv[sp.id] || 0) + sp.n;
+        before.msgs++;
+      }
       if (got === id) return { run: run, before: before };
       run.instability = 0;
       run.ev.rigTaken = false;
@@ -989,6 +1003,130 @@ function checkDigFinds() {
     assert(E.peek(run).digs === before, 'clearing rubble is not an excavation');
   }
   return st0.finds;
+}
+
+// ======================================================================
+// M-ROCKORE — the spoil, measured  (SPEC3 M-HUMANBAL Finding 8)
+// checkDigFinds above proves the 8% table and the sim hook. This one is the
+// statistics the 30% roll needs to be believed: the rate, the per-stratum ore
+// table it actually pays out, and the two isolations that make it legal —
+// never run.rng (law 7), and never the find table's stream either (which is
+// what lets test/balance.js name which number this feature moved).
+// ======================================================================
+function rockOreSection() {
+  const E = DC.Events;
+  const RO = D.EVENTS.rockOre;
+  const eff = DC.Meta.effects(DC.Meta.newProfile());
+  const N = 4000;
+  assert(RO && RO.chance > 0, 'D.EVENTS.rockOre is a named, tunable field');
+
+  // ---- the rate, and the table, on every floor of the game --------------
+  let worstRate = 0, lines = [];
+  for (const depth of [1, 2, 4, 5, 8, 9, 14]) {
+    const run = S.newRun(eff, 4242 + depth);
+    run.depth = depth;
+    const got = {};
+    let paid = 0, units = 0;
+    for (let i = 0; i < N; i++) {
+      const before = E.peek(run) ? E.peek(run).spoils : 0;
+      E.rollDig(run, 5, 5);
+      const st = E.peek(run);
+      if (st.spoils > before) {
+        paid++;
+        // the spoil is filed before the find, so scan back for the newest one
+        let sp = null;
+        for (let j = run.events.length - 1; j >= 0 && !sp; j--)
+          if (run.events[j].type === 'rockOre') sp = run.events[j].data;
+        assert(sp, 's' + depth + ': a payout files an event');
+        got[sp.id] = (got[sp.id] || 0) + 1;
+        units += sp.n;
+        assert(sp.n >= RO.min && sp.n <= RO.max,
+          's' + depth + ': a payout is ' + RO.min + '-' + RO.max + ' ore (got ' + sp.n + ')');
+      }
+      run.instability = 0;        // keep the gas pockets from ending the run
+      run.ev.rigTaken = false;
+      run.events.length = 0;
+    }
+    const rate = paid / N;
+    assert(Math.abs(rate - RO.chance) < 0.03,
+      's' + depth + ': about ' + (RO.chance * 100).toFixed(0) + '% of holes pay (got ' +
+      (rate * 100).toFixed(1) + '%)');
+    const mean = units / paid;
+    assert(Math.abs(mean - (RO.min + RO.max) / 2) < 0.12,
+      's' + depth + ': a payout averages ' + ((RO.min + RO.max) / 2) + ' ore (got ' +
+      mean.toFixed(2) + ')');
+    // what came out matches the table events.js says it will pay
+    const tbl = E.spoilTable(run);
+    let tot = 0;
+    for (const e of tbl) tot += e.w;
+    for (const e of tbl) {
+      const share = (got[e.id] || 0) / paid;
+      assert(Math.abs(share - e.w / tot) < 0.05,
+        's' + depth + ': "' + e.id + '" pays at its table weight (' +
+        (100 * share).toFixed(1) + '% vs ' + (100 * e.w / tot).toFixed(1) + '%)');
+    }
+    for (const id in got)
+      assert(tbl.some(e => e.id === id),
+        's' + depth + ': "' + id + '" is not an ore this floor spawns');
+    // Iron and coal are what a stranded base is stuck on — plates, and the
+    // fuel to make them (Findings 1 and 6). They must carry the spoil.
+    const need = ((got.ironOre || 0) + (got.coal || 0)) / paid;
+    assert(need > 0.5, 's' + depth + ': iron+coal carry the spoil (' +
+      (100 * need).toFixed(0) + '%)');
+    worstRate = Math.max(worstRate, Math.abs(rate - RO.chance));
+    lines.push('s' + depth + ' ' + tbl.map(e =>
+      e.id.replace(/Ore$/, '') + ' ' + (100 * e.w / tot).toFixed(0)).join('/'));
+  }
+
+  // ---- the two isolations ----------------------------------------------
+  {
+    // law 7: the sim's stream never moves, however many holes were dug
+    function stream(withDigs) {
+      const run = S.newRun(eff, 8080);
+      if (withDigs) for (let i = 0; i < 500; i++) { E.rollDig(run, 5, 5); run.instability = 0; }
+      return [run.rng(), run.rng(), run.rng()].join(',');
+    }
+    assert(stream(true) === stream(false), 'the spoil never moves the sim rng stream');
+
+    // ...and the find table's stream does not move either. The spoil owns a
+    // THIRD channel off the same seed on purpose: if it spent numbers out of
+    // the find stream, every vignette in every run would shift by however
+    // many holes the player happened to dig.
+    function finds(chance) {
+      const was = RO.chance;
+      RO.chance = chance;
+      try {
+        const run = S.newRun(eff, 31337);
+        const out = [];
+        for (let i = 0; i < 600; i++) {
+          out.push(E.rollDig(run, 5, 5));
+          run.instability = 0;
+          run.ev.rigTaken = false;
+        }
+        return out.join(',');
+      } finally { RO.chance = was; }
+    }
+    assertEq(finds(RO.chance), finds(0),
+      'the 8% find table rolls the same sequence with the spoil on and off');
+
+    // deterministic on the seed, which is what all of that determinism is for
+    function spoil(seed) {
+      const run = S.newRun(eff, seed);
+      const out = [];
+      for (let i = 0; i < 400; i++) {
+        const b = run.ev ? run.ev.spoils : 0;
+        E.rollDig(run, 5, 5);
+        out.push(run.ev.spoils > b ? run.ev.spoilOre : '-');
+        run.instability = 0;
+        run.ev.rigTaken = false;
+      }
+      return out.join(',');
+    }
+    assert(spoil(555) === spoil(555), 'the same seed digs up the same spoil');
+    assert(spoil(555) !== spoil(556), 'a different seed does not');
+  }
+
+  return lines.join(' | ') + ' (rate within ' + (worstRate * 100).toFixed(1) + 'pt)';
 }
 
 // ======================================================================
@@ -3399,6 +3537,7 @@ function main() {
   const glyphN = checkGlyphInventory();
   checkSave();
   const digFinds = checkDigFinds();
+  const spoil = rockOreSection();   // M-ROCKORE: the 30% roll, measured
   const vignettes = checkVignettes();
   const catNote = checkCat();
   const lmSweep = checkLandmarkSweep();
@@ -3467,6 +3606,7 @@ function main() {
     ' | status ' + run.status +
     ' | glyphs ' + glyphN + ' in the subset' +
     ' | dig finds ' + digFinds + '/4000, all 7 kinds' +
+    ' | spoil ' + spoil +
     ' | ' + vignettes + ' | ' + catNote +
     ' | landmarks ' + lmSweep.withLm + '/' + lmSweep.maps + ' maps, ' +
     lmSweep.cells + ' cells, ' + Object.keys(lmSweep.ids).length + ' kinds, ' +

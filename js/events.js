@@ -75,8 +75,12 @@
     if (!run.ev) {
       run.ev = {
         rng: U.mulberry32(((run.seed >>> 0) ^ 0x0EBE5747) >>> 0),
+        // M-ROCKORE: the spoil's own channel. See rollSpoil for why it is a
+        // second stream and not another draw off `rng` above.
+        oreRng: U.mulberry32(((run.seed >>> 0) ^ 0x0C0A1BED) >>> 0),
         depth: 0,          // last stratum seen (per-floor reset detection)
         digs: 0, finds: 0, // counters, for the suites and the recap
+        spoils: 0, spoilOre: 0, // M-ROCKORE: payouts, and units paid out
         rigTaken: false,   // a dead rig is salvaged once per floor
         gas: null,         // { at, x, y } — the pocket, hissing, about to pop
         logs: [],          // indices into LOGS found this run
@@ -169,12 +173,88 @@
     return out;
   }
 
+  // =========================================================================
+  // THE SPOIL  (SPEC3 M-HUMANBAL Finding 8, M-ROCKORE)
+  // A completed ROCK dig has a ~30% chance of handing back 1-2 ore. It is the
+  // floor under bad luck — the run where the veins are on the far wall and
+  // the crate is empty — and it is priced by the four seconds of standing
+  // still that X already charges: ~0.45 ore a hole is nine seconds a unit
+  // against an extractor's half a second, so the shovel is never the play,
+  // only the way back to the play (§0 law 4 — this must not become a farm).
+  // Rubble is NOT touched: that is the crusher's economy (M-TIER2).
+  //
+  // ── on which stream, and why a third one ─────────────────────────────────
+  // Law 7 first: it never draws from run.rng. That stream schedules quakes
+  // and picks the tiles they eat, so a hole dug must not decide where the
+  // next one lands.
+  //
+  // But it does not draw from S.rng either, and that is the deliberate part.
+  // The find table above is 8% and the vignettes hang off it; if the spoil
+  // spent numbers out of the same channel, every find in every run would
+  // shift by however many holes the player happened to dig, and the A/B in
+  // test/balance.js could no longer say WHICH number this feature moved. So
+  // the spoil owns its own channel off the same seed, exactly the way
+  // M-EVENTS owns one off run.seed and for exactly the same reason. The
+  // finds are then byte-identical to a tree without this code, both rolls
+  // can land on one dig, and neither can ever gate the other — which is what
+  // the brief means by SEPARATE.
+  //
+  // What the spoil carries is the stratum's own vein table (D.STRATA[].ores)
+  // put through D.EVENTS.rockOre.bias, so a floor only ever gives up what
+  // that floor is made of. The bias is documented where it lives, in data.js,
+  // because that is where the tuning pass will look for it.
+  function spoilTable(run) {
+    const ores = stratumOf(run).ores || { ironOre: 1 };
+    const R = (D.EVENTS || {}).rockOre || {};
+    const bias = R.bias || {};
+    const list = [];
+    for (const k in ores) {
+      const b = bias[k] === undefined ? 1 : bias[k];
+      const w = (ores[k] || 0) * b;
+      if (w > 0) list.push({ id: k, w: w });
+    }
+    return list;
+  }
+
+  function rollSpoil(run, S) {
+    const R = (D.EVENTS || {}).rockOre;
+    if (!R || !(R.chance > 0)) return null;
+    if (S.oreRng() >= R.chance) return null;
+    const e = weighted(S.oreRng, spoilTable(run));
+    if (!e) return null;
+    const n = U.ri(S.oreRng, R.min | 0, R.max | 0);
+    if (!(n > 0)) return null;
+    add(run.inv, e.id, n);
+    S.spoils++;
+    S.spoilOre += n;
+    const it = D.ITEMS[e.id];
+    // M-ONBOARD Part 1's discipline: the event names its own cause, once. The
+    // long form is said the first time a run pays out and never again — a
+    // line you have already read is furniture, and this one fires every third
+    // hole (§0 law 6). No new UI: the LOG line and the STOCK tick ARE the
+    // picture change (law 5).
+    msg(run, n + ' ' + it.name + ' in the dig spoil.' +
+             (S.spoils === 1 ? ' Rock carries traces. Veins carry seams.' : ''),
+        it.color);
+    // A quiet event type on purpose: engine.js barks on 'find', and the spoil
+    // is not a find. Thirty percent of holes is far too often for a line of
+    // GRIT, and the vignettes stay special precisely by staying rare.
+    pushEvent(run, 'rockOre', { id: e.id, n: n });
+    return e.id;
+  }
+
   function rollDig(run, x, y) {
     if (!run || !run.grid) return null;
     if (run.status !== 'active' && run.status !== 'breachReady') return null;
     const S = state(run);
     const EV = D.EVENTS || {};
     S.digs++;
+
+    // The spoil rolls FIRST, and off to the side. First because the egg's
+    // early return below must not swallow it and because the mundane payout
+    // should be read before the special one when a hole pays twice; off to
+    // the side because it spends no number the find table would have spent.
+    rollSpoil(run, S);
 
     // EGG-420's dig route (M-GRITPLUS built the window and left this roll to
     // us). It is rolled against every excavation rather than against the 8%
@@ -812,6 +892,10 @@
     LOGS: LOGS,
     logCount: LOGS.length,
     logText: function (i) { return LOGS[i] || null; },
+    // M-ROCKORE: the spoil's ore table for a run's current floor, weights
+    // already biased. Exported so the suites can assert the table rather than
+    // infer it from a million rolls, and so a tuning pass can print it.
+    spoilTable: spoilTable,
     // Test/inspection surface: the per-run record, without forcing it to exist.
     peek: function (run) { return (run && run.ev) || null; },
     state: state,

@@ -4317,6 +4317,263 @@ function eventsSection(seed) {
 // mouth as a priority line and a flash, and the Worm Whisperer really
 // publishes the cursor from the engine into the sim.
 // =========================================================================
+// ======================================================================
+// SECTION — M-ROCKORE: the spoil  (SPEC3 M-HUMANBAL Finding 8)
+// A completed ROCK dig pays 1-2 stratum-appropriate ore about 30% of the
+// time. Three things are under test and only one of them is the payout:
+//   1. the payout, through the REAL dig path (demolishAt -> Sim.tick), with
+//      the LOG naming its own cause exactly once per run;
+//   2. INDEPENDENCE — the 8% find table's stream must sit where M-EVENTS
+//      left it, so turning the spoil off does not move a single find;
+//   3. LAW 7 — the map, the quake schedule and the Mantle you get are
+//      byte-identical whether the spoil is off, on-and-never-paying, or on
+//      and paying into the crate all the way down.
+// Deliberately headless: this section drives DC.Sim directly rather than
+// booting the engine, because everything it asserts lives at the sim layer
+// and a second copy of eventsSection's canvas stub is exactly the kind of
+// duplicated preamble a merge trips on.
+// ======================================================================
+function rockOreSection(seed) {
+  SECTION = 'rockOre seed=' + seed;
+  require('../js/events.js');
+  const E = DC.Events;
+  const RO = D.EVENTS.rockOre;
+  const eff = defEffects();
+
+  // ---- 0. the numbers are named fields, where a tuning pass will look ----
+  assert(RO && typeof RO.chance === 'number', 'D.EVENTS.rockOre.chance exists');
+  assert(RO.chance > 0 && RO.chance < 1, 'the chance is a probability (' + RO.chance + ')');
+  assert(RO.min >= 1 && RO.max >= RO.min, 'min/max are a real range (' + RO.min + '-' + RO.max + ')');
+  assert(RO.bias && typeof RO.bias === 'object', 'the stratum bias is a named field');
+  assertEq(D.EVENTS.findRate, 0.08, 'the 8% find table is untouched by this brief');
+  assert(RO.chance * ((RO.min + RO.max) / 2) < 1,
+    'the spoil pays under one ore a hole: a floor, never an economy (§0 law 4)');
+
+  // ---- 1. the table: what each floor gives up ---------------------------
+  // "Stratum-appropriate" is the floor's OWN vein table put through the bias,
+  // so the spoil can never hand over an ore that does not exist down here.
+  for (let depth = 1; depth <= D.STRATA_COUNT + 2; depth++) {
+    const r = S.newRun(eff, seed);
+    r.depth = depth;
+    const st = depth <= D.STRATA_COUNT ? D.STRATA[depth - 1] : D.mantleStratum(depth);
+    const tbl = E.spoilTable(r);
+    assert(tbl.length > 0, 's' + depth + ': the spoil has something to pay');
+    let tot = 0;
+    for (const e of tbl) {
+      assert(st.ores[e.id] > 0, 's' + depth + ': "' + e.id + '" is a vein this floor actually spawns');
+      assert(e.w > 0, 's' + depth + ': every entry carries weight');
+      tot += e.w;
+    }
+    // Iron and coal are what a stranded base is stuck on (Findings 1 and 6:
+    // plates, and the fuel to make them). They must be the majority of the
+    // spoil on every floor, or this is not the emergency source it exists to be.
+    let need = 0;
+    for (const e of tbl) if (e.id === 'ironOre' || e.id === 'coal') need += e.w;
+    assert(need / tot > 0.5, 's' + depth + ': iron+coal carry the spoil (' +
+      (100 * need / tot).toFixed(0) + '%)');
+    // Core crystal gates the breach from s5 down. A shovel must not be a way
+    // around a gate: the spoil pays it well below the rate the rock spawns it.
+    const cry = tbl.filter(e => e.id === 'crystal')[0];
+    if (cry) {
+      const veinShare = st.ores.crystal / Object.keys(st.ores).reduce((a, k) => a + st.ores[k], 0);
+      assert(cry.w / tot < veinShare / 2, 's' + depth + ': crystal is damped hard (' +
+        (100 * cry.w / tot).toFixed(1) + '% of spoil vs ' + (100 * veinShare).toFixed(0) + '% of veins)');
+    }
+  }
+
+  // ---- 2. a real hole in real rock, driven ------------------------------
+  // Every reachable rock tile on the floor, excavated through the public API
+  // and ticked out by the sim. The assertion is on the counters, never on
+  // one lucky hole.
+  // In BATCHES, and drained after each one: sim.js caps run.events at 200 and
+  // run.messages at 40, and a whole floor excavated on one tick overflows
+  // both — which would silently hide the very records this section asserts on.
+  function digFloor(run, log) {
+    const BATCH = 20;
+    let holes = 0, pending = 0;
+    function settle() {
+      for (let i = 0; i < D.DIG_ROCK + 4; i++) S.tick(run);
+      if (log) {
+        for (const e of run.events.splice(0, run.events.length)) log.events.push(e);
+        for (const m of run.messages.splice(0, run.messages.length)) log.messages.push(m);
+      }
+      pending = 0;
+    }
+    for (let y = 0; y < D.MAP_H; y++)
+      for (let x = 0; x < D.MAP_W; x++) {
+        const t = run.grid[y][x];
+        if (t.t !== 'rock' || t.lm) continue;
+        t.revealed = true;
+        if (!S.demolishAt(run, x, y).ok) continue;
+        holes++;
+        if (++pending >= BATCH) settle();
+      }
+    settle();
+    return holes;
+  }
+  function mkLog() { return { events: [], messages: [] }; }
+  const ORES = ['ironOre', 'coal', 'copperOre', 'crystal'];
+  function oreTotal(inv) { let n = 0; for (const k of ORES) n += inv[k] || 0; return n; }
+
+  // The 8% find table also pays ore, so it is switched OFF for this leg: what
+  // is being audited is that the spoil puts into the crate exactly what it
+  // announced in the LOG, and a second ore source in the same run would let a
+  // miscount hide inside a find. Independence is proved on its own below.
+  let holes = 0, paid = 0, units = 0;
+  {
+    const wasFind = D.EVENTS.findRate;
+    D.EVENTS.findRate = 0;
+    try {
+      const run = S.newRun(eff, seed);
+      run.instability = 0;
+      const before = oreTotal(run.inv);
+      const log = mkLog();
+      holes = digFloor(run, log);
+      assert(holes > 100, 'the floor had rock in it (' + holes + ' holes)');
+      const ev = E.peek(run);
+      assertEq(ev.digs, holes, 'every hole was reported to events.js');
+      paid = ev.spoils; units = ev.spoilOre;
+      assert(paid > 0, 'digging out a floor paid spoil (' + paid + ' of ' + holes + ' holes)');
+      assert(units >= paid * RO.min && units <= paid * RO.max,
+        'every payout was ' + RO.min + '-' + RO.max + ' ore (' + units + ' over ' + paid + ')');
+      // ...and it went into the crate, exactly and only what was announced
+      const spoilEvs = log.events.filter(e => e.type === 'rockOre');
+      let announced = 0;
+      for (const e of spoilEvs) {
+        assert(e.data && ORES.indexOf(e.data.id) >= 0, 'a spoil event names a real ore');
+        assert(e.data.n >= RO.min && e.data.n <= RO.max, '...and how much of it');
+        announced += e.data.n;
+      }
+      assertEq(spoilEvs.length, paid, 'one event per payout, and it is its own type');
+      assertEq(announced, units, 'the events add up to the counter');
+      assertEq(oreTotal(run.inv) - before, units,
+        'the crate holds exactly what the LOG said it would');
+      // ---- the LOG names its own cause (M-ONBOARD Part 1's discipline) ---
+      const spoilMsgs = log.messages.filter(m => /in the dig spoil\./.test(m.text));
+      assertEq(spoilMsgs.length, paid, 'every payout says so in the LOG, once');
+      for (const m of spoilMsgs)
+        assert(D.COLORS && String(m.color).length > 0, 'the line is drawn in the ore\'s colour');
+      const longForm = log.messages.filter(m => /Rock carries traces/.test(m.text));
+      assertEq(longForm.length, 1,
+        'the cause is spelled out ONCE a run and is furniture after that (§0 law 6)');
+      assertEq(log.messages.indexOf(longForm[0]),
+        log.messages.indexOf(spoilMsgs[0]), '...on the very first payout');
+      // No new UI: the LOG line and the STOCK tick are the whole picture
+      // change (§0 law 5). The event type is NOT 'find' — engine.js barks on
+      // that one, and 30% of holes is far too often for a line of GRIT.
+      // EGG-420 rolls per excavation rather than off findRate, so the tin is
+      // the one find that can still turn up with the table switched off — and
+      // it is the ONLY one, which is the assertion.
+      for (const e of log.events.filter(e => e.type === 'find'))
+        assertEq(e.data.id, 'tin',
+          'the spoil never files itself as a dig find (got "' + e.data.id + '")');
+    } finally { D.EVENTS.findRate = wasFind; }
+  }
+  const rate = paid / holes;
+  assert(Math.abs(rate - RO.chance) < 0.12,
+    'about ' + (RO.chance * 100).toFixed(0) + '% of holes pay (got ' +
+    (rate * 100).toFixed(0) + '% over ' + holes + ')');
+
+  // ---- 3. rubble is not rock -------------------------------------------
+  // The crusher owns rubble (M-TIER2). Clearing it is housekeeping, and this
+  // brief does not touch it.
+  {
+    const run = S.newRun(eff, seed);
+    run.instability = 0;
+    let rubbles = 0;
+    for (let y = 0; y < D.MAP_H && rubbles < 20; y++)
+      for (let x = 0; x < D.MAP_W && rubbles < 20; x++) {
+        const t = run.grid[y][x];
+        if (t.t !== 'floor' || t.machine !== null || t.belt || t.lm) continue;
+        t.rubble = true; t.revealed = true;
+        if (S.demolishAt(run, x, y).ok) rubbles++;
+      }
+    assert(rubbles > 0, 'the scaffold found rubble to clear');
+    for (let i = 0; i < D.DIG_RUBBLE + 4; i++) S.tick(run);
+    const ev = E.peek(run);
+    assertEq(ev ? ev.spoils || 0 : 0, 0, 'clearing rubble never pays spoil');
+  }
+
+  // ---- 4. independence, and law 7 --------------------------------------
+  // The same seed dug the same way, three ways: the spoil OFF, the spoil ON
+  // but never paying (chance 0 with the code compiled in is the same thing —
+  // so this leg is really "the feature is present and inert"), and the spoil
+  // ON and paying. What must be identical across all three: the map, the
+  // 8% find table's whole sequence, the quake schedule, run.rng's position,
+  // and the Mantle floor that comes out the other side.
+  function sig(r) {
+    let h = 0;
+    for (let y = 0; y < D.MAP_H; y++) for (let x = 0; x < D.MAP_W; x++) {
+      const t = r.grid[y][x];
+      h = (Math.imul(h, 31) + (String(t.t || '').charCodeAt(0) || 0) +
+           (t.ore ? String(t.ore).charCodeAt(0) : 0) + (t.oreAmt || 0)) | 0;
+    }
+    return h;
+  }
+  function probe(chance) {
+    const was = RO.chance;
+    RO.chance = chance;
+    try {
+      const run = S.newRun(eff, seed);
+      run.instability = 0;
+      const quakes = [];
+      const log = mkLog();
+      digFloor(run, log);
+      const finds = log.events.filter(e => e.type === 'find').map(e => e.data.id);
+      // the quake schedule, off the same stream that just survived the digging
+      run.instability = 60;
+      for (let i = 0; i < 3000 && quakes.length < 3; i++) {
+        S.tick(run);
+        for (const e of run.events)
+          if (e.type === 'quake') quakes.push(run.t + ':' + JSON.stringify(e.data));
+        run.events.length = 0;
+        run.instability = 60;
+        run.integrity = run.maxIntegrity;
+      }
+      // ...and the Mantle, which is the one that bites: the run is still LIVE
+      // on the victory screen, and C continues it down (§0 law 7's own note).
+      run.status = 'won'; run.depth = D.STRATA_COUNT; run.breaches = D.STRATA_COUNT;
+      run.result = { depth: D.STRATA_COUNT, breaches: D.STRATA_COUNT,
+                     timeSec: 1200, cores: D.WIN_CORES, won: true };
+      S.continueIntoMantle(run);
+      const offers = (run.pendingOffers || []).slice();
+      S.applySchematic(run, offers[0]);
+      return {
+        map: sig(run), finds: finds.join(','), quakes: quakes.join('|'),
+        mantle: offers.join(',') + '#' + sig(run),
+        rng: [run.rng(), run.rng(), run.rng()].join(','),
+        paid: (E.peek(run) || {}).spoils || 0,
+      };
+    } finally { RO.chance = was; }
+  }
+  const off = probe(0), on = probe(RO.chance);
+  assertEq(off.paid, 0, 'at chance 0 the feature is compiled in and inert');
+  assert(on.paid > 0, '...and at the shipped chance it really pays');
+  assertEq(on.finds, off.finds,
+    'the 8% find table rolls the SAME sequence with the spoil on (' +
+    off.finds.split(',').length + ' finds) — separate stream, real independence');
+  assertEq(on.map, off.map, 'the map is byte-identical');
+  assertEq(on.quakes, off.quakes, 'the quake schedule is byte-identical (§0 law 7)');
+  assertEq(on.rng, off.rng, 'run.rng sits at the same position');
+  assertEq(on.mantle, off.mantle, 'the Mantle you descend into is the same Mantle');
+
+  // ...and it is still deterministic ON THE SEED, which is what all of that
+  // determinism is for.
+  function spoils(sd) {
+    const r = S.newRun(eff, sd);
+    r.instability = 0;
+    const log = mkLog();
+    digFloor(r, log);
+    return log.events.filter(e => e.type === 'rockOre')
+                     .map(e => e.data.id + e.data.n).join(',');
+  }
+  assertEq(spoils(seed), spoils(seed), 'the same seed digs up the same spoil');
+  assert(spoils(seed) !== spoils(seed + 1), 'a different seed does not');
+
+  return paid + ' payouts / ' + holes + ' holes (' + (rate * 100).toFixed(0) +
+         '%), ' + units + ' ore, finds untouched, map+quakes+Mantle identical';
+}
+
 function wormsSection(seed) {
   SECTION = 'worms seed=' + seed;
   require('../js/barks.js');
@@ -6930,6 +7187,9 @@ try {
   const walls = coreLoreSection(SEED + 43);
   const wonders = wondersSection(SEED + 47);
   const events = eventsSection(SEED + 53);
+  // M-ROCKORE: the spoil. Headless (no engine boot), so it has no ordering
+  // constraint; it sits beside eventsSection because it shares that module.
+  const rockOre = rockOreSection(SEED + 73);
   const wide = wideSection(SEED + 59);
   // After wideSection on purpose: this one boots the real engine, wakes an
   // Undertoad and leaves js/fx.js's particle list full of falling dust, and
@@ -6957,6 +7217,7 @@ try {
       ' | core gate 3 beats | ' + walls + ' walls' +
       ' | wonders ' + wonders +
       ' | events ' + events +
+      ' | spoil ' + rockOre +
       ' | worms: ' + worms +
       ' | wide ' + wide +
       ' | onboard ' + onboard +
