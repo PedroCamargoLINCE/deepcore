@@ -592,6 +592,32 @@
     gasFuse: 8,           // ticks between the hiss and the pop (1s of warning)
     shaftR: 6,            // Old Shaft: radius of map revealed around the dig
     rigOncePerStratum: true, // a dead rig is salvaged once per floor, not five
+    // M-ROCKORE (SPEC3 M-HUMANBAL Finding 8): the spoil. A completed ROCK dig
+    // also rolls, SEPARATELY from findRate above, for a small ore payout —
+    // the floor under bad luck for the run where the veins are on the far
+    // wall and the crate is empty (Findings 1 and 6). Both rolls can land on
+    // one dig; neither gates the other, and they do not even share a stream
+    // (js/events.js owns a third derived channel for this one, so the finds
+    // above sit at exactly the stream position M-EVENTS left them at).
+    //
+    // It is a FLOOR, never an economy: chance x mean = 0.45 ore per completed
+    // dig, and X already charges 4s of standing still per hole, so hand-dug
+    // ore costs ~9 seconds a unit against an extractor's 0.5/s. Nobody will
+    // ever prefer the shovel; a stranded rig can still crawl out on it.
+    //
+    // `bias` multiplies the STRATUM's own vein weights (D.STRATA[].ores) to
+    // decide which ore the spoil carries, so the answer is always what that
+    // floor is made of — tilted toward what a stranded player is actually
+    // stuck on. Iron and coal are the two things a dead base needs (plates,
+    // then the fuel to make them: Finding 1's murder weapon is an empty coal
+    // bin); copper rides at par; core crystal is damped hard because charges
+    // are the BREACH GATE from stratum 5 down and a shovel must not be a way
+    // around a gate. Deep-floor spoil goes from 32% crystal to 9%.
+    rockOre: {
+      chance: 0.30,       // of completed ROCK excavations (independent of findRate)
+      min: 1, max: 2,     // units per payout, inclusive
+      bias: { ironOre: 1.5, coal: 1.5, copperOre: 1.0, crystal: 0.3 },
+    },
     // The cave-cat. Everything here is presentation cadence — the cat writes
     // nothing back into the sim, so none of it can move a balance number.
     catStep: 6,           // ticks between cat moves (~0.75s — chunky, law 2)

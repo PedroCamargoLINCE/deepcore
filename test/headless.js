@@ -854,7 +854,21 @@ function checkDigFinds() {
         revealed: countRevealed(run),
         msgs: run.messages.length,
       };
+      const spoils0 = (run.ev && run.ev.spoils) || 0;
       const got = E.rollDig(run, p.x, p.y);
+      // M-ROCKORE: the spoil rolls on the SAME excavation, independently, and
+      // pays into the same crate — that is the design (both can land on one
+      // dig). It is not part of the find's payload, so it is folded into the
+      // BEFORE snapshot and every case below still measures what the FIND
+      // paid, which is the thing under test.
+      if (run.ev && run.ev.spoils > spoils0) {
+        let sp = null;
+        for (let j = run.events.length - 1; j >= 0 && !sp; j--)
+          if (run.events[j].type === 'rockOre') sp = run.events[j].data;
+        assert(sp && sp.id && sp.n > 0, 'a spoil payout files its own event');
+        before.inv[sp.id] = (before.inv[sp.id] || 0) + sp.n;
+        before.msgs++;
+      }
       if (got === id) return { run: run, before: before };
       run.instability = 0;
       run.ev.rigTaken = false;
