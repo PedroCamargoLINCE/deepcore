@@ -167,7 +167,7 @@ the model re-pinned), `PUSHED:` (a new checkpoint on origin — progress), and
 `DONE?:` (the worker's own finished recap). Silence is not success: the
 filter must cover every failure signature, not just the happy path.
 
-Three rules, each paid for:
+Four rules, each paid for:
 
 1. **The `--remote-control` FLAG, never the `claude remote-control` server
    subcommand, for workers.** The subcommand has NO --model option — its
@@ -188,6 +188,22 @@ Three rules, each paid for:
    model. The in-session Agent tool's `model` parameter was also observed NOT
    to hold for background workers; agents are for small errands where the
    model does not matter.
+4. **Session DISPLAY names are one shared slot — never trust them, never
+   `/rename` from a worker pane** (2026-08-25). A `/rename` sent into any
+   session's pane changed the banner of EVERY session on the machine,
+   including the master's — the director watched "deepcore-master" become
+   a laborer on his own screen, and earlier saw a phone entry named
+   deepcore-master that was actually the rockore worker. The only name that
+   is genuinely per-session is the Remote Control REGISTRATION: pass it
+   explicitly at launch (`--remote-control "THE-LABORER-<BRIEF>"`) and on
+   every re-register (`/remote-control THE-LABORER-<BRIEF>` — never bare;
+   a bare re-register grabs the shared display name and impersonates
+   whoever owns it). If a launch prints "Session creation failed", the
+   retry also carries the name. Cleaning up a mess: disconnect each remote
+   from its own pane (`/remote-control` → Disconnect), re-register each
+   with its explicit name, and the master re-registers as itself
+   (`/remote-control deepcore-master`) — by the director's hand, since the
+   orchestrator cannot run slash commands in its own session.
 
 ### Running a brief in a CLOUD session (laptop closed)
 
