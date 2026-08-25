@@ -204,6 +204,15 @@ Four rules, each paid for:
    with its explicit name, and the master re-registers as itself
    (`/remote-control deepcore-master`) — by the director's hand, since the
    orchestrator cannot run slash commands in its own session.
+   Per the official Remote Control docs (checked 2026-08-25): the phone list
+   title resolves in priority order (1) the name passed to
+   `--remote-control <name>`, (2) `/rename`, (3) last message, (4) an
+   auto-generated `host-adjective-noun` — so an explicit registration name
+   OUTRANKS the rename mess, which is why the incantation always carries
+   one. The all-sessions-flip on `/rename` is documented NOWHERE and is a
+   local bug (three sessions, same repo, different worktree dirs); treat
+   banners and ListAgents names as unreliable, identify workers by tmux
+   session name and branch.
 
 ### Running a brief in a CLOUD session (laptop closed)
 
