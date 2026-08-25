@@ -247,6 +247,12 @@
     const T = state(run);
     if (!T || T.over) return;
 
+    // The face's quake flinch (M-TUTORIAL2). ui.shakeUntil is the engine's
+    // 4-tick screen shake — too brief for an expression to be read — so the
+    // moment is stamped here and mood() holds the alarm for a beat. Reading
+    // the shake that HAPPENED is law-8-clean; run.quakeAt never is.
+    if (ui && ui.shakeUntil && run.t < ui.shakeUntil) T.joltT = run.totalT;
+
     // A player who reaches the next floor with the induction still running has
     // left it behind, and the pressure pause goes with them — a frozen
     // instability gauge carried into stratum 2 would be a whole run played
@@ -354,6 +360,39 @@
     const id = beatId(run);
     if (!id || id === 'outro' || id === 'skipped') return [];
     return [['cap', 'TAB'], ['t', ' SKIP THE INDUCTION']];
+  }
+
+  // ---------------- the face (M-TUTORIAL2, Finding 4) ----------------
+  // Which of GRIT's four expressions the box wears, as a PURE read of state
+  // the game already tracks — law 7 twice over: nothing here rolls, and
+  // nothing here is new bookkeeping. Precedence is danger first (alarmed),
+  // then the joke he cannot keep off his face (proud), then approval
+  // (pleased), then the default set of a man twenty years down a hole.
+  function isJoke(s) { return /^(Why|What|How) /.test(String(s || '')); }
+  function lastSeenT(T) {
+    let t = -Infinity;
+    for (const k in T.seen) if (T.seen[k] > t) t = T.seen[k];
+    return t;
+  }
+  function mood(run) {
+    const T = state(run);
+    if (!T) return 'deadpan';
+    // alarmed: the floor bit back — a quake just landed (stamped by tick from
+    // ui.shakeUntil, never from run.quakeAt: the surprise stays a surprise),
+    // the hull is low, or the machine the box points at is visibly failing.
+    if (T.joltT && run.totalT - T.joltT < 3 * HZ) return 'alarmed';
+    if (run.maxIntegrity > 0 && run.integrity / run.maxIntegrity < 0.4) return 'alarmed';
+    if (warn(run)) return 'alarmed';
+    if (T.skipped) return 'deadpan';   // he approves, but with a straight face
+    // proud: he is telling one of HIS jokes — the setup-and-punchline shape
+    // the corpus lint pins — and he wants you to know he wrote it.
+    if (isJoke(line(run))) return 'proud';
+    // pleased: a lesson just landed, a beat the player had already done, the
+    // breach standing ready, or the finished form.
+    if (T.i >= BEATS.length) return 'pleased';
+    if (run.status === 'breachReady') return 'pleased';
+    if (run.totalT - lastSeenT(T) < CFG.holdT * HZ) return 'pleased';
+    return 'deadpan';
   }
 
   function title(run) {
@@ -473,7 +512,7 @@
     BEATS: BEATS,
     eligible: eligible, begin: begin, tick: tick, skip: skip,
     active: active, state: state, beat: beatId, release: release,
-    line: line, action: action, warn: warn, foot: foot, title: title,
+    line: line, action: action, warn: warn, foot: foot, title: title, mood: mood,
     target: target, layout: layout,
     // exposed for the suites: the gates and the two map reads they run on
     pickVein: pickVein, firstExtractor: firstExtractor,

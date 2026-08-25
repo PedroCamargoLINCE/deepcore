@@ -91,6 +91,11 @@
   D.TUTORIAL = {
     boxW: 40,        // speech box width in cells, walls included
     proseRows: 3,    // rows of GRIT inside it (the authored line wraps to these)
+    // M-TUTORIAL2 (Finding 4): GRIT's face rides the left edge of the prose
+    // rows — 5 cells of portrait and 1 of air. The prose ceiling every line is
+    // written to DROPS by this much (36 -> 30), which is a writing cost paid
+    // once, deliberately, before act two was authored (see SPEC3 Finding 4).
+    faceW: 6,
     nudgeT: 22,      // seconds on one beat before he re-riffs the same lesson
     nudgeMax: 3,     // ...and how many times, before he lets the silence work
     holdT: 4,        // seconds the completed beat's box lingers before the next

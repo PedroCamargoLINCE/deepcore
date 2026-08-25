@@ -1226,10 +1226,78 @@
     W: (D.TUTORIAL && D.TUTORIAL.boxW) || 40,
     PROSE_ROWS: (D.TUTORIAL && D.TUTORIAL.proseRows) || 3,
     PAD: 1,                        // one column of air inside each wall
-    get TEXT_W() { return A.SPEECH.W - 2 - A.SPEECH.PAD * 2; },
+    // M-TUTORIAL2 (Finding 4): the face column. GRIT's portrait sits left of
+    // the prose on the prose rows ONLY — the action and footer rows run the
+    // full interior, because law 6 says if the face and the line ever compete
+    // for a column, the line wins, and those two rows are the ones that must
+    // land even when the joke did not.
+    FACE_W: (D.TUTORIAL && D.TUTORIAL.faceW) || 6,
+    get TEXT_W() { return A.SPEECH.W - 2 - A.SPEECH.PAD * 2 - A.SPEECH.FACE_W; },
+    get ACTION_W() { return A.SPEECH.W - 2 - A.SPEECH.PAD * 2; },
     // prose rows + a blank + the ACTION row + the skip footer, inside 2 walls
     get H() { return A.SPEECH.PROSE_ROWS + 3 + 2; },
   };
+
+  // ---------------- M-TUTORIAL2 (Finding 4): GRIT, seen ----------------
+  // He has 422 lines, a typewriter, a bar of his own, an induction he narrates
+  // — and until now he had never been SEEN. Five cells by three, through the
+  // Phase-2 rasterizer like every other picture in this file, so the source is
+  // a readable bitmap and the glyphs fall out of R.quadrants. The hard hat is
+  // the identity anchor and never moves; three rows is eyes and a mouth, and
+  // the eyes carry it (Finding 4, verbatim). Law 7: which face shows follows
+  // sim state (js/tutorial.js's mood()), never run.rng.
+  A.GRIT_FACE_W = 5;
+  function gritBitmap(rows) {
+    const bm = R.bitmap(A.GRIT_FACE_W, 3, 2, 2);
+    for (let y = 0; y < 6; y++) {
+      for (let x = 0; x < A.GRIT_FACE_W * 2; x++) {
+        if (rows[y][x] === '#') R.set(bm, x, y, 1);
+      }
+    }
+    return R.quadrants(bm);
+  }
+  const GRIT_FACES = {
+    // lidded eyes, flat mouth: a man reading a laminated script for the
+    // eleven-hundredth time
+    deadpan: gritBitmap([
+      '.########.',
+      '##########',
+      '..........',
+      '..##..##..',
+      '...####...',
+      '..........',
+    ]),
+    // eyes open, corners of the mouth up: a beat passed, a breach ready —
+    // approval, from a man who rations it
+    pleased: gritBitmap([
+      '.########.',
+      '##########',
+      '..##..##..',
+      '..........',
+      '..#....#..',
+      '...####...',
+    ]),
+    // eyes wide, mouth agape: quake, hull failing, an output facing rock
+    alarmed: gritBitmap([
+      '.########.',
+      '##########',
+      '..##..##..',
+      '..##..##..',
+      '....##....',
+      '....##....',
+    ]),
+    // one eye winked, the grin at full width: the jokes he is proudest of
+    proud: gritBitmap([
+      '.########.',
+      '##########',
+      '..##......',
+      '......##..',
+      '..######..',
+      '...####...',
+    ]),
+  };
+  A.GRIT_MOODS = Object.keys(GRIT_FACES);
+  A.gritFace = function (mood) { return GRIT_FACES[mood] || GRIT_FACES.deadpan; };
 
   // A wedge three cells wide, narrowing to the two middle sub-columns on the
   // side it points at. `dir` is 'down' (the box is above its target) or 'up'.
@@ -1252,9 +1320,13 @@
   // the keycaps are inverse cells and inverse is not a character.
   A.speechBox = function (title, prose, action, foot) {
     const S = A.SPEECH, w = S.W, pad = ' '.repeat(S.PAD);
+    // Interior rows span the FULL width between the walls (ACTION_W) — the
+    // face-narrowed TEXT_W is the PROSE's ceiling, not the box's; a frame
+    // composed at TEXT_W would put its right wall six columns early
+    // (M-TUTORIAL2 found exactly that, on the first frame it rendered).
     const inner = function (s) {
       s = String(s === undefined || s === null ? '' : s);
-      return '│' + pad + seg(s + sp(S.TEXT_W), 0, S.TEXT_W) + pad + '│';
+      return '│' + pad + seg(s + sp(S.ACTION_W), 0, S.ACTION_W) + pad + '│';
     };
     const bar = rep('─', w - 2);
     const rows = ['┌' + bar + '┐'];

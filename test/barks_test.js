@@ -1641,8 +1641,11 @@ let TUTOR_N = 0, TUTOR_WORST = 0;
         w += s[0] === 'cap' ? s[1].length + 2 : s[1].length;
         if (s[0] === 'cap') { hasCap = true; caps[s[1]] = true; }
       }
-      assert(w <= S2.TEXT_W, 'beat ' + T.BEATS[i] + ' action row is ' + w +
-        ' cols, the box holds ' + S2.TEXT_W);
+      // M-TUTORIAL2: action rows run the FULL interior (under the face's
+      // column) — the face never costs the action a cell, so their ceiling is
+      // ACTION_W, not the prose's face-narrowed TEXT_W.
+      assert(w <= S2.ACTION_W, 'beat ' + T.BEATS[i] + ' action row is ' + w +
+        ' cols, the box holds ' + S2.ACTION_W);
       // the last beat is a WATCH beat and has no key; the three that ask for a
       // keypress must draw that key
       if (T.BEATS[i] !== 'ore')

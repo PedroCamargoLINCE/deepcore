@@ -5367,8 +5367,8 @@ function tutorialSection(seed) {
     const ww = w.reduce(function (n, s) {
       return n + (s[0] === 'cap' ? s[1].length + 2 : s[1].length);
     }, 0);
-    assert(ww <= A.SPEECH.TEXT_W, 'the fouled-output row is ' + ww +
-      ' cols and the box holds ' + A.SPEECH.TEXT_W + ' — it would be cut');
+    assert(ww <= A.SPEECH.ACTION_W, 'the fouled-output row is ' + ww +
+      ' cols and the box holds ' + A.SPEECH.ACTION_W + ' — it would be cut');
     // it is drawn, in the warning colour, above the action row
     frames(1);
     const wrows = gridRows();

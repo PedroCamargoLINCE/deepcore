@@ -1621,15 +1621,29 @@
     text(L.col + 2, L.row, ttl, C.white, C.bg);
 
     const tx = L.col + 1 + S.PAD;
+    // M-TUTORIAL2 (Finding 4): the face, left of the prose, on the prose rows
+    // only. Its expression is a pure read of sim state (Tutorial.mood — law 7)
+    // and its colour repeats the reading so it lands at one glance: danger red,
+    // approval green, the joke white, the shift amber.
+    const mood = (T.mood && T.mood(run)) || 'deadpan';
+    const face = A.gritFace ? A.gritFace(mood) : null;
+    const moodC = mood === 'alarmed' ? C.red : mood === 'pleased' ? C.green
+                : mood === 'proud' ? C.white : C.amber;
+    if (face) {
+      for (let i = 0; i < Math.min(face.length, S.PROSE_ROWS); i++)
+        text(tx, L.row + 1 + i, face[i], moodC, C.bg);
+    }
+    const px = tx + (face ? S.FACE_W : 0);
     for (let i = 0; i < prose.length; i++)
-      text(tx, L.row + 1 + i, prose[i], C.cyan, C.bg);
+      text(px, L.row + 1 + i, prose[i], C.cyan, C.bg);
 
     // the warn row, the action row and the way out — the three rows that are
-    // never a joke
+    // never a joke. They run the FULL interior, under the face's column: if
+    // the face and the line compete, the line wins (law 6).
     const warn = T.warn(run);
-    if (warn && warn.length) tutorSegs(tx, L.row + 1 + S.PROSE_ROWS, warn, S.TEXT_W, C.red);
-    tutorSegs(tx, L.row + 2 + S.PROSE_ROWS, T.action(run) || [], S.TEXT_W, C.green);
-    tutorSegs(tx, L.row + 3 + S.PROSE_ROWS, T.foot(run) || [], S.TEXT_W, C.amberDim);
+    if (warn && warn.length) tutorSegs(tx, L.row + 1 + S.PROSE_ROWS, warn, S.ACTION_W, C.red);
+    tutorSegs(tx, L.row + 2 + S.PROSE_ROWS, T.action(run) || [], S.ACTION_W, C.green);
+    tutorSegs(tx, L.row + 3 + S.PROSE_ROWS, T.foot(run) || [], S.ACTION_W, C.amberDim);
   }
 
   // ================= TITLE =================
