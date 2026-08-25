@@ -1485,6 +1485,42 @@ console.log(`
   by the paper, and the two hull terms are the numbers to revisit once a
   human has signed one.
 
+  M-ROCKORE (the spoil): NOT MEASURED BY THIS HARNESS, and the sweep says so
+  by not moving. A completed ROCK dig now pays 1-2 ore about 30% of the time
+  (D.EVENTS.rockOre). Both canonical-14 sweeps were diffed row for row before
+  and after the brief and are IDENTICAL — naked and full Foundry, both
+  policies, every per-stratum time:
+
+    DC_BAL_META=<full> node tools/ab.js 'D.EVENTS.rockOre.chance = 0'   -> same table
+
+  That is NOT the feature being inert. It is the BOT: instrumented over the
+  whole sweep it completes 26 rock excavations in the 28 naked runs and 63 in
+  the 28 full ones — roughly two holes a run, all of them incidental (a belt
+  path or a 2x2 pad that happened to have rock on it). It has no policy that
+  says "the veins are gone, dig", because it never gets stranded the way a
+  human does; it dies to quakes with an extractor still running. Seven and 26
+  payouts respectively, ~40 ore total across 56 runs, is below this harness's
+  resolution and always would be. A sweep that DID move here would mean the
+  bot had started farming, which is the failure mode the numbers are set to
+  prevent — so the identity is the result, not the absence of one.
+
+  What the numbers rest on instead is the arithmetic of the price, which the
+  bot cannot argue with. X costs 4.00s of standing still per hole; the spoil
+  pays 0.30 x 1.5 = 0.45 ore a hole, so a shovel sustains 0.113 ore/s:
+
+    one extractor          0.500 ore/s      the shovel is 22.5% of it
+    one smelter's intake   0.500 ore/s      ...so 4.4 diggers feed one smelter
+    one smelter's coal     0.167 coal/s     hand-dug coal (45% of s1 spoil,
+                                            35% deep) covers 30% / 24% of it
+
+  Four minutes of digging nothing but rock on stratum 1 is ~60 holes, ~27 ore,
+  ~15 iron and ~12 coal — one machine and change, bought with most of a floor
+  under rising instability. Hand-digging stratum 1's whole gear bill (20 gears
+  = 40 plates = 40 iron) is ~6 minutes of pure digging against a 137s median
+  breach. It is a floor under bad luck (SPEC3 M-HUMANBAL Findings 1 and 6:
+  veins far, crate empty), and it can never be a farm, which is §0 law 4. No
+  data.js value was tuned against the bot for it, and none moved.
+
   DRIFTED (camper): superseded, and in the other direction. The med 8 logged
   last wave (one PAST the s6-s7 band) is now med 5, one short of it, on the
   same deck-dilution mechanism. Still logged for M-HUMANBAL rather than

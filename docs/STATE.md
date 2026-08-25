@@ -94,6 +94,23 @@ than the stratum being unbeatable. Never tune `data.js` against those.
   `SAVE_V` 6 (optional fields; v1..v5 load). Two trophies, a CONTRACTS SIGNED
   ledger line, `DC_BAL_CONTRACT=standard|hazard|warrant`.
 
+- **M-ROCKORE (2026-08-25, branch M-ROCKORE)**: the spoil — SPEC3 M-HUMANBAL
+  Finding 8. A completed ROCK dig pays 1-2 stratum-appropriate ore ~30% of the
+  time, SEPARATE from M-EVENTS' 8% find table (both can land on one hole).
+  Rubble is untouched: that stays the crusher's economy (M-TIER2). It is a
+  floor under bad luck for the run where the veins are far and the crate is
+  empty (Findings 1 and 6), priced by the 4s X already charges — 0.113 ore/s,
+  22.5% of one extractor, so it can never be a farm (§0 law 4). Numbers are
+  named fields in `D.EVENTS.rockOre` (chance/min/max/bias) for the tuning
+  pass; `bias` multiplies the STRATUM's own vein weights (iron/coal x1.5,
+  copper at par, core crystal x0.3 because charges gate the breach from s5
+  down). Law 7: the roll owns a THIRD derived stream in `js/events.js`, never
+  `run.rng` AND never the find table's stream — so the 8% finds sit at exactly
+  the position M-EVENTS left them and both balance sweeps are byte-identical
+  before and after. No UI, no save fields, no `SAVE_V` bump; the LOG line and
+  the STOCK tick are the whole picture change. The sweep cannot measure this
+  feature — the bot digs ~2 holes a run — and the balance footer says so.
+
 ## Conventions (violating these has cost us hours before)
 
 1. **Checkpoint-commit constantly.** Session limits have killed four agent
