@@ -1,0 +1,60 @@
+You are a worker session on the DEEPCORE project, implementing M-ROCKORE.
+You are in your own git worktree on branch M-ROCKORE — do ALL work there;
+the orchestrator owns the main working copy.
+
+YOU ARE ONE OF TWO WORKERS RUNNING IN PARALLEL. The other (M-TUTORIAL2) owns
+js/tutorial.js, js/barks.js, js/art.js and the TUTOR/TUTORIAL regions of
+js/data.js. You do NOT touch those files or regions, at all. Your ground:
+the dig-resolution path in js/sim.js, the D.EVENTS region of js/data.js,
+your own test section, and nothing else you can avoid. In test files you ADD
+a section named rockOreSection, reusing the suite's existing engine-boot
+helpers (the ones the tutorial/achieve/audio/contract sections share) — never
+clone a preamble; identical preambles are what a past merge tripped on.
+
+Read CLAUDE.md, SPEC3.md §0 (the Eight Laws) and the M-HUMANBAL ledger's
+Finding 8 in full (it is the brief), js/sim.js (the X-dig flow and rollDig —
+the events-stream roll pattern you must copy exactly), js/data.js (D.EVENTS,
+findRate), and docs/STATE.md.
+
+THE DECISIONS (from the ledger; these are decided, not suggestions):
+- A COMPLETED ROCK dig gets a ~30% chance of a small ore payout: 1-2 ore,
+  stratum-appropriate. ROCK only — rubble stays the crusher's economy
+  (M-TIER2), and this brief does not touch rubble.
+- The roll is SEPARATE from and independent of the existing 8% find table,
+  so the vignettes stay special. Both can hit on one dig.
+- Law 7 is the whole game here: the roll uses the EVENTS STREAM, pattern-
+  matched to rollDig — never run.rng. One stolen number changes the Mantle.
+- The numbers live in D.EVENTS as named fields (chance, min, max) so the
+  M-HUMANBAL tuning pass can move them without archaeology. 0.30 / 1 / 2 is
+  the starting point; you may adjust ONLY by measurement, and report it.
+- "Stratum-appropriate" you decide from what the stratum's own map tables
+  actually spawn, weighted toward what a stranded player needs (Findings 1
+  and 6 are the situation this exists for: veins far, crate empty). Report
+  your table and the reasoning.
+- Delivery and the LOG: the payout lands where dig finds already land, and
+  the LOG names it in Part 1's discipline — every event names its own cause.
+  No new UI. The picture change (law 5) is the LOG line and the STOCK tick.
+
+CONSTRAINTS:
+- No SAVE_V bump, no new save fields, SAVE_KEY unmoved.
+- Sim stays DOM-free and deterministic; no Date.now, no Math.random.
+- Existing data.js values are never changed — your fields are additive.
+
+Gate: five suites green (headless, integration, barks, rig, balance),
+node tools/build.js parses, plus: a driven test that digs rock on a fixed
+seed and asserts the payout, the independence from the find table, and that
+map/quakes/Mantle on that seed are BYTE-IDENTICAL with the feature compiled
+in but never triggered. Run test/balance.js naked-14 before and after: the
+sweep should be identical unless the bot actually digs rock — if a number
+moves, prove it is bot digs and mark the footer honestly; never tune data.js
+to make the bot look good.
+
+Checkpoint-commit AND PUSH after every green milestone with a
+"Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>" trailer. Ship the
+roll + payout + determinism test first, then the LOG line, then the balance
+A/B.
+
+When done: push your branch and STOP — do not merge, rebase or force-push;
+the orchestrator merges. Report: what you built, your stratum table, your
+final numbers with the measurement behind them, balance before/after,
+deviations, and final test output.

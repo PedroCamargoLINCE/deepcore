@@ -1342,6 +1342,15 @@ Notes for whoever builds it:
 - The manual (page 1) and CHAIN already explain this chain. Point at them rather
   than restating them, exactly as beat 4 now points at STOCK.
 
+**Amended by the director, 2026-08-25:** *"i didnt think the tutorial was good,
+gameplay wise. i found it very shallow and not creative. please try to expand it
+a bit more not to only make it longer, but to make it better overall."* The
+four-beat table above is the floor, not the design. The expansion's job is to
+make the induction a PIECE — reactive to what the player has already done,
+teaching through the machine visibly failing rather than through instruction,
+running act two under the real clock, and staged as the Company paperwork ritual
+it fictionally is — not four more rows of "press this."
+
 #### Finding 4 (CRAFT) — GRIT has no face
 
 > Director, 2026-08-17: *"alongside a face/icon for grit."*

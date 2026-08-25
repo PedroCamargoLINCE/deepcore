@@ -1,0 +1,110 @@
+You are a worker session on the DEEPCORE project, implementing M-TUTORIAL2:
+GRIT's face, and the induction rebuilt from "a script" into "a piece".
+You are in your own git worktree on branch M-TUTORIAL2 — do ALL work there;
+the orchestrator owns the main working copy.
+
+YOU ARE ONE OF TWO WORKERS RUNNING IN PARALLEL. The other (M-ROCKORE) owns
+the dig path in js/sim.js and the D.EVENTS region of js/data.js. You do NOT
+touch those. Your ground: js/tutorial.js, js/barks.js (TUTOR), js/art.js,
+the tutorial box in js/render.js, the TUTOR/TUTORIAL regions of js/data.js,
+and your own test sections. If you need a sim change (the coal-vein
+guarantee, the instHold seam) keep it surgically away from dig resolution.
+In test files ADD sections named tutorial2Section / gritFaceSection, reusing
+the suite's existing engine-boot helpers — never clone a preamble.
+
+Read CLAUDE.md, SPEC3.md §0 (Eight Laws + the lineage note) and the
+M-HUMANBAL ledger's Findings 3 AND 4 in full — including Finding 3's
+2026-08-25 amendment, which is the director's verdict on the current
+induction: "very shallow and not creative... make it better overall," not
+longer. Then js/tutorial.js top to bottom (the gate/beat machinery you are
+extending — its comments are load-bearing), js/barks.js (tutorPick/tutorLine
+and TUTOR), js/art.js (DC.Art.raster and SPEECH), js/render.js (the box),
+js/sim.js (instHold), test/barks_test.js (the width contract), and
+docs/STATE.md.
+
+BUILD ORDER IS A DECISION: the face comes FIRST, because it sets the prose
+ceiling every new line is written to. Do not write one act-two line before
+the reflow is done.
+
+PART 1 — GRIT'S FACE (Finding 4):
+- A small ASCII portrait via DC.Art.raster in the induction box's left
+  column, ~6 columns; the three prose rows drop from 36 to ~30. Reflow ALL
+  67 existing TUTOR lines to the new ceiling — barks_test's width contract
+  is the gate that proves you got them all.
+- Expressions keyed to state the game already has: deadpan (default),
+  pleased (beat passed / breach ready), alarmed (quake, low integrity,
+  fouled output), and one for the jokes he is proudest of. Three rows is
+  eyes and a mouth; the eyes carry it. Law 7: expression follows state,
+  never run.rng. Law 6: reads at one cell = 10x19 px; if the face and the
+  line ever compete for a column, the line wins.
+- Foundry / recap-card placement only if it costs nothing; the box is the
+  scene that matters.
+
+PART 2 — THE INDUCTION, ACT TWO (Finding 3):
+Beats 5-8 close the loop the current four beats abandon: smelt (smelter,
+ore belted in) -> coal (a SECOND extractor, on coal, same smelter) ->
+craft (assembler, plates to gears) -> feed (gears to rig, GEAR fills, D).
+Same machinery as beats 1-4: gated on the player ACTUALLY doing it, on the
+real generated map, no sandbox, no timers, nothing placed on their behalf.
+
+"BETTER, NOT LONGER" — these are the direction, and they are why this brief
+exists (steal the shape: Papers Please for the ritual, Factorio for the
+loop):
+- REACTIVE, NOT SCRIPTED: every gate is already a pure read of sim state,
+  so a beat the player has ALREADY satisfied passes instantly — with a line
+  where GRIT notices ("already built one. look at you.") rather than a
+  lecture about doing what they did. A returning player who speedruns the
+  chain should watch the induction sprint to keep up with them. This is the
+  single cheapest thing that makes it feel alive.
+- THE FAILURE IS THE TEACHER: the coal beat does not open with an
+  instruction. It arms when the smelter the player just built sits DARK
+  with ore queued — the machine visibly not working is the lesson, and
+  GRIT names the real cause (no coal in start stock; second vein
+  mandatory). That dark smelter is Finding 1's soft-lock, taught before it
+  can ever bite.
+- THE CLOCK IS DRAMA: the pressure pause (instHold) still releases at the
+  end of beat 4, exactly as today — act two runs on the Company's time and
+  GRIT SAYS SO. The act break after beat 4 is a beat of its own: the legal
+  minimum is met, TAB is offered a second time, and staying is a choice.
+- PAPERWORK AS THEATER: the induction is fictionally a Company form. Beats
+  get stamped as they pass (title row / box furniture — cheap), and the
+  outro is GRIT signing off the completed form, in the contracts desk's
+  visual family. Two acts, a stamp per lesson, a signature at the end.
+- POINT, DON'T RESTATE: the manual and CHAIN already explain the chain.
+  Act two ends by pointing right, exactly as beat 4 points at STOCK.
+
+CONSTRAINTS:
+- TAB skips the WHOLE induction from any beat, first frame included.
+- The coal beat needs a reachable coal vein on stratum 1 or must detect the
+  lack and skip gracefully — generalize pickVein's lazy-wait pattern; never
+  invent a target. If map generation needs a nudged guarantee, that is a
+  sim/map change: measure it across 200 seeds like the iron note in
+  tutorial.js, and it must not move the naked sweep (see gate).
+- eligible(), begin(force), the [I] replay door, and the depth-change
+  bailout all keep working; the induction still never repeats a diagnostic
+  Part 1 already owns.
+- No SAVE_V bump, no new save fields. Law 7 everywhere: tutorial, barks,
+  art and render never touch run.rng. All new modules stay DOM-free and
+  deterministic.
+- GRIT's guardrails: profanity, innuendo, gallows humour, Company-hating
+  are the point; slurs, hate, explicit anatomy, non-consent framing never.
+
+Gate: five suites green, node tools/build.js parses, extended for: every
+new TUTOR line inside the new width contract; a driven integration run that
+completes all EIGHT beats headlessly on a fixed seed; a second driven run
+proving the reactive skip (pre-build the smelter, assert the beat passes
+with the notice line); the fouled/alarmed expression states; TAB from an
+act-two beat; the coal-less-map graceful skip; and the box rendered at 112
+columns on every beat WITH the face — read the frames yourself, law 6 is
+the objective. The naked 14-seed balance sweep must be BYTE-IDENTICAL: the
+bot never runs the induction, so if a number moves you touched the sim.
+
+Checkpoint-commit AND PUSH after every green milestone with a
+"Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>" trailer. Ship the
+face + reflow first (it gates everything), then beats 5-8 with their gates,
+then the reactive/theater layer, then GRIT's new lines.
+
+When done: push your branch and STOP — do not merge, rebase or force-push;
+the orchestrator merges. Report: what you built, the face (paste it), the
+final beat structure, every deviation with its reason, and final test
+output including the width contract and the eight-beat drive.
