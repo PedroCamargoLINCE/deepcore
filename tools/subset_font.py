@@ -17,6 +17,7 @@ import sys
 
 from fontTools import subset
 from fontTools.ttLib import TTFont
+from fontTools.pens.ttGlyphPen import TTGlyphPen
 
 
 def main(src, cps_path, out, family):
@@ -37,6 +38,38 @@ def main(src, cps_path, out, family):
     options.name_legacy = True
 
     font = TTFont(src)
+    # Original grid-aligned braille outlines. No proportional fallback font
+    # is transplanted: the eight dots are constructed in this face's em and
+    # carry precisely the same advance as its full block. These are display
+    # pixels, so all 256 masks (including the empty cell) must be present.
+    cmap = font.getBestCmap()
+    advance = font['hmtx'].metrics[cmap[0x2588]][0]
+    em = font['head'].unitsPerEm
+    order = list(font.getGlyphOrder())
+    bit_positions = [(0,0),(0,1),(0,2),(1,0),(1,1),(1,2),(0,3),(1,3)]
+    for mask in range(256):
+        cp = 0x2800 + mask
+        name = 'deepcoreBraille%02X' % mask
+        pen = TTGlyphPen(None)
+        radius = round(advance * .145)
+        for bit, (col, row) in enumerate(bit_positions):
+            if not mask & (1 << bit):
+                continue
+            cx = round(advance * (.25 + col * .5))
+            cy = round(em * (.78 - row * .28))
+            pen.moveTo((cx + radius, cy))
+            pen.qCurveTo((cx + radius, cy + radius), (cx, cy + radius))
+            pen.qCurveTo((cx - radius, cy + radius), (cx - radius, cy))
+            pen.qCurveTo((cx - radius, cy - radius), (cx, cy - radius))
+            pen.qCurveTo((cx + radius, cy - radius), (cx + radius, cy))
+            pen.closePath()
+        font['glyf'][name] = pen.glyph()
+        font['hmtx'].metrics[name] = (advance, 0)
+        order.append(name)
+        for table in font['cmap'].tables:
+            if table.isUnicode():
+                table.cmap[cp] = name
+    font.setGlyphOrder(order)
     subsetter = subset.Subsetter(options=options)
     subsetter.populate(unicodes=cps)
     subsetter.subset(font)

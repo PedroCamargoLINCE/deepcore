@@ -55,8 +55,8 @@ try {
     { encoding: 'utf8' });
   process.stdout.write(out);
 } catch (e) {
-  console.error('font: subsetting failed. It needs fontTools and brotli:');
-  console.error('font:   python3 -m pip install --user fonttools brotli');
+  console.error('font: subsetting failed (' + (e.signal || e.status || e.message) + ').');
+  console.error('font: regeneration requires Python fontTools + brotli; see the error below.');
   if (e.stderr) process.stderr.write(e.stderr);
   process.exit(1);
 } finally {
@@ -76,7 +76,8 @@ const css = [
   ' * `node tools/font.js`; do not hand-edit.',
   ' *',
   ' * ' + FAMILY + ': a subset of DejaVu Sans Mono, renamed as its license',
-  ' * requires for modified versions, containing exactly the ' + cps.length,
+  ' * requires for modified versions, plus original grid-aligned Braille,',
+  ' * containing exactly the ' + cps.length,
   ' * codepoints `node tools/glyphs.js` reports the game can draw. Embedded as',
   ' * a data URI so the single-file build and file:// both work with no CDN —',
   ' * the artifact CSP blocks external hosts anyway.',

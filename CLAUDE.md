@@ -40,6 +40,14 @@ audio work; canonical-14 full-Foundry A/B for sim work.
 
 Commit early, push always. Session limits eat unpushed work and nobody mourns it.
 
+## Commit attribution (director's instruction, 2026-09-09)
+
+Do not add AI `Co-Authored-By` trailers or AI session-attribution footers to
+commits. Preserve actual human authorship and human coauthor credits. This
+overrides historical prompts. Enable the repo guard with
+`git config core.hooksPath .githooks`; it rejects AI trailers before commit.
+History rewrites require the user's explicit request and a verified backup.
+
 ## The vibe
 
 Papers Please, Dwarf Fortress, Factorio, Candy Box, Balatro, Cookie Clicker —

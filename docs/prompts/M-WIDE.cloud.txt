@@ -85,8 +85,7 @@ ACCEPTANCE
   visibly bolted on
 - all five suites green and node tools/build.js parses
 
-Checkpoint-commit AND PUSH your branch after every green milestone, with a
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> trailer.
+Checkpoint-commit AND PUSH your branch after every green milestone.
 
 When done: push your branch to origin and STOP — do not merge, rebase or
 force-push; the orchestrator merges. Report: the four panels, what you did with

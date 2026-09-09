@@ -33,8 +33,7 @@ EXIST on master and should be wired rather than guarded away:
 Anything you cannot find, guard so an absent feature is a silent no-op.
 
 Ship vignette by vignette. Checkpoint-commit AND PUSH your branch after every
-green milestone, with a Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
-trailer. Pushing each checkpoint matters here: this is the biggest brief on the
+green milestone. Pushing each checkpoint matters here: this is the biggest brief on the
 board and a session limit mid-way must leave eight working events on origin,
 not a half-written module on a disk nobody can reach.
 

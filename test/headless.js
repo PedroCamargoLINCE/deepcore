@@ -2729,13 +2729,14 @@ function checkSchems2() {
         }
       assert(pad, 'the test floor offers a pad');
       assert(S.place(r, 'smelter', pad.x, pad.y, 1), 'the smelter stands');
+      r.totalT += D.UNDO_TICKS + 1; // strategic salvage, beyond the free undo window
       const before = r.inv.ironPlate;
       assert(S.demolishAt(r, pad.x, pad.y).ok, 'and comes down');
       return r.inv.ironPlate - before;
     };
-    assertEq(mk(false), Math.floor(10 * D.DEMOLISH_REFUND),
+    assertEq(mk(false), Math.floor(D.BUILDINGS.smelter.cost.ironPlate * D.DEMOLISH_REFUND),
       'half back without the card');
-    assertEq(mk(true), Math.floor(10 * D.CHUTE_REFUND),
+    assertEq(mk(true), Math.floor(D.BUILDINGS.smelter.cost.ironPlate * D.CHUTE_REFUND),
       'three quarters back with it');
     cards++;
   }
@@ -3450,7 +3451,7 @@ function checkChain() {
   // the bottleneck: plates, every time, on this base
   assert(plate.limiting === true, 'the smelter is named as the limiting stage');
   assert(!ore.limiting && !gear.limiting, 'and it is named alone');
-  assertEq(plate.flag, 'STARVED', 'the limiting stage carries the warning word');
+  assertEq(plate.flag, 'PACE', 'a working limiting stage sets pace without a starvation warning');
   assert(Math.abs(ch.gearRate - plate.rate / ch.perGear) < 1e-9,
     'effective gear throughput is the bottleneck, not the assembler');
 
@@ -3532,7 +3533,47 @@ function checkChain() {
   return ch;
 }
 
+function humanBalanceSection() {
+  const HZ=D.TICK_HZ;
+  const r=flatRun(2026,1), x=r.hub.x-2, y=r.hub.y;
+  r.inv.ironPlate=D.START_STOCK.ironPlate;
+  const opening=r.inv.ironPlate;
+  for(let n=0;n<4;n++) {
+    assert(S.place(r,'smelter',x,y,1),'a new player can try placing a smelter');
+    assert(S.demolishAt(r,x,y).ok,'the mistaken placement can be undone');
+    assertEq(r.inv.ironPlate,opening,'four immediate mistakes burn no working capital');
+  }
+  S.place(r,'smelter',x,y,1);
+  let m=machAt(r,x,y);
+  r.totalT=m.placedAt+D.UNDO_TICKS;
+  assertEq(S.demolishRefund(r,m),1,'the final undo tick is included');
+  r.totalT++;
+  assertEq(S.demolishRefund(r,m),D.DEMOLISH_REFUND,'after ten seconds salvage is priced');
+  delete m.placedAt;
+  assertEq(S.demolishRefund(r,m),D.DEMOLISH_REFUND,'old machine state never grants accidental free undo');
+  S.demolishAt(r,x,y);
+  S.place(r,'smelter',x,y,1); m=machAt(r,x,y); m.hp=1;
+  assertEq(S.demolishRefund(r,m),D.DEMOLISH_REFUND,'damaged machinery cannot be refunded as new');
+  S.demolishAt(r,x,y); r.inv.ironPlate=0;
+  assert(S.supplyWarning(r),'a constructed empty-crate state is named');
+  for(let i=0;i<HZ;i++) S.tick(r);
+  assert(r.messages.some(m=>m.text.indexOf('No plate supply')>=0),'the LOG names the missing supply');
+  r.inv.ironPlate=D.BUILDINGS.smelter.cost.ironPlate;
+  assert(!S.supplyWarning(r),'enough capital clears the persistent warning');
+  assertEq(S.departureReserve(),25,'the new complete base plus six belts is 25 plates');
+  const calm=flatRun(2027,1); calm.inv.gear=0;
+  S.tick(calm);
+  assert(Math.abs(calm.instability-D.STRATA[0].instabRate*D.PRESSURE_MULT/HZ)<1e-9,
+    'pressure is exactly ten percent slower, not a second hidden adjustment');
+  const pick=require('../tools/bot-policy.js');
+  r.pendingOffers=['s_survey','s_plate','s_beltfree']; r.integrity=1;
+  assertEq(pick(D,r),'s_plate','a failing hull outranks optional scanning');
+  r.pendingOffers=['s_salvage','s_charge']; r.depth=4; r.contract='warrant';
+  assertEq(pick(D,r),'s_charge','the charge gate outranks unusable salvage');
+}
+
 function main() {
+  humanBalanceSection();
   checkArt();
   const glyphN = checkGlyphInventory();
   checkSave();

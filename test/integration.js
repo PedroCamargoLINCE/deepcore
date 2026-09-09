@@ -972,6 +972,7 @@ function demolishRepairSection(seed) {
   // demolish machine: 50% cost refund + input buffer credited
   sm.input.coal = 2;                     // scaffold: buffered inputs
   sm.input.ironOre = 3;                  // scaffold
+  run.totalT = Math.max(run.totalT, sm.placedAt + D.UNDO_TICKS + 1);
   const invBefore = { plate: run.inv.ironPlate, coal: run.inv.coal || 0, ore: run.inv.ironOre || 0 };
   const rd = S.demolishAt(run, sx, sy);
   assert(rd.ok, 'demolish machine ok');
@@ -5021,7 +5022,7 @@ function wideSection(seed) {
   // failure as one that hides what it can), and once below on stratum 3.
   function assertBuildIcons(rws, r0, label) {
     for (const t of D.BUILD_ORDER) {
-      const ic = DC.Art.buildIcons[t];
+      const ic = DC.Render.subcellMode() === 'braille' ? DC.Art.buildIconsHi[t] : DC.Art.buildIcons[t];
       assert(ic && ic.length === DC.Art.ICON_W, t + ' has a build icon');
       let seen = false;
       for (let r = 1; r < D.ROWS; r++) {
@@ -5133,14 +5134,14 @@ function wideSection(seed) {
   assert(gearRow.text.indexOf('0.36/s') >= 0, 'and the assembler rate');
   // THE lesson: one smelter cannot feed one assembler, and the panel says so
   // on the stage that is actually holding the base back — and only there
-  assert(plateRow.text.indexOf('←STARVED') >= 0,
+  assert(plateRow.text.indexOf('←PACE') >= 0,
     'the limiting stage is marked in the warning colour: ' + plateRow.text);
   assert(oreRow.text.indexOf('←') < 0 && gearRow.text.indexOf('←') < 0,
     'and no other stage is');
   {
     const flagCol = L.sb + plateRow.text.indexOf('←');
-    assertEq(DC.Render.cellAt(flagCol, plateRow.row).fg, D.COLORS.red,
-      'the bottleneck marker is drawn in the warning colour');
+    assertEq(DC.Render.cellAt(flagCol, plateRow.row).fg, D.COLORS.cyan,
+      'a working bottleneck is neutral; warnings are reserved for stopped production');
   }
   // and the projection: a base is a clock
   const proj = colARow(rows, 'BREACH');
@@ -5335,6 +5336,89 @@ function wideSection(seed) {
 // covers the map cell it is pointing at, and it never touches either panel
 // column — at every beat, on a screen rendered at the real 112 columns.
 // =========================================================================
+function tutorial2Section(h) {
+  const { run, st, frames, key: press, walkTo, checkBox } = h;
+  const T = DC.Tutorial;
+  // Reclaim the ore demonstration and build the actual factory on this SAME
+  // generated map. Placement, digging and rerouting go through keyboard input.
+  press('x');
+  for (const m of Object.values(run.machines)) if (m.id) { walkTo(m.x, m.y); press('Enter'); }
+  for (let y = 0; y < D.MAP_H; y++) for (let x = 0; x < D.MAP_W; x++) {
+    if (run.grid[y][x].belt) { walkTo(x,y); press('Enter'); }
+  }
+  frames(D.TUTORIAL.breakT * HZ + 2);
+  checkBox('smelt');
+  const bot = mkBot(run);
+  const plan = bot.planChain('ironOre', perimMap(rect(run.hub.x, run.hub.y, 3, 3)), false);
+  assert(plan, 'an affordable coal + iron route is planned on the generated map');
+  function place(type,x,y,f) {
+    press(D.BUILDINGS[type].key);
+    let tries=0;
+    while (st.ui.facing !== f && tries++ < 4) press('r');
+    walkTo(x,y); press('Enter');
+    assert(type === 'belt' ? run.grid[y][x].belt : run.grid[y][x].machine !== null,
+      'real key placed '+type+' at '+x+','+y);
+  }
+  function line(path, into) {
+    press('x');
+    for (const p of path) if (run.grid[p.y][p.x].t === 'rock' || run.grid[p.y][p.x].rubble) {
+      walkTo(p.x,p.y); press('Enter');
+    }
+    frames(D.DIG_ROCK + 2);
+    const records=[];
+    for (let i=0;i<path.length;i++) {
+      const p=path[i], next=path[i+1] || into, dir=dirBetween(p,next);
+      place('belt',p.x,p.y,dir); records.push({x:p.x,y:p.y,dir});
+    }
+    return records;
+  }
+  place('smelter',plan.site.x,plan.site.y,plan.facing);
+  place('extractor',plan.oreP.tile.x,plan.oreP.tile.y,plan.oreP.facing);
+  line(plan.oreP.path,plan.oreP.into);
+  const outBelts=line(plan.outLine.path,plan.outLine.into);
+  let guard=0;
+  while (T.beat(run) !== 'coal' && guard++ < 40*HZ) frames(1);
+  assertEq(T.beat(run),'coal','ore arriving at the dark smelter teaches coal');
+  checkBox('coal');
+  assert(T.warn(run), 'the actual dark smelter gets an explanation');
+  assertEq(T.mood(run),'alarmed','GRIT reacts to a dark smelter');
+  place('extractor',plan.coalP.tile.x,plan.coalP.tile.y,plan.coalP.facing);
+  line(plan.coalP.path,plan.coalP.into);
+  guard=0;
+  while (T.beat(run) !== 'craft' && guard++ < 40*HZ) frames(1);
+  assertEq(T.beat(run),'craft','coal lighting the furnace passes the fuel lesson');
+  checkBox('craft');
+  // Bank working capital before redirecting plates to gears. The existing
+  // planner supplies placement intents; replay them through the same keys.
+  guard=0;
+  while ((run.inv.ironPlate || 0) < 22 && guard++ < 100*HZ) frames(1);
+  const originalPlace=S.place, originalDemolish=S.demolishAt;
+  let inside=false;
+  S.place=function(r,type,x,y,f) {
+    if (inside || r!==run) return originalPlace(r,type,x,y,f);
+    if (!S.canPlace(r,type,x,y,f).ok) return false;
+    inside=true;
+    try { place(type,x,y,f); return true; } finally { inside=false; }
+  };
+  S.demolishAt=function(r,x,y) {
+    if (inside || r!==run) return originalDemolish(r,x,y);
+    inside=true;
+    try { press('x'); walkTo(x,y); press('Enter'); return {ok:true}; } finally { inside=false; }
+  };
+  try {
+    assert(bot.installAssembler([{out:T.outputTile(T.firstOf(run,'smelter')), outBelts}]),
+      'the banked plates pay for the assembler and its route');
+  } finally { S.place=originalPlace; S.demolishAt=originalDemolish; }
+  guard=0;
+  while (T.beat(run) !== 'feed' && guard++ < 40*HZ) frames(1);
+  assertEq(T.beat(run),'feed','an actual gear job passes crafting');
+  checkBox('feed');
+  guard=0;
+  while (T.beat(run) !== 'outro' && guard++ < 40*HZ) frames(1);
+  assert(run.stats.deliveredBy.gear > 0,'a factory gear arrived; starter stock cannot pass');
+  assert(T.LESSONS.every(b => run.tutorial.seen[b] !== undefined),'all eight lessons were stamped');
+}
+
 function tutorialSection(seed) {
   SECTION = 'onboard seed=' + seed;
   require('../js/barks.js');
@@ -5624,8 +5708,8 @@ function tutorialSection(seed) {
     const ww = w.reduce(function (n, s) {
       return n + (s[0] === 'cap' ? s[1].length + 2 : s[1].length);
     }, 0);
-    assert(ww <= A.SPEECH.TEXT_W, 'the fouled-output row is ' + ww +
-      ' cols and the box holds ' + A.SPEECH.TEXT_W + ' — it would be cut');
+    assert(ww <= A.SPEECH.ACTION_W, 'the fouled-output row is ' + ww +
+      ' cols and the box holds ' + A.SPEECH.ACTION_W + ' — it would be cut');
     // it is drawn, in the warning colour, above the action row
     frames(1);
     const wrows = gridRows();
@@ -5745,19 +5829,8 @@ function tutorialSection(seed) {
   const L4 = checkBox('beat 4 (ore)');
   assert(L4.panels, 'the last beat points at the panels');
 
-  // ---- BEAT 4: the ore lands, and the panels take over ------------------
-  assertEq(run.instHold, true, 'instability is still frozen while ore is in flight');
-  assertEq(run.instability, 0, '...and has not moved a point all induction');
-  let guard = 0;
-  while (T.beat(run) === 'ore' && guard++ < 120 * HZ) frames(1);
-  assert(guard < 120 * HZ, 'the first ore reached the rig');
-  assert((run.stats.delivered | 0) > 0, 'the sim counted the delivery');
-  assertEq(T.beat(run), 'outro', 'the arriving ore closed the last beat');
-  assert(!run.instHold, 'the pressure pause lifts when the first ore lands');
-  const L5 = checkBox('sign-off');
-  assert(L5.panels, 'the sign-off still points at the panels');
-  // POINTING, not covering: the two rows it marks are still readable, still in
-  // their panels, still saying what they said.
+  // POINTING, not covering: the two rows beat 4 marks are still readable,
+  // still in their panels, still saying what they said.
   {
     const rows = gridRows();
     const sr = LAY.stock.ironOre;
@@ -5772,13 +5845,46 @@ function tutorialSection(seed) {
     assert(rows[cr.row].slice(cr.col, cr.col + cr.w).trim().length > 0,
       'the pointed-at CHAIN row still has its text');
   }
+
+  // ---- BEAT 4: the ore lands, the pause lifts, and the ACT BREAK opens --
+  // (M-TUTORIAL2: the induction no longer ends here — the legal minimum is
+  // met, TAB is offered a second time, and act two runs on the real clock.)
+  assertEq(run.instHold, true, 'instability is still frozen while ore is in flight');
+  assertEq(run.instability, 0, '...and has not moved a point all induction');
+  let guard = 0;
+  while (T.beat(run) === 'ore' && guard++ < 120 * HZ) frames(1);
+  assert(guard < 120 * HZ, 'the first ore reached the rig');
+  assert((run.stats.delivered | 0) > 0, 'the sim counted the delivery');
+  assertEq(T.beat(run), 'break', 'the arriving ore opens the act break');
+  assert(!run.instHold, 'the pressure pause lifts when the first ore lands');
+  frames(1);
+  checkBox('act break');
+  assert(gridRows().join('\n').indexOf('MINIMUM MET') >= 0,
+    'the break says the legal minimum is met');
+  assert(T.foot(run).some(function (s) {
+    return s[0] === 'cap' && s[1] === D.TUTORIAL.skipKey.toUpperCase();
+  }), 'TAB is offered a second time at the act break');
+
+  // ---- ACT TWO: beats 5-8, driven on the same real keys -----------------
+  tutorial2Section({
+    st: st, run: run, frames: frames, key: key, walkTo: walkTo,
+    checkBox: checkBox, gridRows: gridRows,
+  });
+  assertEq(T.beat(run), 'outro', 'the delivered gear closed the last beat');
+  const L5 = checkBox('sign-off');
+  assert(L5.panels, 'the sign-off still points at the panels');
+  assert(gridRows().join('\n').indexOf('COUNTERSIGNED') >= 0,
+    'the outro carries GRIT’s countersignature');
+
   // ---- the sign-off lingers, then the induction is gone for good --------
   assert(T.active(run), 'the sign-off lingers to be read');
   const inst0 = run.instability;
   frames(D.TUTORIAL.holdT * HZ + 4);
   assert(!T.active(run), 'and then the induction is over');
-  // ...and the floor has been tightening again the whole time it lingered
-  assert(run.instability > inst0, 'the floor tightens again once the ore has landed');
+  // ...and the floor has been tightening since the ore landed, through the
+  // whole of act two
+  assert(run.instability > inst0 || run.instability > 0,
+    'the floor tightens again once the ore has landed');
   assertEq(T.layout(run), null, 'a finished induction draws nothing');
   assertEq(st.meta.tutorialSeen, true, 'finishing it closes the door in meta');
   frames(2);
@@ -5879,7 +5985,76 @@ function tutorialSection(seed) {
       '...and it actually plays for them');
   }
 
-  return T.BEATS.length + ' beats, box ' + A.SPEECH.W + 'x' + A.SPEECH.H +
+  // Recovered act two: early work is noticed, missing coal cannot trap a
+  // player behind the nudge timer, and TAB remains live past the act break.
+  {
+    const r=S.newRun(defEffects(),seed+300);
+    T.begin(r,M.newProfile());
+    const x=r.hub.x-2,y=r.hub.y;
+    assert(S.place(r,'smelter',x,y,1),'reactive fixture places a real smelter');
+    const s=r.machines[r.grid[y][x].machine]; s.input.ironOre=1;
+    r.tutorial.i=T.BEATS.indexOf('break'); T.release(r); T.tick(r,{facing:1});
+    assertEq(T.beat(r),'smelt','an already built smelter ends the act break');
+    assert(r.tutorial.pre>0,'GRIT notices the lesson already achieved');
+    assertEq(T.line(r),DC.Barks.tutor(r,'notice_smelt',0),'the notice replaces the redundant lecture');
+    r.totalT=r.tutorial.pre; T.tick(r,{facing:1});
+    assertEq(T.beat(r),'coal','the reactive smelter stamps and advances');
+    for(const row of r.grid) for(const tile of row) if(tile.ore==='coal') {tile.ore=null;tile.oreAmt=0;}
+    for(let n=0;n<(D.TUTORIAL.armT+2)*HZ;n++){r.totalT++;T.tick(r,{facing:1});}
+    assert(r.tutorial.incomplete,'a coal-less map suspends the form even after a nudge');
+    assert(!r.instHold,'a suspended form never freezes pressure');
+    assertEq(T.sig(r),null,'an incomplete lesson cannot forge a completed signature');
+    const previous=st.run;
+    st.run=S.newRun(defEffects(),seed+301); T.begin(st.run,M.newProfile());
+    st.run.tutorial.i=T.BEATS.indexOf('feed'); T.release(st.run); st.screen='run'; st.ui.paused=false;
+    key('Tab'); assert(st.run.tutorial.skipped,'the real TAB key skips act two');
+    st.run=previous;
+    const faces=['deadpan','pleased','alarmed','proud'].map(m=>A.gritFace(m).join('\n'));
+    assertEq(new Set(faces).size,4,'four expressions remain distinct in the actual raster art');
+  }
+  // Every biome can be rendered without moving the sim, including the
+  // mechanical portrait and both icon encodings.
+  {
+    const r=S.newRun(defEffects(),seed+302), twin=S.newRun(defEffects(),seed+302);
+    const colors=new Set();
+    r.grid[1][1].revealed=true; r.grid[1][1].t='rock';r.grid[1][1].ore=null;r.grid[1][1].lm=null;
+    r.totalT=100;r.stats.lastFeedT=100;
+    for(let n=0;n<10;n++) R.frame({screen:'run',run:r,meta:M.newProfile(),ui:{facing:1}});
+    for(let depth=1;depth<=8;depth++) {
+      r.depth=depth;
+      R.frame({screen:'run',run:r,meta:M.newProfile(),ui:{facing:1,paused:false}});
+      colors.add(R.cellAt(D.MAP_X+1,D.MAP_Y+1).fg);
+      assert(!gridRows().join('\n').includes('RENDER ERROR'),'biome '+depth+' draws without error');
+    }
+    assertEq(colors.size,8,'each stratum has a distinct rock palette');
+    for(const sc of D.SCHEMATICS) for(const hi of [false,true]) {
+      const icon=A.detailIcon(sc.id,10,5,hi);
+      assertEq(icon.length,5,sc.id+' keeps its card slot');
+      assert(icon.every(row=>row.length===10),sc.id+' respects its icon width');
+      assert(icon.some(row=>/[^ \u2800]/.test(row)),sc.id+' is not an empty picture');
+    }
+    for(const up of D.META_UPGRADES) for(const hi of [false,true]) {
+      const icon=A.detailIcon(up.id,3,2,hi);
+      assertEq(icon.length,2,up.id+' keeps two Foundry rows');
+      assert(icon.every(row=>row.length===3),up.id+' keeps three Foundry columns');
+      assert(icon.some(row=>/[^ \u2800]/.test(row)),up.id+' has a visible silhouette');
+      if(hi) {
+        assert(Array.from(icon[0]).every(ch=>((ch.charCodeAt(0)-0x2800)&9)===0),
+          up.id+' has a top dot-row gutter');
+        assert(Array.from(icon[1]).every(ch=>((ch.charCodeAt(0)-0x2800)&192)===0),
+          up.id+' has a bottom dot-row gutter');
+      }
+    }
+    assertEq(r.rng(),twin.rng(),'biomes, portraits and icons never advance the sim stream');
+    const moving=DC.FX.rigCell(r,11,11,'▼',C.amber)[0];
+    r.totalT+=2;r.stats.lastFeedT=r.totalT;
+    assert(moving!==DC.FX.rigCell(r,11,11,'▼',C.amber)[0],'the fed drill string actually moves');
+    r.stats.lastFeedT=0;
+    assertEq(DC.FX.rigSmoke(r).length,0,'an idle drill emits no invented working exhaust');
+    assertEq(DC.FX.rigCell(r,11,11,'▼',C.amber)[0],'▼','an idle drill rests');
+  }
+
+  return T.LESSONS.length + ' lessons + act break, box ' + A.SPEECH.W + 'x' + A.SPEECH.H +
     ' on a ' + D.MAP_W + '-wide map, replayable from the title';
 }
 

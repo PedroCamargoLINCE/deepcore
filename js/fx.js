@@ -927,6 +927,38 @@
     }
   }
 
+  // The portrait is an instrument: exhaust follows feed, the string follows
+  // the drill, and a struck rig sparks. Pausing freezes its mechanical phase.
+  function rigCell(run, row, col, glyph, color) {
+    const fed = run.stats && run.stats.lastFeedT > 0 &&
+      run.totalT - run.stats.lastFeedT < 2 * HZ;
+    const phase = Math.floor(run.totalT / (run.overdrive ? 1 : 2));
+    let g = glyph, c = color;
+    if (fed && col === 11 && row >= 7) {
+      g = row === 11 ? (phase % 2 ? '▼' : '│') : (phase % 2 ? '║' : '│');
+      c = phase % 2 ? C.white : C.amber;
+    } else if (fed && row >= 7 && '▓▒░█▀'.indexOf(glyph) >= 0) {
+      c = mixOf(color, C.white, ((row + col + phase) % 5 === 0) ? 0.22 : 0);
+    }
+    if (mem && mem.grid === run.grid && mem.debrisT >= 0 && run.totalT - mem.debrisT < 3 &&
+        row >= 5 && (row * 7 + col + phase) % 11 === 0) {
+      g = '*'; c = C.orange;
+    }
+    const dt = (run.quakeAt || 0) - run.t;
+    if (run.instability >= 99 && run.quakeAt && dt >= 0 && dt <= 2) c = shadeOf(c, 0.55);
+    return [g, c];
+  }
+  function rigSmoke(run) {
+    if (!run.stats || !run.stats.lastFeedT || run.totalT - run.stats.lastFeedT >= 2 * HZ) return [];
+    const p = Math.floor(run.totalT / 2) % 3;
+    const biome = D.BIOMES && D.BIOMES[Math.min(run.depth, 8) - 1];
+    const color = biome ? biome.dust : C.gray;
+    return [0, 1, 2].map(function (i) {
+      return { x: 19 + ((p + i) % 2), y: 3 - i, ch: ['░', '·', '\''][(i + p) % 3],
+        fg: shadeOf(color, 0.8 - i * 0.15) };
+    });
+  }
+
   // ---------------------------------------------------------------- shared
   let SURF = null;                        // set by render on first begin()
   function shadeOf(hex, f) { return SURF ? SURF.shade(hex, f) : hex; }
@@ -940,6 +972,8 @@
     // 60 fps step per call.
     begin: function (state, surf, nowMs) { SURF = surf || SURF; begin(state, surf, nowMs); },
     tile: tile,
+    rigCell: rigCell,
+    rigSmoke: rigSmoke,
     frame: frame,
     typed: typed,
     odometer: odometer,

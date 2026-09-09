@@ -70,8 +70,7 @@ an extractor, because it knows the rules by construction. A green sweep proves
 the game is WINNABLE, never that it is PLAYABLE. This brief is the first one
 aimed at the second property.
 
-Checkpoint-commit AND PUSH your branch after every green milestone, with a
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> trailer.
+Checkpoint-commit AND PUSH your branch after every green milestone.
 
 When done: push your branch to origin and STOP — do not merge, rebase or
 force-push; the orchestrator merges. Report: every failure state you gave a

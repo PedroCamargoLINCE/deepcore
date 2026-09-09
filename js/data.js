@@ -91,11 +91,25 @@
   D.TUTORIAL = {
     boxW: 40,        // speech box width in cells, walls included
     proseRows: 3,    // rows of GRIT inside it (the authored line wraps to these)
+    // M-TUTORIAL2 (Finding 4): GRIT's face rides the left edge of the prose
+    // rows — 5 cells of portrait and 1 of air. The prose ceiling every line is
+    // written to DROPS by this much (36 -> 30), which is a writing cost paid
+    // once, deliberately, before act two was authored (see SPEC3 Finding 4).
+    faceW: 6,
     nudgeT: 22,      // seconds on one beat before he re-riffs the same lesson
     nudgeMax: 3,     // ...and how many times, before he lets the silence work
     holdT: 4,        // seconds the completed beat's box lingers before the next
     armT: 30,        // seconds to wait for the sweep to reveal a vein, then give up
     skipKey: 'Tab',  // skippable from the first keypress, on a key play never uses
+    // M-TUTORIAL2 (Finding 3, "better not longer"): the reactive induction's
+    // two clocks. noticeT is how long GRIT's "already built one" line lingers
+    // on a beat the player had ALREADY satisfied before it stamps and moves on
+    // — long enough to read one row, short enough that a speedrunning veteran
+    // watches the induction sprint to keep up. breakT is the act break after
+    // beat 4: the legal minimum is met, TAB is offered a second time, and
+    // staying is a choice — this is how long the choice stays on screen.
+    noticeT: 2.5,
+    breakT: 7,
   };
 
   // ---------------- palette (semantic) ----------------
@@ -172,6 +186,18 @@
     magma:    { glyph: '≈', color: D.COLORS.magma, buildable: false, diggable: false },// ≈
   };
   D.RUBBLE_GLYPH = '☼'; // ☼ rubble marker drawn over floor
+  // Presentation only. Semantic ore, machine and hazard colours stay fixed.
+  // Sparse details grow on bare floor; they never occupy a tile in the sim.
+  D.BIOMES = [
+    { rock: '#596044', floor: '#303c27', detail: '#536344', marks: ['\'', '`', ','], dust: '#879565' },
+    { rock: '#795638', floor: '#443022', detail: '#765638', marks: ['·', ':', '─'], dust: '#c09565' },
+    { rock: '#3d6461', floor: '#223b39', detail: '#3f625c', marks: [';', ',', '│'], dust: '#72a99d' },
+    { rock: '#515e73', floor: '#2b303d', detail: '#4d5970', marks: ['/', '\\', ':'], dust: '#8f9db9' },
+    { rock: '#634575', floor: '#34243f', detail: '#614473', marks: ['`', '\'', ':'], dust: '#b28bca' },
+    { rock: '#744736', floor: '#3b2822', detail: '#6f4936', marks: ['.', ':', ','], dust: '#c88860' },
+    { rock: '#514860', floor: '#282432', detail: '#51465f', marks: ['/', '─', '\\'], dust: '#9585a8' },
+    { rock: '#786846', floor: '#3e3424', detail: '#6d5c3c', marks: [':', '`', '\''], dust: '#c5ad76' },
+  ];
   D.ORE_GLYPHS = {
     ironOre:   { glyph: '≡', color: D.COLORS.steel },   // ≡
     copperOre: { glyph: '¢', color: D.COLORS.orange },  // ¢
@@ -186,16 +212,16 @@
                  cost: { ironPlate: 1 },  color: D.COLORS.cyan,
                  desc: 'Moves items. Drag to lay runs; corners auto-turn.' },
     extractor: { name: 'extractor', key: '2', letter: 'E', w: 1, h: 1, hp: 2,
-                 cost: { ironPlate: 8 },  color: D.COLORS.amber, period: 16,
+                 cost: { ironPlate: 4 },  color: D.COLORS.amber, period: 16,
                  desc: 'Place on an ore vein. Mines 1 ore / 2s to its output side.' },
     smelter:   { name: 'smelter',   key: '3', letter: 'S', w: 2, h: 2, hp: 2,
-                 cost: { ironPlate: 10 }, color: D.COLORS.orange,
+                 cost: { ironPlate: 5 }, color: D.COLORS.orange,
                  desc: 'Smelts ore into plates. Burns 1 coal per 3 smelts.' },
     assembler: { name: 'assembler', key: '4', letter: 'A', w: 2, h: 2, hp: 2,
-                 cost: { ironPlate: 12 }, color: D.COLORS.blue,
+                 cost: { ironPlate: 6 }, color: D.COLORS.blue,
                  desc: 'Crafts drill gears / core charges. Click to switch recipe.' },
     damper:    { name: 'damper',    key: '5', letter: 'V', w: 1, h: 1, hp: 2,
-                 cost: { ironPlate: 8, copperPlate: 2 }, color: D.COLORS.green,
+                 cost: { ironPlate: 6, copperPlate: 2 }, color: D.COLORS.green,
                  coalTicks: 40, calm: 0.25,
                  desc: 'Burns 1 coal / 5s to vent pressure: −25% instability rate each (max 3).' },
     // ---------------- M-TIER2: Logistics II (SPEC3) ----------------
@@ -254,6 +280,8 @@
   D.DAMPER_MAX = 3;          // max stacking dampers
   D.REPAIR_COST = 2;         // ironPlate per repair (meta m_fix lowers to 1)
   D.DEMOLISH_REFUND = 0.5;   // fraction of cost refunded
+  D.UNDO_TICKS = 10 * D.TICK_HZ; // full refund for intact machines placed by mistake
+  D.PRESSURE_MULT = 0.90;    // M-HUMANBAL: 'a bit slower', across all floors
 
   // ---------------- recipes ----------------
   // Tick counts set the whole economy's tempo: one smelter = 0.5 plate/s,
@@ -915,8 +943,8 @@
   D.CONTRACT_DEFAULT = 'standard';
 
   D.SAVE_KEY = 'deepcore_save_v1';
-  // Display only (title-screen corner). v1.1 is the shipped feature set —
-  // GRIT, the rig portrait, keyboard play — plus this polish round. The save
+  // Display only (title-screen corner). v1.2 completes the induction, living
+  // ASCII art and human-balance board. The save
   // key is deliberately NOT versioned with it: no save format change here.
-  D.VERSION = '1.1';
+  D.VERSION = '1.2';
 })();

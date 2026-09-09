@@ -60,8 +60,7 @@ test/barks_test.js, test/rig_test.js, test/balance.js) and node
 tools/build.js parses, extended to cover every mutator and every schematic.
 Run test/balance.js before and after and report both.
 
-Checkpoint-commit AND PUSH your branch after every green milestone, with a
-"Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>" trailer. Pushing each
+Checkpoint-commit AND PUSH your branch after every green milestone. Pushing each
 checkpoint is what makes your work recoverable if this session dies — the
 last worker died at its session limit and lost nothing for exactly this
 reason.

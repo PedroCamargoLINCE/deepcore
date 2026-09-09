@@ -3,7 +3,26 @@
 Living orientation doc. Any new session should be able to read **this file plus
 the specs** and pick the work up cold — no prior conversation required.
 
-Last updated: 2026-08-11, during Wave 1 (M-POLISH).
+Last updated: 2026-09-09, completion of the 1.2 board.
+
+## Current handoff — read this before the historical notes
+
+The outstanding tutorial, biome, icon/font, rig-animation, overdrive and
+M-HUMANBAL work is implemented and tested. `docs/RELEASE.md` is the current
+decision ledger and contains before/after balance evidence, test commands,
+and the harness limitations. All original waves are implemented; the older
+status bullets below are historical, not a fresh queue to dispatch.
+
+The director delegated the remaining fun/pacing choice: keep STANDARD
+forgiving, allow useful first-run Foundry purchases, and put extra risk/reward
+in contracts. No post-breach surcharge or automatic floor salvage was added.
+The original opening/core/camper bands have been explicitly superseded in
+SPEC §12; the full-run time and floor-two survival targets still hold.
+
+The tutorial source worktree was recovered without deleting or resetting it.
+Keep personal untracked artifacts intact. AI commit-attribution trailers are
+forbidden by the director; this overrides old agent habits. Use the local
+`.githooks/commit-msg` guard. Human credits remain welcome.
 
 ---
 
@@ -58,7 +77,7 @@ run is the intended shape of run one, not a balance bug — and its own ceiling
 is the tier-2 chain, so `no-breach` stalls at s5+ mean the bot failed rather
 than the stratum being unbeatable. Never tune `data.js` against those.
 
-## Status
+## Historical status (superseded by the current handoff above)
 
 - **v1.1 is feature-complete and green**: full run loop, 8 strata + endless
   Mantle, 5 buildings, 14 schematics, 9 Foundry upgrades, quake/magma/

@@ -786,9 +786,9 @@
       // --- TIPS + the one line GRIT contributes to the documentation
       p.head(CA, 23, W - CA - 1, 'TIPS');
       const tips = [
-        'run two smelters — one alone starves the assembler and the line dies',
-        'do not camp: the pressure always wins. breach and move on',
-        'bank ▬ iron plates for repairs — the quakes never stop coming',
+        'one smelter works; two feed gears faster. PACE is not a fault',
+        'machines stay above. bank plates for the next base before D',
+        'X refunds intact machines in full for ' + (D.UNDO_TICKS / D.TICK_HZ) + 's; then normal salvage',
       ];
       for (let i = 0; i < tips.length; i++) {
         p.put(CA, 25 + i, '▪', 'head');
@@ -1208,6 +1208,125 @@
     filter:    icon3('######', '..##..'),
   };
 
+  // Display art is sampled in physical proportions, then encoded as glyphs.
+  // The same picture works at a 3-cell toolbar scale or a 10x5 card scale;
+  // interactive map tiles keep their single-letter identity.
+  const iconCache = {};
+  const iconKinds = {
+    s_beltfree: 'belt', s_extract: 'extractor', s_smelt: 'smelter', s_coal: 'smelter',
+    s_plate: 'hull', s_damp: 'damper', s_repair: 'repair', s_drill: 'extractor',
+    s_salvage: 'salvage', s_survey: 'scan', s_charge: 'charge', s_over: 'gear',
+    s_veins: 'crystal', s_gear: 'gear', s_conduit: 'tunnel', s_yoke: 'splitter',
+    s_gate: 'filter', s_grind: 'crusher', s_boiler: 'smelter', s_echo: 'charge',
+    s_chute: 'salvage', s_jury: 'repair', s_insure: 'hull', s_loop: 'damper', s_whisper: 'worm',
+    m_hull: 'hull', m_damp: 'damper', m_torque: 'gear', m_scan: 'scan',
+    m_salv: 'salvage', m_stock: 'stock', m_deep: 'crystal', m_fix: 'repair', m_schem: 'plans',
+  };
+  A.detailIcon = function (id, cols, rows, braille) {
+    const kind = iconKinds[id] || id;
+    const key = kind + ':' + cols + ':' + rows + ':' + !!braille;
+    if (iconCache[key]) return iconCache[key];
+    const sy = braille ? 4 : 2, bm = R.bitmap(cols, rows, 2, sy);
+    if (cols === 3 && rows === 2) {
+      // Hand-hinted silhouettes: thin analytic edges disappear at six pixels.
+      const small = {
+        stock: ['######','#.##.#','#.##.#','######'],
+        hull: ['##.##.','##.##.','..#..#','##.##.'],
+        damper: ['######','..##..','.##...','######'],
+        gear: ['#.##.#','.####.','##..##','.#..#.'],
+        repair: ['##..##','.####.','..##..','..##..'],
+        scan: ['.####.','#.##.#','#....#','.####.'],
+        salvage: ['..##..','..##..','#.##.#','.####.'],
+        crystal: ['..##..','.####.','######','..##..'],
+        plans: ['.#####','.#.#.#','.#...#','.#####'],
+      }[kind];
+      if (small) {
+        // The list has no blank character row between entries. Leave a dot
+        // row above and below each high-resolution icon so adjacent upgrades
+        // read as separate pictures, not one continuous golden column.
+        const pad = braille ? 1 : 0;
+        for (let y=pad;y<bm.h-pad;y++) for(let x=0;x<bm.w;x++)
+          if(small[Math.floor((y-pad)*4/(bm.h-2*pad))][x]==='#') R.set(bm,x,y,1);
+        return iconCache[key] = braille ? R.braille(bm) : R.quadrants(bm);
+      }
+    }
+    function box(x, y, l, t, r, b) { return x >= l && x <= r && y >= t && y <= b; }
+    for (let j = 0; j < bm.h; j++) for (let i = 0; i < bm.w; i++) {
+      const x = (i + 0.5) / bm.w, y = (j + 0.5) / bm.h;
+      const dx = (x - 0.5), dy = (y - 0.5) * rows * 1.9 / cols;
+      const rad = Math.hypot(dx, dy), angle = Math.atan2(dy, dx);
+      let ink = false;
+      switch (kind) {
+        case 'gear': case 'assembler': case 'crusher':
+          ink = rad < 0.35 + 0.065 * Math.cos(angle * (kind === 'crusher' ? 6 : 10)) && rad > 0.13;
+          if (kind === 'assembler') ink = ink || box(x,y,.08,.82,.92,.93);
+          break;
+        case 'extractor':
+          ink = (y < .62 && Math.abs(Math.abs(x-.5)-(.1+y*.28)) < .04) ||
+            box(x,y,.44,.1,.56,.72) || (y > .62 && y < .94 && Math.abs(x-.5) < (.94-y)*.6) ||
+            box(x,y,.18,.57,.82,.64); break;
+        case 'smelter':
+          ink = box(x,y,.14,.28,.86,.91) && !box(x,y,.27,.43,.73,.78);
+          ink = ink || box(x,y,.23,.07,.36,.3) || box(x,y,.67,.12,.79,.3) ||
+            (y > .48 && y < .77 && Math.abs(x-.5) < (y-.46)*.6); break;
+        case 'damper':
+          ink = (Math.abs(x - (.5 + .25*Math.sin(y*25))) < .065 && y > .15 && y < .83) ||
+            box(x,y,.24,.06,.76,.14) || box(x,y,.24,.85,.76,.94); break;
+        case 'crystal': case 'charge':
+          ink = Math.abs(x-.5)/.31 + Math.abs(y-.5)/.44 < 1 &&
+            !(x > .47 && x < .54 && y < .55);
+          if (kind === 'charge') ink = ink || (Math.abs(y-.5) < .055 && (x < .13 || x > .87));
+          break;
+        case 'hull': case 'stock': case 'plans':
+          ink = box(x,y,.14,.14,.86,.87) && (!box(x,y,.22,.23,.78,.78) ||
+            (kind === 'hull' ? Math.abs(x-.5) < .04 || Math.abs(y-.5) < .05 :
+             kind === 'stock' ? Math.abs(x-y) < .065 || Math.abs(x+y-1) < .065 :
+             x < .67 && Math.abs((y*5)%1-.5) < .15)); break;
+        case 'scan':
+          ink = (rad < .44 && rad > .37) || (rad < .26 && rad > .20) || rad < .07 ||
+            (Math.abs(dx+dy) < .035 && dx > 0); break;
+        case 'repair': case 'salvage':
+          ink = box(x,y,.44,.35,.56,.9) || (rad < .32 && y < .5 &&
+            !(x > .39 && x < .61 && y < .35)); break;
+        case 'tunnel':
+          ink = (rad < .4 && rad > .27 && y < .6) ||
+            box(x,y,.11,.46,.23,.9) || box(x,y,.77,.46,.89,.9) || box(x,y,.34,.76,.66,.86); break;
+        case 'splitter':
+          ink = box(x,y,.44,.53,.56,.93) || (y < .6 && y > .1 && Math.abs(Math.abs(x-.5)-(.6-y)*.7) < .06); break;
+        case 'filter':
+          ink = y > .13 && y < .78 && Math.abs(x-.5) < (.85-y)*.53 &&
+            (Math.abs(Math.abs(x-.5)-(.85-y)*.53) < .08 || y < .23 || y > .65); break;
+        case 'worm':
+          ink = Math.abs(y-(.5+.16*Math.sin(x*10))) < .12 && x > .06 && x < .92; break;
+        case 'loader': case 'belt':
+          ink = box(x,y,.06,.18,.94,.3) || box(x,y,.06,.7,.94,.82) ||
+            (y > .32 && y < .68 && Math.abs((x*3)%1 - (y-.32)*1.8) < .18); break;
+        default: ink = rad < .32 && rad > .16;
+      }
+      if (ink) R.set(bm, i, j, 1);
+    }
+    return iconCache[key] = braille ? R.braille(bm) : R.quadrants(bm);
+  };
+  A.buildIconsHi = {};
+  const smallMachines = {
+    belt: ['......', '.#.#.#', '#.#.#.', '......'],
+    extractor: ['.####.', '..##..', '..##..', '...#..'],
+    smelter: ['.#..#.', '.####.', '##..##', '######'],
+    assembler: ['.####.', '##..##', '.####.', '.#..#.'],
+    damper: ['######', '.##...', '...##.', '######'],
+    splitter: ['#....#', '.#..#.', '..##..', '..##..'],
+    tunnel: ['.####.', '##..##', '#....#', '#....#'],
+    loader: ['##....', '######', '..###.', '...#..'],
+    crusher: ['##.##.', '.##.##', '##.##.', '.##.##'],
+    filter: ['######', '.####.', '..##..', '..##..'],
+  };
+  for (const id of Object.keys(smallMachines)) {
+    const bm=R.bitmap(3,1,2,4);
+    smallMachines[id].forEach((row,y)=>{for(let x=0;x<6;x++) if(row[x]==='#') R.set(bm,x,y,1);});
+    A.buildIconsHi[id]=R.braille(bm)[0];
+  }
+  for (const id of Object.keys(A.schemIcons)) A.schemIcons[id] = A.detailIcon(id, 10, 5, false);
+
   // ============ M-ONBOARD Part 2: the induction box and its pointer ==========
   // The tutorial is delivered CENTRE STAGE (director's call) — a box that lands
   // near what GRIT is talking about, points at it, and gets out of the way.
@@ -1226,10 +1345,78 @@
     W: (D.TUTORIAL && D.TUTORIAL.boxW) || 40,
     PROSE_ROWS: (D.TUTORIAL && D.TUTORIAL.proseRows) || 3,
     PAD: 1,                        // one column of air inside each wall
-    get TEXT_W() { return A.SPEECH.W - 2 - A.SPEECH.PAD * 2; },
+    // M-TUTORIAL2 (Finding 4): the face column. GRIT's portrait sits left of
+    // the prose on the prose rows ONLY — the action and footer rows run the
+    // full interior, because law 6 says if the face and the line ever compete
+    // for a column, the line wins, and those two rows are the ones that must
+    // land even when the joke did not.
+    FACE_W: (D.TUTORIAL && D.TUTORIAL.faceW) || 6,
+    get TEXT_W() { return A.SPEECH.W - 2 - A.SPEECH.PAD * 2 - A.SPEECH.FACE_W; },
+    get ACTION_W() { return A.SPEECH.W - 2 - A.SPEECH.PAD * 2; },
     // prose rows + a blank + the ACTION row + the skip footer, inside 2 walls
     get H() { return A.SPEECH.PROSE_ROWS + 3 + 2; },
   };
+
+  // ---------------- M-TUTORIAL2 (Finding 4): GRIT, seen ----------------
+  // He has 422 lines, a typewriter, a bar of his own, an induction he narrates
+  // — and until now he had never been SEEN. Five cells by three, through the
+  // Phase-2 rasterizer like every other picture in this file, so the source is
+  // a readable bitmap and the glyphs fall out of R.quadrants. The hard hat is
+  // the identity anchor and never moves; three rows is eyes and a mouth, and
+  // the eyes carry it (Finding 4, verbatim). Law 7: which face shows follows
+  // sim state (js/tutorial.js's mood()), never run.rng.
+  A.GRIT_FACE_W = 5;
+  function gritBitmap(rows) {
+    const bm = R.bitmap(A.GRIT_FACE_W, 3, 2, 2);
+    for (let y = 0; y < 6; y++) {
+      for (let x = 0; x < A.GRIT_FACE_W * 2; x++) {
+        if (rows[y][x] === '#') R.set(bm, x, y, 1);
+      }
+    }
+    return R.quadrants(bm);
+  }
+  const GRIT_FACES = {
+    // lidded eyes, flat mouth: a man reading a laminated script for the
+    // eleven-hundredth time
+    deadpan: gritBitmap([
+      '.########.',
+      '##########',
+      '..........',
+      '..##..##..',
+      '...####...',
+      '..........',
+    ]),
+    // eyes open, corners of the mouth up: a beat passed, a breach ready —
+    // approval, from a man who rations it
+    pleased: gritBitmap([
+      '.########.',
+      '##########',
+      '..##..##..',
+      '..........',
+      '..#....#..',
+      '...####...',
+    ]),
+    // eyes wide, mouth agape: quake, hull failing, an output facing rock
+    alarmed: gritBitmap([
+      '.########.',
+      '##########',
+      '..##..##..',
+      '..##..##..',
+      '....##....',
+      '....##....',
+    ]),
+    // one eye winked, the grin at full width: the jokes he is proudest of
+    proud: gritBitmap([
+      '.########.',
+      '##########',
+      '..##......',
+      '......##..',
+      '..######..',
+      '...####...',
+    ]),
+  };
+  A.GRIT_MOODS = Object.keys(GRIT_FACES);
+  A.gritFace = function (mood) { return GRIT_FACES[mood] || GRIT_FACES.deadpan; };
 
   // A wedge three cells wide, narrowing to the two middle sub-columns on the
   // side it points at. `dir` is 'down' (the box is above its target) or 'up'.
@@ -1252,9 +1439,13 @@
   // the keycaps are inverse cells and inverse is not a character.
   A.speechBox = function (title, prose, action, foot) {
     const S = A.SPEECH, w = S.W, pad = ' '.repeat(S.PAD);
+    // Interior rows span the FULL width between the walls (ACTION_W) — the
+    // face-narrowed TEXT_W is the PROSE's ceiling, not the box's; a frame
+    // composed at TEXT_W would put its right wall six columns early
+    // (M-TUTORIAL2 found exactly that, on the first frame it rendered).
     const inner = function (s) {
       s = String(s === undefined || s === null ? '' : s);
-      return '│' + pad + seg(s + sp(S.TEXT_W), 0, S.TEXT_W) + pad + '│';
+      return '│' + pad + seg(s + sp(S.ACTION_W), 0, S.ACTION_W) + pad + '│';
     };
     const bar = rep('─', w - 2);
     const rows = ['┌' + bar + '┐'];

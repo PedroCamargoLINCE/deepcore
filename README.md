@@ -78,6 +78,25 @@ plates ──▶ [A]ssembler ──▶ ¤ gears / ‡ charges ──▶ ╔═�
 Plates are also your build currency — everything your belts deliver to the rig
 can be spent or drilled. The factory *is* the timer.
 
+The first-run induction now teaches the whole chain, including coal, smelting,
+gears and delivery. GRIT notices steps you already completed; `Tab` skips the
+induction, and `I` on the title replays it.
+
+Experiment: extractors cost 4 plates, smelters 5, assemblers 6, and dampers
+6 iron + 2 copper plates. `X` refunds a fresh, undamaged machine in full for
+10 seconds; afterwards the usual salvage rules apply. Belts refund in full.
+Before descending, bank about **25 iron plates** for the next factory:
+machines stay on the floor you leave, while your stock travels with you.
+
+The drill consumes **gears, then core charges** when available. `C` overdrive
+doubles its feeding rate and raises instability faster; it does not create
+fuel or speed up your factory. With no drill stock, overdrive buys no progress.
+
+Eight biome palettes, state-driven rig animation and multi-cell, two-tone
+icons keep the terminal look. The embedded font includes cell-aligned Braille
+dots for finer art, with a block fallback. No browser dependency download is
+needed, including in the single-file build.
+
 ## Development
 
 Specs, in reading order:
@@ -102,6 +121,15 @@ Everything runs on plain `node` — no test runner, no install:
 - `node tools/ab.js '<js mutating D>'` — run that sweep against a tuning without
   editing `data.js`, e.g. `node tools/ab.js 'D.RECIPES.gear.ticks = 18'`
 - `node tools/build.js` — bundle into `dist/deepcore.html`
+
+Current implementation decisions, measured balance and test coverage:
+[`docs/RELEASE.md`](docs/RELEASE.md). The sweep's card picker now evaluates all
+25 schematics against the run; `DC_BAL_PICK=legacy DC_BAL_PACE=legacy` restores
+the old policy for controlled comparisons. Automated runs cannot certify fun.
+
+Commits must not contain AI attribution trailers. After cloning, enable the
+guard with `git config core.hooksPath .githooks`; human coauthor credits remain
+welcome. Test it with `node test/attribution_test.js`.
 
 `js/data.js` is the balance source of truth; the in-game field manual composes
 its numbers from it at load, so tuning a constant retunes the manual too.

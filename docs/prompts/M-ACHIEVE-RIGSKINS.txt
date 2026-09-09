@@ -51,8 +51,7 @@ Gate: all five suites green, node tools/build.js parses, extended for every
 trophy trigger, the ledger's numbers (composed from real counters, never
 typed), each livery, the Void readability assertion, and old-save loading.
 
-Checkpoint-commit AND PUSH after every green milestone with a
-"Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>" trailer. Ship the
+Checkpoint-commit AND PUSH after every green milestone. Ship the
 trophy shelf first (data + meta + one Foundry page), then the Ledger, then
 liveries — a session death should leave a working shelf, not a half-skinned
 rig.

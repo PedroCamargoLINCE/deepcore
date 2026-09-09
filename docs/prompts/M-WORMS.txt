@@ -58,8 +58,7 @@ test/balance.js before and after and report both — worms eat ore and dig
 free tunnels, so this CAN move balance; measure it, and if a SPEC §12 naked
 target breaks, stop and report rather than tuning data.js.
 
-Checkpoint-commit AND PUSH after every green milestone with a
-"Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>" trailer. Ship vein
+Checkpoint-commit AND PUSH after every green milestone. Ship vein
 worms + lure first, then the mutator/card wiring, then the Undertoad — a
 session death mid-brief should leave living worms, not half a toad.
 

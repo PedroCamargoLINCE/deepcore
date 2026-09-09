@@ -485,95 +485,215 @@
     // makes about a drill going into a hole, filthy adult ones, and puns he is
     // visibly proud of. He is funny AND a bit embarrassing, which is what twenty
     // years down a hole with nobody to talk to does to a man.
+    // M-TUTORIAL2 (Finding 4): every line below was reflowed once, to the
+    // face-narrowed prose ceiling (three rows of SPEECH.TEXT_W). The width
+    // contract in test/barks_test.js is the gate that proves nothing slipped.
     place: [
-      "Step one. 'Place the extractor upon the ore.' Upon it. Not near it. Somebody tried near.",
-      "'Site the drill-head atop the deposit.' Atop. Big word from a firm that spells my name wrong.",
-      "'Position the unit over the mineral body.' Over the body. Whoever wrote that has buried a man.",
-      "'Ensure firm, sustained contact with the seam.' I did not write that. I have read it eleven times.",
-      "'Do not site the unit on bare ground.' Somebody did. His face is in the safety pamphlet now.",
-      "'The extractor requires a vein.' Requires! Like she's fussy. She's a mouth on legs. Feed her.",
-      "'Establish the primary extraction point.' That is corporate for start chewing. So: chew, kid.",
-      "What do you call a bit that won't bite? Un-bit-lievable. ...The shiny rock, kid. Any day now.",
-      "Big drill goes in the hole. That is the induction. I hold a certificate in this, you know.",
-      "Rule one of holes: the pointy end goes in the soft bit. Twenty years, and that is the manual.",
-      "The teeth want that seam and the seam has been waiting four billion years. Do not be shy.",
-      "The induction calls this mineral acquisition. Down here we call it biting a rock. Bite it.",
-      "I asked for a poem about honest labour. They sent two sentences and a diagram. Here we are.",
+      "Step one. 'Place the extractor upon the ore.' Upon it. Not near. Somebody tried near.",
+      "'Site the drill atop the deposit.' Atop. Big word from a firm that misspells my name.",
+      "'Position the unit over the mineral body.' Over the body. That author buried a man.",
+      "'Ensure sustained contact with the seam.' Not my words. I have read them eleven times.",
+      "'Do not site the unit on bare ground.' Somebody did. His face is in the pamphlet now.",
+      "'The extractor requires a vein.' Requires! She's a mouth on legs, kid. Feed her.",
+      "'Establish the extraction point.' Corporate for start chewing. So chew, kid.",
+      "What do you call a bit that won't bite? Un-bit-lievable. ...The shiny rock, kid. Go.",
+      "Big drill goes in the hole. That is the induction. I hold a certificate in this.",
+      "Rule one of holes: the pointy end goes in the soft bit. That is the whole manual.",
+      "The teeth want that seam and the seam has waited four billion years. Don't be shy.",
+      "The induction calls it mineral acquisition. Down here it's biting a rock. Bite it.",
+      "I asked for a poem about honest labour. They sent two sentences and a diagram.",
     ],
     // Beat 2 — R, and where the ore actually comes out. The fault that beat the
     // director lives on this beat, so the box is at its filthiest about the one
     // thing he most needs to look at.
     rotate: [
-      "'Orient the discharge aperture.' The arse end, kid. R spins the arse end. I am quoting.",
-      "'Rotate PRIOR to placement.' Prior, underlined twice. Somebody learned that with their thumb.",
-      "'Verify egress alignment.' Egress. My gran called it the business end and she was never wrong.",
-      "'Confirm the vector of egress.' Vector! It is an ARROW. Spin it until it faces open floor.",
-      "'Ensure the discharge is unobstructed.' I am going to stay professional here. ...I cannot.",
-      "'Misaligned discharge is a leading cause of incident.' Incident. There's a word doing labour.",
-      "'The output side shall face a receiving conveyor.' Face. As though the machine were shy.",
-      "Why did the extractor lose its job? Terrible output. ...R. Press R. I'll see myself down.",
-      "Pointy bit goes in, gravel comes out the back. My nephew had this one inside of a second.",
-      "Section four: the yield must have somewhere to go. Thirty pages to say point it outward.",
-      "R swings the little arrow. The little arrow is where rock comes out. That is the entire beat.",
-      "The Company printed an appendix on which way is out. Appendix B. I have read it. Twice.",
-      "R, R, R until that arrow likes what it sees. Even I manage this one, and I am mostly lung.",
+      "'Orient the discharge aperture.' The arse end, kid. R spins it. I am quoting.",
+      "'Rotate PRIOR to placement.' Underlined twice. Somebody learned that with a thumb.",
+      "'Verify egress alignment.' Egress. My gran said business end and was never wrong.",
+      "'Confirm the vector of egress.' Vector! It is an ARROW. Aim it at open floor.",
+      "'Ensure the discharge is unobstructed.' I will stay professional. ...I cannot.",
+      "'Misaligned discharge causes incident.' Incident. There's a word doing labour.",
+      "'The output side shall face a receiving conveyor.' Face. As though she were shy.",
+      "Why did the extractor lose its job? Terrible output. ...R, kid. Press R.",
+      "Pointy bit in, gravel out the back. My nephew had this one inside of a second.",
+      "Section four: the yield must have somewhere to go. Thirty pages to say point it out.",
+      "R swings the little arrow. The arrow is where rock comes out. That's the whole beat.",
+      "The Company printed an appendix on which way is out. Appendix B. I read it. Twice.",
+      "R, R, R until the arrow likes what it sees. Even I manage this, and I am mostly lung.",
     ],
     // Beat 3 — the belt, from the arrow to the rig.
     belt: [
-      "'Convey the yield to the rig.' Convey. Belt it across, kid — rollers walk so that we do not.",
-      "'Belts shall not terminate upon soil.' Soil has never once eaten ore. Voss proved it for us.",
-      "'The conveyance MAY corner.' It may! It is allowed! Turn a corner, with Company permission!",
-      "'Ensure continuity of the conveyance.' No gaps. A rock cannot jump. I asked. It cannot jump.",
-      "'A conveyance is inserted at the intake.' Twenty years, and that page still gets a whistle.",
-      "'Do not obstruct the belt path.' Obstruct. Stand on a moving one once and you'll learn it.",
-      "'Terminate at the receiving hopper.' She swallows whatever you send. Never been proud, her.",
-      "What did the belt say to the rig? I'll carry you. ...Right. I'll carry myself out. Lay it.",
-      "A moving floor, for gravel. Gravel gets a moving floor. I get a bad knee and forty stairs.",
-      "Section nine: a conveyance shall terminate at an intake. End it AT the rig. Into her. Yes.",
-      "Run the line from that arrow to the drill. Straight, bent, whatever. Rollers do not judge.",
-      "Belt her teeth to the rig and the ore walks itself. Best coworker I had. Never talked back.",
-      "Drag the line home. Every belt is one fewer thing I carry with this ruin of a spine, kid.",
+      "'Convey the yield to the rig.' Convey. Belt it across — rollers walk so we don't.",
+      "'Belts shall not terminate upon soil.' Soil has never eaten ore. Voss proved that.",
+      "'The conveyance MAY corner.' It may! Turn a corner, with Company permission!",
+      "'Ensure continuity of the conveyance.' No gaps. A rock cannot jump. I asked.",
+      "'A conveyance is inserted at the intake.' That page still gets a whistle out of me.",
+      "'Do not obstruct the belt path.' Stand on a moving one once and you'll learn it.",
+      "'Terminate at the receiving hopper.' She swallows whatever you send. No pride, her.",
+      "What did the belt say to the rig? I'll carry you. ...I'll carry myself out. Lay it.",
+      "A moving floor, for gravel. Gravel gets one. I get a bad knee and forty stairs.",
+      "Section nine: conveyances terminate at an intake. End it AT the rig. Into her. Yes.",
+      "Run the line from arrow to drill. Straight, bent, whatever. Rollers don't judge.",
+      "Belt her teeth to the rig and the ore walks itself. Best coworker I ever had.",
+      "Drag the line home. Every belt is one less thing I carry on this ruin of a spine.",
     ],
     // Beat 4 — the ore lands. He stops being about the map here and starts
     // pointing right: STOCK is ticking up and CHAIN is lighting, and knowing
     // where to look is worth more than another sentence out of him.
     ore: [
-      "'Observe the intake register.' Watch the numbers move. That is the job, in one glowing row.",
-      "'Material receipt confirms operational continuity.' It WORKS. That is what that sentence is.",
-      "'The CHAIN indicator names the limiting stage.' Whatever's slowest lights. Believe the light.",
-      "'Verify throughput at the panel.' Look right, kid. Those panels never lie. I sometimes do.",
-      "'Induction complete.' Signed, dated, and let the record show I read every word under duress.",
-      "STOCK, over on the right: iron ore, and an arrow climbing. Climbing is good. Always good.",
-      "Numbers live on the right. Watch them and you'll never wonder why the drill went quiet.",
-      "Why is the rig never peckish? Always got a bit between her teeth. ...Suit yourself, kid.",
-      "It ate a rock. On purpose. For money. Best job in the world, and I do mean that. Mostly.",
-      "She takes the whole load and never once complains. Only thing on this rig that doesn't.",
+      "'Observe the intake register.' Watch the numbers move. That's the job, in one row.",
+      "'Material receipt confirms continuity.' It WORKS. That is what that sentence is.",
+      "'The CHAIN indicator names the limiting stage.' The slowest thing lights. Believe it.",
+      "'Verify throughput.' Look right, kid. Panels never lie. I sometimes do.",
+      "'Receipt logged.' Signed and dated, and the record shows I read it under duress.",
+      "STOCK, on your right: iron ore, arrow climbing. Climbing is good. Always good.",
+      "Numbers live on the right. Watch them and you'll know why the drill went quiet.",
+      "Why is the rig never peckish? Always got a bit between her teeth. ...Suit yourself.",
+      "It ate a rock. On purpose. For money. Best job in the world. I do mean that. Mostly.",
+      "She takes the whole load and never complains. Only thing on this rig that doesn't.",
       "There she goes. Ore in the rig. First delivery. I need a moment alone. Shut up.",
-      "First rock through the door. Somewhere an auditor just felt a small unfamiliar warmth.",
-      "Rock landed. Nobody applauded. That's mining. Do it four hundred more times, then go deeper.",
+      "First rock through the door. Somewhere an auditor felt a small unfamiliar warmth.",
+      "Rock landed. Nobody applauded. That's mining. Four hundred more, then go deeper.",
+    ],
+    // ===== M-TUTORIAL2: the act break, and act two ==========================
+    // The break (after beat 4): the legal minimum is met, the pressure pause
+    // is off, TAB is a real offer, and staying is a choice. GRIT says out loud
+    // that the clock is running — the drama IS the clock (Finding 3's
+    // amendment), and act two is the part he actually cares about.
+    'break': [
+      "'Statutory induction: done.' The rest is optional. So is being paid. Your call.",
+      "Legal minimum, done. The floor is back on the clock now, and so are we. Stay or go.",
+      "TAB out with my blessing. Or stay and learn why the drill eats gears, not rocks.",
+      "Act two is off the books. No pause, no pity — the planet counts along from here.",
+      "The Company stopped requiring this part. Wrote it myself. It is where the money is.",
+    ],
+    // Beat 5 — the smelter, and the question the director asked out loud:
+    // what is it FOR. Ore is not what the rig eats; the oven is where the
+    // chain starts being a chain.
+    smelt: [
+      "'Ore is not a product.' Page six, in bold. The rig agrees. She wants gears, not gravel.",
+      "'Route raw yield to a furnace.' A smelter. Rock in, honest iron out.",
+      "'Smelting refines the material.' Refines! It cooks rocks. Fancy word for an oven.",
+      "'The furnace accepts ore via conveyance.' Belt it in. She is not hand-fed.",
+      "'Output: plate, input: ore.' Written backwards, like all their best advice. Ore in.",
+      "The drill won't eat raw rock. Twenty years asking. So we cook it. Smelter, kid.",
+      "Why did the ore go to the smelter? To get a little plate. ...Build it.",
+      "A smelter is an oven for stone. Dinner for the rig starts here. Aprons optional.",
+      "Put the oven down and run your ore line INTO it, not the rig. She'll thank you later.",
+      "New machine, same rule: mouth wants feeding. This one eats what your extractor spits.",
+      "Furnace down, ore in the top. One plate out and you'll feel a proper industrialist.",
+    ],
+    // Beat 6 — the failure is the teacher. It arms with the smelter the player
+    // just built sitting DARK, ore queued, and GRIT naming the real cause:
+    // coal is not in start stock, and a second vein is mandatory. This is
+    // Finding 1's soft-lock, taught before it can ever bite. The LOG's own
+    // nofuel diagnostic says "out of coal / belt the coal in" — these say it
+    // differently, because the induction never repeats a Part 1 diagnostic.
+    coal: [
+      "'Furnaces require fuel.' Footnote nine. Your smelter found it first. Coal, kid.",
+      "'Fuel is not provisioned.' They gave you none. Second drill, on the black seam.",
+      "'Cold furnace: see fuel.' Their whole diagnosis. Mine is better: no coal, no fire.",
+      "'The Company provides starter stock.' Plates, gears. NOT coal. Read that twice, kid.",
+      "'Locate a secondary deposit.' They mean coal. They could have SAID coal. Coal, kid.",
+      "Dark, isn't she. Ore queued, nothing cooking. That is a furnace asking for coal.",
+      "See her, dark, full of rock? Not broken. Hungry. Coal is the other vein.",
+      "Every rig that starved on floor one starved exactly like this. Coal fixes it.",
+      "What's black, buried, and keeps this outfit alive? Not me. Coal. Go get the coal.",
+      "The fire is not included. Never was. Belt coal to the smelter and watch her wake up.",
+      "Second extractor, on the black stuff. One drill never ran a whole kitchen.",
+    ],
+    // Beat 7 — the assembler: plates to gears, the rig's actual fuel.
+    craft: [
+      "'Components are assembled from plates.' Gears. The drill runs on gears. Always has.",
+      "'The assembler produces per its recipe.' Two plates, one gear. The house always wins.",
+      "'Assembly concludes the value chain.' Concludes! It makes the ONE thing she eats.",
+      "'Plates route to the assembler intake.' Belt them in from the smelter.",
+      "'Select recipe: GEAR.' It comes up already picked. Even they couldn't complicate it.",
+      "How do you make a drill happy? Gears. That's it. That's the whole joke. Build it.",
+      "Press goes down, gears come out. My favourite machine. It makes the thing that pays.",
+      "Rocks became plates. Plates become gears. You're three steps from civilised, kid.",
+      "The assembler is where plates grow teeth. She likes them toothy. Feed accordingly.",
+      "Iron with corners, kid. That's a gear. The planet sells them at two plates apiece.",
+    ],
+    // Beat 8 — the loop closes: a gear the player's own line made reaches the
+    // rig, GEAR fills, and D is the whole rest of the game.
+    feed: [
+      "'Deliver components to the rig.' The loop closes. All you built ends in her.",
+      "'The gauge indicates readiness.' GEAR, top right. Full means down. So does D.",
+      "'Sustained supply enables descent.' The whole game in Company grey. Belt them home.",
+      "'Upon capacity: breach.' One word for punching through a planet's floor. Breach.",
+      "Gears to the rig, watch GEAR climb. When she's full she goes down, and so do we.",
+      "Why does the drill count to twenty? That's when the floor stops being one. Feed her.",
+      "Last leg, kid. Belt the gears home and the rig does the only trick she knows. Down.",
+      "That first gear landing is the whole job working at once. I still watch for it.",
+      "She eats gears and pays in floors. Best exchange rate this planet ever offered.",
+      "Loop's closed when her gauge moves. Then D, and the topsoil is somebody else's view.",
+    ],
+    // ===== the reactive layer (M-TUTORIAL2) =================================
+    // A beat the player had ALREADY satisfied when it arrived gets one of
+    // these instead of an instruction — GRIT noticing, never lecturing. One
+    // pool per beat that can arrive pre-passed; rotate and place cannot (their
+    // gates arm with the beat), so they have none.
+    notice_belt: [
+      "Line's already laid. Look at you. I'll initial this page and keep quiet.",
+      "Already belted to the rig. Fine work. The script and I are just decoration.",
+      "The ore has a road before I finished the sentence. Keep going, I'm nodding.",
+      "You've done this before, or you're a natural. Either way the belt's down.",
+    ],
+    notice_ore: [
+      "Delivery's already in. She's eating. I'll just stamp this one quietly.",
+      "Ore's home before the paperwork was. That's the right order, kid.",
+      "The register's already ticking. You didn't need page four. Noted.",
+      "First rock's already down her chute. I'll skip the speech about patience.",
+    ],
+    notice_smelt: [
+      "Already built one. Look at you. The form says teach it; the form can cope.",
+      "Smelter's up and fed before I got there. I'll act surprised for the record.",
+      "You put an oven down without being told. Somewhere a trainer just cried.",
+      "Furnace already standing. Skipping page six. It deserved skipping.",
+    ],
+    notice_coal: [
+      "She's already lit. You found the coal without the sermon. Respect, kid.",
+      "Fuel sorted already. That dark-furnace lecture was my best material, too.",
+      "Coal's in and burning. You've robbed a form of its favourite tragedy.",
+      "Fire's going. Fine. I'll tell the cold-smelter story at your funeral instead.",
+    ],
+    notice_craft: [
+      "Gears already turning. You're ahead of the induction and it's sulking.",
+      "An assembler, working, unprompted. I'm keeping this page as a souvenir.",
+      "Already pressing gears. The script wants credit. Denied, for the record.",
+      "The press beat me to it. I'll sign here and try to look necessary.",
+    ],
+    notice_feed: [
+      "A gear's already home. The loop closed itself while I was reading. Typical.",
+      "She's already fed from your line. There's nothing left to induct. Marvelous.",
+      "Gear delivered before the lesson. I'd clap, but these lungs, kid.",
+      "The gauge moved on its own. That's a working base. I'm redundant. GOOD.",
     ],
     // He is contractually required to restate. He restates with feeling.
     nudge: [
-      "Script says restate the instruction. So: the same thing, louder, with more of my character.",
-      "Still with me? Good. They pay me by the shift and not by the sentence. Take all day, kid.",
-      "I am required to confirm you are conscious. Blink at the screen. Lovely. Signed. Now dig.",
-      "'If the operative hesitates, restate.' Restated. Also the rock will not place itself, love.",
-      "Twenty years and the pause is always exactly this long. Whenever you are ready, then.",
-      "The induction has a section on encouragement. One line, and it is threatening. Skipping it.",
+      "Script says restate the instruction. The same thing, louder, with more character.",
+      "Still with me? Good. They pay me by the shift, not the sentence. Take all day.",
+      "I must confirm you are conscious. Blink at the screen. Lovely. Now dig.",
+      "'If the operative hesitates, restate.' Restated. The rock won't place itself, love.",
+      "Twenty years and the pause is always exactly this long. Whenever you're ready.",
+      "There's a section on encouragement. One line, and it is a threat. Skipping it.",
     ],
-    // The paperwork is discharged and he can go back to being himself.
+    // The paperwork is discharged and he can go back to being himself. The
+    // outro now closes the WHOLE form — eight lessons, two acts — so it talks
+    // about the loop, not "the four things" (M-TUTORIAL2).
     outro: [
-      "Induction discharged. I read their script, you dug a hole, and they can bill us both.",
-      "Paperwork's done. From here it is only rock, and rock I can actually talk about properly.",
-      "Signed off. You know the four things. Everything below is those four again, but meaner.",
-      "Right — script in the bin. Back to being useless at you in my own words. Much better.",
-      "'Training complete', says the form. It does not say good luck. I checked. So: good luck.",
+      "Induction discharged. I read their script, you built the loop. They bill us both.",
+      "Paperwork's done. From here it's only rock, and rock I can talk about properly.",
+      "Signed off. You know the whole loop now. Every floor below is this one, but meaner.",
+      "Right — script in the bin. Back to being useless at you in my own words.",
+      "'Training complete,' says the form. It doesn't say good luck. I checked. Good luck.",
     ],
     // ...or the player put their hand up in the first ten seconds. He approves.
     skip: [
-      "Skipped it. GOOD. I'd have skipped me as well. Manual's on H when pride stops working.",
-      "Straight past the induction. My kind of operative. Do not tell head office I said so.",
-      "Binned the script. I have wanted that script binned since the day they laminated it.",
+      "Skipped it. GOOD. I'd have skipped me as well. Manual's on H when pride runs out.",
+      "Straight past the induction. My kind of operative. Don't tell head office I said so.",
+      "Binned the script. I've wanted it binned since the day they laminated it.",
       "No induction? Bold. This rock grades on a curve, and the curve is mostly funerals.",
     ],
   };

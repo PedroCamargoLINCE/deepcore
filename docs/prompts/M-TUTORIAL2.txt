@@ -99,8 +99,7 @@ columns on every beat WITH the face — read the frames yourself, law 6 is
 the objective. The naked 14-seed balance sweep must be BYTE-IDENTICAL: the
 bot never runs the induction, so if a number moves you touched the sim.
 
-Checkpoint-commit AND PUSH after every green milestone with a
-"Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>" trailer. Ship the
+Checkpoint-commit AND PUSH after every green milestone. Ship the
 face + reflow first (it gates everything), then beats 5-8 with their gates,
 then the reactive/theater layer, then GRIT's new lines.
 

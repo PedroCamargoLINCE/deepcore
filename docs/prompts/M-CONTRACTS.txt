@@ -53,8 +53,7 @@ exemptions, a v5 save loading, every card whole at 112 columns, and the
 STANDARD balance identity. Run test/balance.js before and after on STANDARD
 and report both, plus one HAZARD and one WARRANT full-Foundry run.
 
-Checkpoint-commit AND PUSH after every green milestone with a
-"Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>" trailer. Ship the
+Checkpoint-commit AND PUSH after every green milestone. Ship the
 data + effects layer + STANDARD identity first, then the screen, then the
 unlock ladder and trophies, then GRIT's lines.
 

@@ -21,7 +21,16 @@
   // run that never asks.
   function deliver(run, item) {
     add(run.inv, item, 1);
-    if (run.stats) run.stats.delivered = (run.stats.delivered || 0) + 1;
+    if (run.stats) {
+      run.stats.delivered = (run.stats.delivered || 0) + 1;
+      // M-TUTORIAL2: WHICH item, for the same reason the count exists — the
+      // induction's last beat is "a gear the player's line made reached the
+      // rig", and start stock never passes through here (it is add()ed at
+      // newRun), so this ledger is exactly the deliveries. One map write, no
+      // roll; runs that never ask stay byte-identical.
+      const by = run.stats.deliveredBy || (run.stats.deliveredBy = {});
+      by[item] = (by[item] || 0) + 1;
+    }
   }
   function stratumOf(run) {
     return run.depth <= D.STRATA_COUNT ? D.STRATA[run.depth - 1] : D.mantleStratum(run.depth);
@@ -331,7 +340,7 @@
       // startStratum deliberately does not clear it, because the lesson does
       // not need re-teaching one floor down.
       diag: {},
-      stats: { placed: {}, lastPlaceT: 0, lastFeedT: 0, delivered: 0 },
+      stats: { placed: {}, lastPlaceT: 0, lastFeedT: 0, delivered: 0, deliveredBy: {} },
       foreman: null,
       // M-CORELORE: how many Core Gate beats this run has passed (0..3), and
       // the fake ascend prompt barks.js may put on screen. M-GRITPLUS: the
@@ -630,6 +639,10 @@
     if (run.status !== 'active' && run.status !== 'breachReady') return;
     run.t++;
     run.totalT++;
+    if (run.t % HZ === 0 && supplyWarning(run) && !run.supplyWarned) {
+      run.supplyWarned = true;
+      msg(run, 'No plate supply. X reclaims builds; dig for caches, or ESC to end the shift.', D.COLORS.red);
+    }
     updateReveal(run);
     stepDark(run);        // M-MANTLE: ...and then takes a ring of it back
     for (let y = 0; y < D.MAP_H; y++)
@@ -702,6 +715,8 @@
         run.gearsFed >= run.breachReq.gear && run.chargesFed >= run.breachReq.charge) {
       run.status = 'breachReady';
       msg(run, '»» BREACH READY — press D to descend ««', D.COLORS.amber);
+      if (run.depth === 1) msg(run,
+        'Machines stay here. Pack ' + departureReserve() + ' plates for the next base, including belts.', D.COLORS.cyan);
       pushEvent(run, 'breachReady', { depth: run.depth });
     }
     if (run.integrity <= 0) {
@@ -1537,7 +1552,8 @@
         // the wrong place, and that is the only sentence that helps.
         s.flag = 'COLD';
       } else {
-        s.flag = (s.id === 'plate' && noCoal) ? 'NO COAL' : s.limiting ? 'STARVED' : '';
+        s.flag = (s.id === 'plate' && noCoal) ? 'NO COAL'
+          : s.limiting ? (s.rate > 0 ? 'PACE' : 'STARVED') : '';
       }
     }
     // A charge stage that cannot keep up is its own lesson, and charges gate
@@ -1640,7 +1656,7 @@
 
   // ---------------- instability & quakes (§5.5) ----------------
   function instRate(run) {
-    let rate = stratumOf(run).instabRate * run.mods.instMult;
+    let rate = stratumOf(run).instabRate * D.PRESSURE_MULT * run.mods.instMult;
     // M-MANTLE/'the seal': the other half of the sprint. The floor is 30%
     // cheaper to leave and half again as expensive to stand on.
     rate *= mutVal(run, 'seal', 'instMult', 1);
@@ -1893,6 +1909,7 @@
     const id = run.nextId++;
     const m = {
       id: id, type: type, x: x, y: y, w: B.w, h: B.h, facing: facing, hp: B.hp,
+      placedAt: run.totalT,
       progress: 0, recipe: type === 'assembler' ? 'gear' : null,
       input: {}, fuel: 0, status: 'idle', repairAt: 0,
       blockedSince: 0, nofuelSince: 0, starveSince: 0, out: [], job: null,
@@ -1913,6 +1930,23 @@
     return true;
   }
 
+  function demolishRefund(run, m) {
+    const B = D.BUILDINGS[m.type];
+    if (Number.isFinite(m.placedAt) && run.totalT >= m.placedAt &&
+        run.totalT - m.placedAt <= D.UNDO_TICKS && m.hp === B.hp) return 1;
+    return (run.mods && run.mods.refund) || D.DEMOLISH_REFUND;
+  }
+
+  // A supply warning, never a verdict that excavation luck cannot rescue a run.
+  function supplyWarning(run) {
+    if ((run.inv.ironPlate || 0) >= D.BUILDINGS.smelter.cost.ironPlate) return false;
+    return !Object.values(run.machines).some(m => m.type === 'smelter');
+  }
+  function departureReserve() {
+    return 2 * D.BUILDINGS.extractor.cost.ironPlate + D.BUILDINGS.smelter.cost.ironPlate +
+      D.BUILDINGS.assembler.cost.ironPlate + 6 * D.BUILDINGS.belt.cost.ironPlate;
+  }
+
   function demolishAt(run, x, y) {
     const t = tileAt(run, x, y);
     if (!t) return { ok: false, reason: 'out of bounds' };
@@ -1921,7 +1955,7 @@
       const m = run.machines[t.machine];
       const B = D.BUILDINGS[m.type];
       // M-SCHEMS2/Gravity Chute: the refund fraction lives on the mods now.
-      const refund = (run.mods && run.mods.refund) || D.DEMOLISH_REFUND;
+      const refund = demolishRefund(run, m);
       for (const k in B.cost) add(run.inv, k, Math.floor(B.cost[k] * refund));
       for (const k in m.input) if (m.input[k] > 0) add(run.inv, k, m.input[k]);
       destroyMachine(run, m);
@@ -2009,7 +2043,9 @@
   function toggleOverdrive(run) {
     run.overdrive = !run.overdrive;
     // CX-08: '»' (U+00BB) — '≫' (U+226B) is the one glyph DejaVu Sans Mono lacks.
-    msg(run, run.overdrive ? '» OVERDRIVE engaged — the rig howls.' : 'Overdrive disengaged.',
+    const pressure = run.mods.overCheap ? 1 + (D.OVERDRIVE.instMult - 1) / 2 : D.OVERDRIVE.instMult;
+    msg(run, run.overdrive ? 'Overdrive: ' + D.OVERDRIVE.drillMult + 'x gear/charge feed; ' +
+      pressure + 'x pressure. No stock? No speed gain.' : 'Overdrive disengaged.',
         run.overdrive ? D.COLORS.red : D.COLORS.gray);
   }
 
@@ -2234,7 +2270,9 @@
         L.push({ text: 'DRILL RIG', color: D.COLORS.amber });
         L.push({ text: 'integrity ' + Math.max(0, Math.ceil(run.integrity)) + '/' + run.maxIntegrity,
                  color: D.COLORS.gray });
-        L.push({ text: 'click: toggle overdrive', color: D.COLORS.amberDim });
+        L.push({ text: 'Eats gears, then charges.', color: D.COLORS.gray });
+        L.push({ text: 'C: ' + D.OVERDRIVE.drillMult + 'x feed, more pressure', color: D.COLORS.amber });
+        L.push({ text: 'No stock? No speed gain.', color: D.COLORS.gray });
         return L;
       }
       const B = D.BUILDINGS[m.type];
@@ -2271,6 +2309,8 @@
         if (ot && ot.ore)
           L.push({ text: D.ITEMS[ot.ore].name + ' — ' + ot.oreAmt + ' left', color: D.ORE_GLYPHS[ot.ore].color });
       }
+      if (demolishRefund(run, m) === 1)
+        L.push({ text: 'X: full refund (new machine)', color: D.COLORS.green });
       for (const l of tier2Lines(run, m)) L.push(l);   // M-TIER2
       // coal is already reported by the fuel line on the machines that burn it
       const buf = bufferLine(m, (m.type === 'smelter' || m.type === 'damper') ? 'coal' : null);
@@ -2313,6 +2353,7 @@
   DC.Sim = {
     newRun: newRun, startStratum: startStratum, tick: tick,
     canPlace: canPlace, place: place, demolishAt: demolishAt,
+    demolishRefund: demolishRefund, supplyWarning: supplyWarning, departureReserve: departureReserve,
     clickTile: clickTile, toggleOverdrive: toggleOverdrive,
     beginDescent: beginDescent, continueIntoMantle: continueIntoMantle,
     applySchematic: applySchematic, abandon: abandon,

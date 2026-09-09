@@ -1,0 +1,10 @@
+#!/usr/bin/env node
+'use strict';
+const fs = require('fs');
+const { isAIAttribution } = require('../tools/commit-attribution.js');
+const message = fs.readFileSync(process.argv[2], 'utf8');
+if (message.split('\n').some(isAIAttribution)) {
+  console.error('Commit rejected: remove AI attribution trailers. Human coauthor credits are welcome.');
+  process.exitCode = 1;
+}
+

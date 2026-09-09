@@ -58,8 +58,9 @@ with `git add -A`).
 | 5 | ~~M-TIER2 (alone)~~ ✅ **merged 2026-08-18** — worker died at its session limit with all checkpoints pushed; rescued from its worktree, one finished diff committed for it | ~~M-MANTLE + M-SCHEMS2~~ ✅ **merged 2026-08-19** — survived THREE worker deaths (ECONNRESET, connection drop, rate limit-on-wrong-model) with zero pushed work lost | — |
 | 6 | ~~M-WORMS~~ ✅ **merged 2026-08-19** | ~~M-ACHIEVE + M-RIGSKINS~~ ✅ **merged 2026-08-23** (first Fable worker, by order) | ~~M-SOUND~~ ✅ **merged 2026-08-23** (ran in parallel with B; M1 spec recovered from git history) |
 | 6.5 | ~~M-CONTRACTS~~ ✅ **merged 2026-08-24** (Fable, by order; first monitored worker) | — | — |
-| 6.6 | ~~M-ROCKORE~~ ✅ **merged 2026-08-25** (Opus; Finding 8 — dig spoil; 21 min brief-to-done, sweep row-identical) | M-TUTORIAL2 **IN PROGRESS** (Fable, by order; Findings 3+4 — GRIT's face + the induction rebuilt "better, not longer") | — |
-| 7 | **M-HUMANBAL — alone, LAST** (SPEC3 §M-HUMANBAL): thirteen findings decided as a set, after the remaining CRAFT briefs (9 biomes, 10 icons, 11 breathing rig) | — | — |
+| 6.6 | ~~M-ROCKORE~~ ✅ **merged 2026-08-25** | M-TUTORIAL2 ✅ **completed 2026-09-09**: recovered face + act two, reactive gates, full keyboard integration coverage | — |
+| 6.7 | F9 biomes ✅ | F10 raster icons + embedded mono Braille ✅ | F11 state-driven rig + F14 overdrive explanation ✅ |
+| 7 | **M-HUMANBAL — completed as a set, LAST, 2026-09-09**. Costs, undo, true starvation, floor-transfer teaching and 10% slower instability. Director delegated remaining pacing choice. See `docs/RELEASE.md` for decisions and measurements. | — | — |
 
 **M-HUMANBAL is a running ledger, not a queued brief.** Every balance problem
 the director hits while actually playing gets appended to SPEC3's M-HUMANBAL
@@ -341,8 +342,7 @@ targets. You are the ONLY brief permitted to change existing data.js values.
 
 Gate: all four suites green (node test/headless.js, test/integration.js,
 test/barks_test.js, test/rig_test.js) plus your new test/balance.js, and
-node tools/build.js parses. Checkpoint-commit AND PUSH your branch after every green milestone, with
-a Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> trailer.
+node tools/build.js parses. Checkpoint-commit AND PUSH your branch after every green milestone.
 Push to origin master when green. Report: what you fixed, the before/after
 balance numbers, what you skipped and why.
 ```
@@ -385,7 +385,7 @@ Gate: all five suites green (node test/headless.js, test/integration.js,
 test/barks_test.js, test/rig_test.js, test/balance.js) and node tools/build.js
 parses. Extend the suites with a stub-canvas frame-advance test proving each
 table row fires under a constructed state. Checkpoint-commit AND PUSH your
-branch after every green milestone with a Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> trailer.
+branch after every green milestone.
 
 When done: push your branch to origin and STOP — do not merge to master, do not
 rebase, do not force-push. Report: what you built, which table rows you did or
@@ -419,8 +419,7 @@ new field with a default so a profile written before your change still loads.
 Gate: all five suites green (node test/headless.js, test/integration.js,
 test/barks_test.js, test/rig_test.js, test/balance.js) and node tools/build.js
 parses, with the suites extended to cover your feature. Checkpoint-commit after
-every green milestone with a Co-Authored-By: Claude Opus 5
-<noreply@anthropic.com> trailer.
+every green milestone.
 
 When done: push your branch to origin and STOP — do not merge to master, do not
 rebase, do not force-push. Report: what you built, what you deviated from the
@@ -463,8 +462,7 @@ tile and screen draw paths at the same time — stay inside the help screen.
 
 Gate: all five suites green (node test/headless.js, test/integration.js,
 test/barks_test.js, test/rig_test.js, test/balance.js) and node tools/build.js
-parses. Checkpoint-commit AND PUSH your branch after every green milestone, with a Co-Authored-By:
-Claude Opus 5 <noreply@anthropic.com> trailer.
+parses. Checkpoint-commit AND PUSH your branch after every green milestone.
 
 When done: push your branch to origin and STOP — do not merge to master, do not
 rebase, do not force-push. Report: what you built, what you deviated on and why,
@@ -536,8 +534,7 @@ test/barks_test.js, test/rig_test.js, test/balance.js) and node tools/build.js
 parses. Add tests for: pxToCell round-trip at three viewport sizes, the glyph
 advance being re-measured after resize, the rasterizer against known bitmaps
 including its cell-aspect correction, and the block fallback engaging when
-braille is unavailable. Checkpoint-commit AND PUSH your branch after every green milestone, with a
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> trailer.
+braille is unavailable. Checkpoint-commit AND PUSH your branch after every green milestone.
 
 When done: push your branch to origin and STOP — do not merge, rebase or
 force-push. Report: which phases landed, the bundle size delta on
@@ -608,8 +605,7 @@ test/barks_test.js, test/rig_test.js, test/balance.js) and node tools/build.js
 parses. test/barks_test.js enforces the voice lint, line-overlap ceiling and
 panel-wrap contract — every new line must pass it, including that it word-wraps
 whole into the LOG (3x29) and the Foreman bar (2x41). Checkpoint-commit after
-every green milestone with a Co-Authored-By: Claude Opus 5
-<noreply@anthropic.com> trailer.
+every green milestone.
 
 When done: push your branch to origin and STOP — do not merge, rebase or
 force-push. Report: what you wrote, line counts per category, which hooks you
@@ -644,8 +640,7 @@ sim/map stay DOM-free and deterministic on run.rng: no Date.now, no
 Math.random, ever. A landmark must generate identically for the same seed.
 
 Gate: all five suites green and node tools/build.js parses. Checkpoint-commit
-after every green milestone with a Co-Authored-By: Claude Opus 5
-<noreply@anthropic.com> trailer.
+after every green milestone.
 
 When done: push your branch to origin and STOP — do not merge, rebase or
 force-push. Report: what you built, your before/after balance numbers, and
@@ -713,8 +708,7 @@ half-written module.
 Gate: all five suites green (node test/headless.js, test/integration.js,
 test/barks_test.js, test/rig_test.js, test/balance.js) and node tools/build.js
 parses, with the suites extended to cover the event system and each vignette's
-trigger. Checkpoint-commit with a Co-Authored-By: Claude Opus 5
-<noreply@anthropic.com> trailer.
+trigger. Checkpoint-commit.
 
 When done: push your branch to origin and STOP — do not merge, rebase or
 force-push. Report: what you built, which vignettes landed, what you deviated
@@ -752,8 +746,7 @@ deterministic on run.rng.
 
 Gate: all five suites green and node tools/build.js parses, extended to cover
 the new schematics and mutators. Checkpoint-commit AND PUSH your branch after
-every green milestone
-with a Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> trailer.
+every green milestone.
 
 When done: push your branch to origin and STOP. Report: what you built, your
 before/after balance numbers, and anything the orchestrator must know to merge.
@@ -786,8 +779,7 @@ js/data.js ADDITIVE ONLY. sim stays DOM-free and deterministic on run.rng.
 
 Gate: all five suites green and node tools/build.js parses, extended to cover
 the new logistics. Run test/balance.js before and after and report both.
-Checkpoint-commit AND PUSH your branch after every green milestone, with a Co-Authored-By: Claude
-Opus 5 <noreply@anthropic.com> trailer.
+Checkpoint-commit AND PUSH your branch after every green milestone.
 
 When done: push your branch to origin and STOP. Report: what you built, your
 before/after balance numbers, and anything the orchestrator must know to merge.
@@ -820,8 +812,7 @@ API and move on.
 
 Gate: all five suites green and node tools/build.js parses, extended to cover
 worm behavior and its bounds. Run test/balance.js before and after — worms must
-not regress the survive-stratum-2 rate. Checkpoint-commit with a Co-Authored-By:
-Claude Opus 5 <noreply@anthropic.com> trailer.
+not regress the survive-stratum-2 rate. Checkpoint-commit.
 
 When done: push your branch to origin and STOP. Report: what you built, your
 before/after balance numbers, and the API the hook-briefs should call.
@@ -853,8 +844,7 @@ a silent no-op. Everything stays DOM-free and deterministic. js/data.js
 ADDITIVE ONLY.
 
 Gate: all five suites green and node tools/build.js parses, extended to cover
-achievements, save migration, and each livery's composition. Checkpoint-commit
-with a Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> trailer.
+achievements, save migration, and each livery's composition. Checkpoint-commit.
 
 When done: push your branch to origin and STOP. Report: what you built, how you
 proved save compatibility, and your final test output.
@@ -888,8 +878,7 @@ runs in bare node with no WebAudio: guard accordingly, so an absent AudioContext
 is a silent no-op.
 
 Gate: all five suites green in bare node and node tools/build.js parses.
-Checkpoint-commit with a Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
-trailer.
+Checkpoint-commit.
 
 When done: push your branch to origin and STOP. Report: what you built, how the
 mute/opt-in works, the size delta on dist/deepcore.html, and your final test

@@ -60,8 +60,7 @@ js/data.js ADDITIVE ONLY. sim stays DOM-free and deterministic on run.rng.
 
 Gate: all five suites green and node tools/build.js parses, extended to cover
 the new logistics. Run test/balance.js before and after and report both.
-Checkpoint-commit AND PUSH your branch after every green milestone, with a Co-Authored-By: Claude
-Opus 5 <noreply@anthropic.com> trailer.
+Checkpoint-commit AND PUSH your branch after every green milestone.
 
 When done: push your branch to origin and STOP. Report: what you built, your
 before/after balance numbers, and anything the orchestrator must know to merge.

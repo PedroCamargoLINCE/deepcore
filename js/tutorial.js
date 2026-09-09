@@ -1,18 +1,35 @@
-/* DEEPCORE — tutorial.js (SPEC3 M-ONBOARD Part 2)
-   DC.Tutorial: the first-run induction. Four beats, each GATED ON THE PLAYER
-   ACTUALLY DOING THE THING, on the real generated map — there is no scripted
-   sandbox anywhere in this file, and nothing here places, rotates or belts
-   anything on the player's behalf.
+/* DEEPCORE — tutorial.js (SPEC3 M-ONBOARD Part 2 + M-TUTORIAL2)
+   DC.Tutorial: the first-run induction. Two acts, eight lessons, each GATED ON
+   THE PLAYER ACTUALLY DOING THE THING, on the real generated map — there is no
+   scripted sandbox anywhere in this file, and nothing here places, rotates or
+   belts anything on the player's behalf.
 
+     ACT ONE — the legal minimum (the pressure pause holds)
      1 place   an extractor on the marked iron vein
      2 rotate  R, and the arrow that says where the ore comes out
      3 belt    a line from that arrow to the rig
      4 ore     the first delivery lands, and the panels take over the teaching
+     — the act break: the minimum is met, TAB is offered a second time,
+       staying is a choice, and the floor is tightening again —
+     ACT TWO — closing the loop, on the Company's time
+     5 smelt   a smelter, with ore belted into it
+     6 coal    the smelter sits DARK with ore queued — the machine visibly not
+               working is the lesson (Finding 1's soft-lock, taught before it
+               bites): a SECOND extractor, on coal, same smelter
+     7 craft   an assembler, plates to gears
+     8 feed    a gear the player's own line made reaches the rig; the form is
+               signed and the run is handed over
+
+   REACTIVE, NOT SCRIPTED (Finding 3's 2026-08-25 amendment): every gate is a
+   pure read of sim state, so a beat the player has ALREADY satisfied passes
+   on sight — with a line where GRIT notices, not a lecture — and a returning
+   player who speedruns the chain watches the induction sprint to keep up.
 
    Part 1 already makes every failure state name its own cause in the LOG, so
    the induction never repeats a diagnostic; and CHAIN and STOCK are the
-   player's co-teachers from beat 4 on, which is why that beat ends by POINTING
-   at them rather than by restating them.
+   player's co-teachers from beat 4 on, which is why act one ends by POINTING
+   at them — and act two ends by pointing right again, not by restating the
+   chain the manual and CHAIN already explain.
 
    DOM-free and deterministic. Nothing in this module rolls: the line for a beat
    is a pure hash of (seed, beat, restatement) through Barks.tutor, every gate is
@@ -31,7 +48,12 @@
   const HZ = D.TICK_HZ;
   const CFG = D.TUTORIAL;
 
-  const BEATS = ['place', 'rotate', 'belt', 'ore'];
+  // 'break' is the act break — a beat of its own in the FLOW (it owns the
+  // screen for a moment, and TAB is a real offer there) but not a LESSON: it
+  // gates on nothing, stamps nothing, and the title counts 8, not 9.
+  const BEATS = ['place', 'rotate', 'belt', 'ore', 'break',
+                 'smelt', 'coal', 'craft', 'feed'];
+  const LESSONS = BEATS.filter(function (b) { return b !== 'break'; });
 
   // Which build key selects a thing, asked of the keymap rather than typed in
   // — engine.js binds D.BUILD_ORDER[n-1] to the digit n, so a reordering of
@@ -56,19 +78,22 @@
     return run.hub ? { x: run.hub.x + 1, y: run.hub.y + 1 } : { x: 0, y: 0 };
   }
 
-  // The vein the induction teaches on. Stratum 1 guarantees iron near the rig;
-  // this picks the CLOSEST revealed one by squared distance, ties broken by
-  // scan order, so the choice is a pure function of the map and every player on
-  // a seed is taught on the same tile. A map with no revealed iron at all (the
-  // Mantle, a hostile roll, a test fixture) simply yields null and the
-  // induction does not arm — it never invents a target.
-  function pickVein(run) {
+  // The vein a beat teaches on. Stratum 1 guarantees iron AND coal near the
+  // rig (map.js's ensureVeins); this picks the CLOSEST revealed one by squared
+  // distance, ties broken by scan order, so the choice is a pure function of
+  // the map and every player on a seed is taught on the same tile. A map with
+  // none revealed at all (the Mantle, a cold seam, a test fixture) simply
+  // yields null and the beat that wanted it does not arm — it never invents a
+  // target. M-TUTORIAL2 generalized this over `ore` so the coal beat runs the
+  // same lazy-wait dance the iron vein always has.
+  function pickVein(run, ore) {
+    ore = ore || 'ironOre';
     const h = hubCentre(run);
     let best = null, bestD = Infinity;
     for (let y = 0; y < D.MAP_H; y++) {
       for (let x = 0; x < D.MAP_W; x++) {
         const t = run.grid[y][x];
-        if (!t || !t.revealed || t.ore !== 'ironOre' || t.oreAmt <= 0) continue;
+        if (!t || !t.revealed || t.ore !== ore || t.oreAmt <= 0) continue;
         if (t.machine !== null || t.belt || t.lm || t.t !== 'floor') continue;
         const d = (x - h.x) * (x - h.x) + (y - h.y) * (y - h.y);
         if (d < bestD) { bestD = d; best = { x: x, y: y }; }
@@ -77,17 +102,44 @@
     return best;
   }
 
-  // The extractor the player put down. The FIRST one by machine id, so a player
-  // who builds three keeps being taught about the one the box has been pointing
-  // at since beat one.
-  function firstExtractor(run) {
+  // The machine the player put down. The FIRST one by machine id, so a player
+  // who builds three keeps being taught about the one the box has been
+  // pointing at since the beat began.
+  function firstOf(run, type) {
     if (!run || !run.machines) return null;
     const ids = Object.keys(run.machines).map(Number).sort(function (a, b) { return a - b; });
     for (let i = 0; i < ids.length; i++) {
       const m = run.machines[ids[i]];
-      if (m && m.type === 'extractor') return m;
+      if (m && m.type === type && (m.job || m.out.length ||
+          (type === 'smelter' && oreQueued(m)))) return m;
     }
+    for (const id of ids) if (run.machines[id].type === type) return run.machines[id];
     return null;
+  }
+  function firstExtractor(run) {
+    return Object.values((run && run.machines) || {}).find(m => m.type === 'extractor' &&
+      tileAt(run,m.x,m.y).ore === 'ironOre') || null;
+  }
+
+  // ---- the act-two reads, all pure (M-TUTORIAL2) ----
+  // Ore standing in the smelter's intake. While the smelter is dark this stays
+  // visibly queued (stepMachine only consumes input when it can light a job),
+  // which is exactly the picture the coal beat teaches from.
+  function oreQueued(m) {
+    return ((m.input.ironOre || 0) + (m.input.copperOre || 0)) > 0;
+  }
+  // The smelter has heat: coal in the intake, fuel in the box, or a job lit by
+  // the planet itself (a Magma Boiler forge never draws fuel — sim.js). A lit
+  // smelter is the coal lesson ACHIEVED, however it was achieved.
+  function smelterLit(m) {
+    return m.fuel > 0 || (m.input.coal || 0) > 0 || (!!m.job && m.status !== 'nofuel');
+  }
+  // A gear the player's line made, arriving at the rig. Start stock never
+  // passes through Sim's deliver(), so this cannot be satisfied by the eight
+  // gears the run begins with — only by a belt or an output facing her.
+  function gearDelivered(run) {
+    const by = run.stats && run.stats.deliveredBy;
+    return ((by && by.gear) | 0) > 0;
   }
 
   function outTile(m) {
@@ -161,6 +213,7 @@
     run.tutorial = {
       i: 0, salt: 0, nudges: 0,
       beatT: run.totalT, armT: run.totalT,
+      enterT: run.totalT,
       depth0: run.depth,
       vein: pickVein(run),
       rotated: false, facing0: null,
@@ -168,6 +221,10 @@
       over: false,      // the whole induction is behind us
       skipped: false,
       seen: {},         // beat id -> the totalT it was completed on
+      // M-TUTORIAL2 (act two + the reactive layer):
+      coalVein: null,   // the second vein, found by the same lazy wait as iron
+      pre: 0,           // totalT until which a pre-passed beat's notice lingers
+      joltT: 0,         // the last quake the face flinched at (mood, law 8-clean)
     };
     // The pressure pause. Instability is what schedules quakes, so this is the
     // whole of "nobody loses their first run to a quake while reading".
@@ -225,18 +282,68 @@
       case 'rotate': {
         const m = firstExtractor(run);
         if (!m) return false;
-        return T.rotated && !outputFouled(run, m);
+        return (T.rotated || gearDelivered(run) ||
+          Object.values(run.machines).some(s => s.type === 'smelter' && (oreQueued(s) || s.job))) &&
+          !outputFouled(run, m);
       }
       case 'belt': {
         const m = firstExtractor(run);
         if (!m) return false;
         const o = outTile(m);
-        return reachesRig(run, o.x, o.y);
+        return reachesRig(run, o.x, o.y) || gearDelivered(run) ||
+          Object.values(run.machines).some(s => s.type === 'smelter' && (oreQueued(s) || s.job));
       }
       case 'ore':
-        return ((run.stats && run.stats.delivered) | 0) > 0;
+        return ((run.stats && run.stats.delivered) | 0) > 0 ||
+          Object.values(run.machines).some(s => s.type === 'smelter' && (oreQueued(s) || s.job));
+      // ---- act two (M-TUTORIAL2). Outcomes, not ceremonies: each gate reads
+      // what the CHAIN now does, so however the player got there counts.
+      case 'smelt': {
+        // a smelter exists and ore has reached it — queued, mid-job, or
+        // already out the far side
+        const s = firstOf(run, 'smelter');
+        return !!s && (oreQueued(s) || !!s.job || s.out.length > 0);
+      }
+      case 'coal':
+        // the smelter has heat, however it got it (belted coal, or a forge)
+        return !!firstOf(run, 'smelter') && smelterLit(firstOf(run, 'smelter'));
+      case 'craft': {
+        // a gear is being made or has been made — the job, the output buffer,
+        // or one already banked at the rig
+        if (gearDelivered(run)) return true;
+        const a = firstOf(run, 'assembler');
+        return !!a && (a.job === 'gear' || a.job === 'bronzeGear' ||
+                       a.out.indexOf('gear') >= 0);
+      }
+      case 'feed':
+        return gearDelivered(run);
+      // 'break' has no gate: tick() runs it on its own clock, and the player
+      // starting act two early ends it early.
     }
     return false;
+  }
+
+  // The beat is done: stamp it, step past it, and — the reactive layer — if
+  // the NEXT lesson is already satisfied, arm the notice instead of the
+  // instruction, so GRIT gets to say "already built one" rather than teach a
+  // thing the player has visibly done (Finding 3's amendment, the single
+  // cheapest thing that makes the induction feel alive).
+  function advance(run, T) {
+    T.i++;
+    T.salt = 0; T.nudges = 0;
+    T.beatT = run.totalT;
+    T.enterT = run.totalT;
+    T.facing0 = null;
+    T.pre = 0;
+    if (T.i >= BEATS.length) {
+      T.line = pick(run, 'outro', 0);
+      T.hold = run.totalT + CFG.holdT * HZ;
+      return;
+    }
+    const id = BEATS[T.i];
+    if (id !== 'break' && passed(run, T, id, null)) {
+      T.pre = run.totalT + CFG.noticeT * HZ;
+    }
   }
 
   // ---------------- tick ----------------
@@ -246,6 +353,12 @@
   function tick(run, ui) {
     const T = state(run);
     if (!T || T.over) return;
+
+    // The face's quake flinch (M-TUTORIAL2). ui.shakeUntil is the engine's
+    // 4-tick screen shake — too brief for an expression to be read — so the
+    // moment is stamped here and mood() holds the alarm for a beat. Reading
+    // the shake that HAPPENED is law-8-clean; run.quakeAt never is.
+    if (ui && ui.shakeUntil && run.t < ui.shakeUntil) T.joltT = run.totalT;
 
     // A player who reaches the next floor with the induction still running has
     // left it behind, and the pressure pause goes with them — a frozen
@@ -271,25 +384,62 @@
       T.beatT = run.totalT;      // the beat starts when the player can see it
     }
 
+    const id = BEATS[T.i];
+
+    // The act break (M-TUTORIAL2). No gate and no stamp: the legal minimum is
+    // met, the floor is tightening again, TAB is a real offer, and staying is
+    // a choice. It ends on its own clock — or the moment the player answers
+    // it with a smelter, which is the only "waiting advances a beat" in this
+    // file, and it is the point: the break is a pause, not a lesson.
+    if (id === 'break') {
+      if (firstOf(run, 'smelter') || run.totalT - T.beatT >= CFG.breakT * HZ) {
+        advance(run, T);
+      }
+      return;
+    }
+
+    // A pre-passed beat: GRIT's notice is on screen. Let it be read, then
+    // stamp and move on — the sprint, one readable step at a time.
+    if (T.pre) {
+      if (run.totalT >= T.pre) {
+        T.seen[id] = run.totalT;
+        if (id === 'ore') release(run);   // the floor may tighten now
+        advance(run, T);
+      }
+      return;
+    }
+
+    // The coal beat's second vein, by the iron vein's own lazy-wait dance —
+    // and the graceful giveup: a map with no coal to point at AND no forge to
+    // skip the lesson with is a map where the chain cannot be finished, so
+    // after armT the form closes at the legal minimum rather than nudging
+    // forever at a wall (the brief's "never invent a target").
+    if (id === 'coal' && !T.coalVein) {
+      T.coalVein = pickVein(run, 'coal');
+      const s = firstOf(run, 'smelter');
+      if (!T.coalVein && !(s && smelterLit(s))) {
+        if (run.totalT - T.enterT > CFG.armT * HZ) {
+          T.i = BEATS.length;
+          T.incomplete = true;
+          T.line = 'No coal on the scan. Form suspended. Keep looking; H has the manual.';
+          T.hold = run.totalT + CFG.holdT * HZ;
+        }
+        return;
+      }
+    }
+
     // Beat 2 watches the facing the player is aiming with. `facing0` is armed
     // when the beat starts rather than at newRun, so pressing R twenty times
     // during beat one does not silently pre-pass beat two.
-    if (BEATS[T.i] === 'rotate' && ui) {
+    if (id === 'rotate' && ui) {
       if (T.facing0 === null) T.facing0 = ui.facing | 0;
       else if ((ui.facing | 0) !== T.facing0) T.rotated = true;
     }
 
-    if (passed(run, T, BEATS[T.i], ui)) {
-      T.seen[BEATS[T.i]] = run.totalT;
-      if (BEATS[T.i] === 'ore') release(run);   // the floor may tighten now
-      T.i++;
-      T.salt = 0; T.nudges = 0;
-      T.beatT = run.totalT;
-      T.facing0 = null;
-      if (T.i >= BEATS.length) {
-        T.line = pick(run, 'outro', 0);
-        T.hold = run.totalT + CFG.holdT * HZ;
-      }
+    if (passed(run, T, id, ui)) {
+      T.seen[id] = run.totalT;
+      if (id === 'ore') release(run);   // the floor may tighten now
+      advance(run, T);
       return;
     }
 
@@ -311,6 +461,9 @@
     const T = state(run);
     if (!T) return null;
     if (T.skipped || T.i >= BEATS.length) return T.line || null;
+    // A pre-passed beat gets the NOTICE pool — GRIT clocking what the player
+    // already did — never the instruction for a thing that is visibly done.
+    if (T.pre) return pick(run, 'notice_' + BEATS[T.i], 0);
     return pick(run, BEATS[T.i], T.salt);
   }
 
@@ -328,8 +481,24 @@
                 ['cap', '↵'], ['t', ' ARROW ▸ RIG']];
       case 'ore':
         return [['t', 'WATCH THE RIG — AND THE PANELS ▶']];
+      // ---- act two (M-TUTORIAL2) ----
+      case 'break':
+        return [['t', 'LEGAL MINIMUM MET · '], ['cap', buildKey('smelter')],
+                ['t', ' FOR ACT TWO']];
+      case 'smelt':
+        return [['cap', buildKey('smelter')], ['t', ' SMELTER'], ['t', '   '],
+                ['cap', '↵'], ['t', ' BELT ORE IN']];
+      case 'coal':
+        return [['cap', buildKey('extractor')],
+                ['t', ' ON THE ' + oreGlyph('coal') + ' COAL ▸ SMELTER']];
+      case 'craft':
+        return [['cap', buildKey('assembler')],
+                ['t', ' ASSEMBLER — PLATES ▸ GEARS']];
+      case 'feed':
+        return [['cap', buildKey('belt')],
+                ['t', ' GEARS ▸ RIG — WATCH GEAR FILL']];
       case 'outro':
-        return [['t', 'STOCK AND CHAIN, ON YOUR RIGHT ▶']];
+        return [['t', 'PACK PLATES; MACHINES STAY HERE ▶']];
       case 'skipped':
         return [['cap', 'H'], ['t', ' THE MANUAL, WHENEVER YOU WANT IT']];
     }
@@ -341,11 +510,22 @@
   // because a permanent warning row is a warning nobody reads.
   function warn(run) {
     const id = beatId(run);
-    if (id !== 'rotate') return null;
-    const m = firstExtractor(run);
-    if (!m || !outputFouled(run, m)) return null;
-    return [['t', 'OUTPUT BURIED:'], ['t', ' '], ['cap', 'X'], ['t', ' SCRAP,'],
-            ['t', ' '], ['cap', 'R'], ['t', ' RETRY']];
+    if (id === 'rotate') {
+      const m = firstExtractor(run);
+      if (!m || !outputFouled(run, m)) return null;
+      return [['t', 'OUTPUT BURIED:'], ['t', ' '], ['cap', 'X'], ['t', ' SCRAP,'],
+              ['t', ' '], ['cap', 'R'], ['t', ' RETRY']];
+    }
+    // The coal beat's whole pedagogy (M-TUTORIAL2): the smelter the player
+    // just built, sitting dark with ore queued, and the real cause named — in
+    // different words from Part 1's LOG diagnostic, which this must never
+    // repeat. Drawn only while the failure is actually on the map.
+    if (id === 'coal') {
+      const s = firstOf(run, 'smelter');
+      if (!s || smelterLit(s) || !oreQueued(s)) return null;
+      return [['t', 'SMELTER DARK: COAL IS NOT STOCKED']];
+    }
+    return null;
   }
 
   // The way out, on screen from the first frame and on every beat. A tutorial
@@ -356,12 +536,81 @@
     return [['cap', 'TAB'], ['t', ' SKIP THE INDUCTION']];
   }
 
+  // ---------------- the face (M-TUTORIAL2, Finding 4) ----------------
+  // Which of GRIT's four expressions the box wears, as a PURE read of state
+  // the game already tracks — law 7 twice over: nothing here rolls, and
+  // nothing here is new bookkeeping. Precedence is danger first (alarmed),
+  // then the joke he cannot keep off his face (proud), then approval
+  // (pleased), then the default set of a man twenty years down a hole.
+  function isJoke(s) { return /^(Why|What|How) /.test(String(s || '')); }
+  function lastSeenT(T) {
+    let t = -Infinity;
+    for (const k in T.seen) if (T.seen[k] > t) t = T.seen[k];
+    return t;
+  }
+  function mood(run) {
+    const T = state(run);
+    if (!T) return 'deadpan';
+    // alarmed: the floor bit back — a quake just landed (stamped by tick from
+    // ui.shakeUntil, never from run.quakeAt: the surprise stays a surprise),
+    // the hull is low, or the machine the box points at is visibly failing.
+    if (T.joltT && run.totalT - T.joltT < 3 * HZ) return 'alarmed';
+    if (run.maxIntegrity > 0 && run.integrity / run.maxIntegrity < 0.4) return 'alarmed';
+    if (warn(run)) return 'alarmed';
+    if (T.skipped) return 'deadpan';   // he approves, but with a straight face
+    // pleased before proud here: the notice IS approval ("look at you"), even
+    // when the notice line happens to be joke-shaped.
+    if (T.pre) return 'pleased';
+    // proud: he is telling one of HIS jokes — the setup-and-punchline shape
+    // the corpus lint pins — and he wants you to know he wrote it.
+    if (isJoke(line(run))) return 'proud';
+    // pleased: a lesson just landed, a beat the player had already done, the
+    // breach standing ready, or the finished form.
+    if (T.i >= BEATS.length) return 'pleased';
+    if (run.status === 'breachReady') return 'pleased';
+    if (run.totalT - lastSeenT(T) < CFG.holdT * HZ) return 'pleased';
+    return 'deadpan';
+  }
+
+  // The Company form's own furniture (M-TUTORIAL2, "paperwork as theater"):
+  // the title counts LESSONS (the break is not one), and stamps() is the strip
+  // of eight boxes on the box's bottom border, filled as each lesson passes —
+  // a stamp per lesson, a signature at the end, in the contracts desk's visual
+  // family.
+  function lessonNo(T) {
+    let n = 0;
+    for (let i = 0; i <= T.i && i < BEATS.length; i++) if (BEATS[i] !== 'break') n++;
+    return n;
+  }
   function title(run) {
     const T = state(run);
     if (!T) return '';
     if (T.skipped) return 'GRIT ▸ INDUCTION — BINNED';
+    if (T.incomplete) return 'GRIT ▸ INDUCTION — SUSPENDED';
     if (T.i >= BEATS.length) return 'GRIT ▸ INDUCTION — SIGNED OFF';
-    return 'GRIT ▸ INDUCTION ' + (T.i + 1) + '/' + BEATS.length;
+    if (BEATS[T.i] === 'break') return 'GRIT ▸ INDUCTION — MINIMUM MET';
+    const act = T.i > BEATS.indexOf('break') ? ' — ACT TWO' : '';
+    return 'GRIT ▸ INDUCTION ' + lessonNo(T) + '/' + LESSONS.length + act;
+  }
+
+  // One entry per lesson, in teaching order: done (stamped), and whether it is
+  // the one under GRIT's pen right now. Render lays these into the bottom
+  // border; a skipped induction shows the form as it stood.
+  function stamps(run) {
+    const T = state(run);
+    if (!T) return [];
+    const cur = T.i < BEATS.length && !T.skipped ? BEATS[T.i] : null;
+    return LESSONS.map(function (b) {
+      return { id: b, done: T.seen[b] !== undefined, cur: b === cur };
+    });
+  }
+
+  // The sign-off row (outro only): the same 'x  ' signature furniture the
+  // contracts desk uses, with GRIT's name on the line for once.
+  function sig(run) {
+    const T = state(run);
+    if (!T || T.skipped || T.incomplete || T.i < BEATS.length) return null;
+    return [['t', 'x  '], ['t', 'Grit'], ['t', ' — FOREMAN · COUNTERSIGNED']];
   }
 
   // ---------------- geometry ----------------
@@ -401,7 +650,22 @@
     if (id === 'place') return { x: T.vein.x, y: T.vein.y };
     const m = firstExtractor(run);
     if (id === 'rotate' && m) return outTile(m);
-    return hubCentre(run);      // belt, ore and the sign-off all point at her
+    // act two (M-TUTORIAL2): each lesson points at its own machine the moment
+    // it exists, and at the sensible precursor until then — never at a tile
+    // the player cannot see.
+    if (id === 'smelt' || id === 'coal' || id === 'craft') {
+      const s = firstOf(run, 'smelter');
+      if (id === 'smelt') return s ? { x: s.x, y: s.y } : hubCentre(run);
+      if (id === 'coal') {
+        // the SECOND vein is the lesson; the smelter is the 'from' end
+        if (T.coalVein) return { x: T.coalVein.x, y: T.coalVein.y };
+        return s ? { x: s.x, y: s.y } : hubCentre(run);
+      }
+      const a = firstOf(run, 'assembler');
+      if (a) return { x: a.x, y: a.y };
+      if (s) return { x: s.x, y: s.y };
+    }
+    return hubCentre(run);      // belt, feed, the break and the sign-off: her
   }
 
   function layout(run) {
@@ -415,8 +679,17 @@
     if (!state(run).vein && beatId(run) !== 'skipped') return null;
     const tgt = target(run);
     if (!tgt) return null;
-    const ex = beatId(run) === 'belt' ? firstExtractor(run) : null;
-    const from = ex ? outTile(ex) : null;
+    // Beats with TWO ends the player needs at once: the belt beat (the arrow
+    // the ore leaves by, and the rig) and — same idea, act two — the coal
+    // beat (the coal vein, and the smelter it must feed).
+    let from = null;
+    if (beatId(run) === 'belt') {
+      const ex = firstExtractor(run);
+      from = ex ? outTile(ex) : null;
+    } else if (beatId(run) === 'coal' && state(run).coalVein) {
+      const s = firstOf(run, 'smelter');
+      from = s ? { x: s.x, y: s.y } : null;
+    }
     const w = S.W, h = S.H;
     const col = D.MAP_X + ((D.MAP_W - w) >> 1);
     // The two candidate edges, each measured WITH its tail row, since a wedge
@@ -460,7 +733,10 @@
       // pointing right: STOCK's iron-ore row is ticking up and CHAIN's limiting
       // stage is lit, two feet away, and teaching the player where to look for
       // the rest of the run is worth more than another sentence from GRIT.
-      panels: beatId(run) === 'ore' || beatId(run) === 'outro',
+      // The feed beat points right too (M-TUTORIAL2) — at the gear rows, since
+      // GEAR filling is what it asks the player to watch.
+      panels: beatId(run) === 'ore' || beatId(run) === 'outro' ||
+              beatId(run) === 'feed',
       beat: beatId(run),
       // true only when no edge could clear BOTH ends of the belt beat, so the
       // starting arrow is under the box. Reported rather than hidden: the
@@ -470,13 +746,14 @@
   }
 
   DC.Tutorial = {
-    BEATS: BEATS,
+    BEATS: BEATS, LESSONS: LESSONS,
     eligible: eligible, begin: begin, tick: tick, skip: skip,
     active: active, state: state, beat: beatId, release: release,
-    line: line, action: action, warn: warn, foot: foot, title: title,
+    line: line, action: action, warn: warn, foot: foot, title: title, mood: mood,
+    stamps: stamps, sig: sig,
     target: target, layout: layout,
-    // exposed for the suites: the gates and the two map reads they run on
-    pickVein: pickVein, firstExtractor: firstExtractor,
+    // exposed for the suites: the gates and the map reads they run on
+    pickVein: pickVein, firstExtractor: firstExtractor, firstOf: firstOf,
     outputFouled: outputFouled, reachesRig: reachesRig, outputTile: outTile,
   };
 })();

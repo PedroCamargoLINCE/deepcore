@@ -580,6 +580,17 @@ one-line PASS summary with throughput numbers, exit 0 (nonzero + details on fail
 
 ## 12. Balance targets (verified by scripted bot, tuned in data.js)
 
+**2026-09-09 decision:** the director delegated the remaining pacing choice
+to favour both immediate experimentation and lasting meta progression. Keep
+STANDARD generous; do not add a post-breach pressure surcharge that makes
+Foundry upgrades feel ineffective. The original bands below are historical
+benchmarks, not permission to force a camper's death. Opening mistakes should
+be reversible, a first loss should afford a meaningful Foundry choice, s2
+survival should remain at least 80%, and competent full runs should fit
+15–25 minutes. Read `docs/RELEASE.md` for measured departures from the old
+opening/core/camper bands and the bot's limits. Contracts carry extra risk
+and pay extra meta currency; their win rates are not STANDARD targets.
+
 - Stratum 1 with the standard starter base: breach ready in **90–150 s** + ~40 s build.
 - Full winning run (competent play, salvage-less): **15–25 min**.
 - Integrity budget: a run that camps ~1.5× the target pace should die around s6–s7.

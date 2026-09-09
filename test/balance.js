@@ -1123,21 +1123,24 @@ function mkBot(run) {
     if (run.status !== 'breachReady') { if (!st.stall) st.stall = 'no-breach'; return finish(); }
     st.tBreach = Math.round(run.t / HZ);
 
-    // post-breach: camper overstays; standard leaves as soon as the next base
-    // is affordable (and never rides instability past the panic line)
-    if (policy === 'camper') {
-      const until = Math.round(st.tBreach * BOT.camperLinger) * HZ;
-      while (run.status === 'breachReady' && run.t < until && alive()) {
-        tickN(16, true);
-        trace();
-      }
-    } else if (depth < D.STRATA_COUNT) {
+    // Both builders first fund the next base. The old camper used 1.5x
+    // BREACH time while standard could bank for 90s, making 'camper' leave
+    // EARLIER. Compare patience after the same actual departure decision.
+    const legacyPace = process.env.DC_BAL_PACE === 'legacy';
+    if (depth < D.STRATA_COUNT && !(legacyPace && policy === 'camper')) {
       const until = run.t + BOT.descendWaitSec * HZ;
       while (run.status === 'breachReady' && run.t < until && alive() &&
              inv('ironPlate') < BOT.descendReserve &&
              run.instability < BOT.panicInst && lineAlive()) {
         tickN(16, true);
         trace();
+      }
+    }
+    if (policy === 'camper') {
+      const departure = legacyPace ? st.tBreach : run.t / HZ;
+      const until = Math.round(departure * BOT.camperLinger) * HZ;
+      while (run.status === 'breachReady' && run.t < until && alive()) {
+        tickN(16, true); trace();
       }
     }
     return finish();
@@ -1183,6 +1186,7 @@ const BOT = {
               's_boiler', 's_jury'],
 };
 function pickSchematic(run) {
+  if (process.env.DC_BAL_PICK !== 'legacy') return require('../tools/bot-policy.js')(D, run);
   for (const id of BOT.pickOrder) if (run.pendingOffers.indexOf(id) >= 0) return id;
   return run.pendingOffers[0];
 }
@@ -1287,6 +1291,8 @@ console.log('DEEPCORE balance sweep — ' + seeds.length + ' seeds x ' +
   Math.round(BUDGET_MS / 1000) + 's wall' +
   (process.env.DC_BAL_META ? ', meta ' + process.env.DC_BAL_META : ', naked rig') +
   (CONTRACT !== 'standard' ? ', contract ' + CONTRACT.toUpperCase() : ''));
+console.log('picker: ' + (process.env.DC_BAL_PICK === 'legacy' ? 'legacy' : 'adaptive') +
+  ' | camper pace: ' + (process.env.DC_BAL_PACE === 'legacy' ? 'legacy breach' : 'departure-relative'));
 console.log(pad('policy', 9) + padL('seed', 7) + '  ' + pad('outcome', 8) +
   padL('time', 6) + padL('cores', 6) + padL('mInt', 5) + '  ' + pad('cause', 22) +
   'per-stratum  breach>leave (integ,inst,plates)');
@@ -1340,7 +1346,7 @@ function agg(policy) {
     console.log('  s1 breach-ready: med ' + med(s1.map((s) => s.tBreach)) + 's  range ' +
       Math.min.apply(null, s1.map((s) => s.tBreach)) + '-' +
       Math.max.apply(null, s1.map((s) => s.tBreach)) + 's' +
-      (NAKED ? '   [SPEC 90-150s + ~40s build => 130-190s here]' : ''));
+      (NAKED ? '   [includes construction; historical band 130-190s]' : ''));
   }
   console.log('  survive stratum 2: ' + surviveS2.length + '/' + n + ' (' +
     Math.round(100 * surviveS2.length / n) + '%)   [target >=80%]');
@@ -1350,7 +1356,7 @@ function agg(policy) {
     '   [target 15-25min' + (NAKED ? ' — not checked on a naked rig, see footer' : '') + ']');
   console.log('  deaths: ' + deaths.length + (deathDepths.length
     ? ' at depths [' + deathDepths.join(',') + '] med ' + med(deathDepths) : '') +
-    (policy === 'camper' ? '   [target ~6-7 with a full Foundry]' : ''));
+    (policy === 'camper' ? '   [extra banking changes later floors; not a death target]' : ''));
   const causes = {};
   for (const r of rs) if (r.outcome !== 'WON') causes[r.cause] = (causes[r.cause] || 0) + 1;
   console.log('  causes: ' + (Object.keys(causes).map((k) => k + ' x' + causes[k]).join(', ') || 'none'));
@@ -1360,7 +1366,7 @@ function agg(policy) {
     '  quakes med ' + med(rs.map((r) => r.quakes)));
   console.log('  cores/run: med ' + med(rs.map((r) => r.cores)) +
     '  [' + rs.map((r) => r.cores).join(',') + ']' +
-    (NAKED ? '   [target 2-5 early]' : ''));
+    (NAKED ? '   [historical band 2-5; now prioritise useful first-run purchases]' : ''));
   if (caps.length) console.log('  hit ' + capMin + '-min cap: ' +
     caps.map((r) => r.outcome + '/' + r.seed).join(' '));
   if (stalls.length) console.log('  stalls: ' + stalls.join(' '));
@@ -1368,163 +1374,52 @@ function agg(policy) {
 for (const p of policies) agg(p);
 
 // ---------------------------------------------------------------- FOOTER
-// What the numbers above are worth. Written because the bare table invites
-// exactly one wrong conclusion — "the naked rig never wins, so the game is
-// unwinnable" — and someone acting on it would flatten the difficulty curve
-// the Foundry exists to create.
+// Keep interpretation separate from the live measurements above.
 const FULL_LOADOUT =
   'm_stock:2,m_hull:2,m_damp:2,m_torque:2,m_fix:1,m_scan:1,m_deep:1,m_schem:1';
 console.log('\n' + '─'.repeat(78));
 console.log('WHAT THIS HARNESS MEASURES');
 console.log(`
-  The runner is a SCRIPTED BOT, not a player. It lays a fixed opening (coal →
-  belts → assembler) and extends it down a static priority list. It does not
-  read the map, re-route around a poor vein roll, or improvise a tier-2 chain.
-  Treat its results as a FLOOR on difficulty — the game is at least this
-  survivable — never as the player experience.
+  This is a SCRIPTED BOT, not a player or a measure of fun. It routes a
+  prescribed factory and has known deep-floor charge-chain siting failures.
+  A no-breach row is a planner failure, not proof a floor is unbeatable.
+  It does not test tutorial comprehension, exploratory digging or undo.
 
-  Default loadout is a NAKED rig: run one, no Foundry. Give it upgrades with
+  Default loadout is a NAKED rig. The canonical upgraded, salvage-less rig is:
     DC_BAL_META=${FULL_LOADOUT}
-  and a paper with DC_BAL_CONTRACT=hazard|warrant (M-CONTRACTS). STANDARD is
-  the default and is this table exactly; the other two are checked only for
-  WINNABLE AT ALL on the full loadout — see the M-CONTRACTS paragraph below.
+  Use DC_BAL_CONTRACT=standard|hazard|warrant for the contract comparison.
 
-  SPEC §12 target                  checked on            last known good
-  ---------------------------------------------------------------------------
-  s1 breach 90-150s +~40s build    naked, standard       med 137s      OK
-  first runs bank 2-5 cores        naked                 med 2         OK
-  survive stratum 2 >= 80%         naked                 86% / 100%    OK
-  full win in 15-25 min            full Foundry, std     2/14 @ 21.9m DILUTED
-  camping ~1.5x pace dies s6-s7    full Foundry, camper  med 5   DRIFTED
+  Current picker scores all 25 cards against actual run state: hull urgency,
+  charge demand and usable factory effects. Unsupported tier-II/magma setups
+  and salvage the bot never collects are not imaginary benefits.
+  DC_BAL_PICK=legacy restores the original priority-list picker.
 
-  M-WORMS moved four of those five, and the movement is the FEATURE and not a
-  regression. Worms eat 5 ore out of any vein they cross and open rock as they
-  go, so the naked bot — which lays a fixed opening and never re-routes — loses
-  seams it had budgeted for, while a full-Foundry run that survives long enough
-  gets free tunnel and the Undertoad's crystal out of the same creature. Both
-  halves show up:
+  Current camper first banks to the SAME departure decision as standard, then
+  stays for 1.5x that floor time. The old policy used 1.5x breach-ready time,
+  sometimes leaving BEFORE standard finished banking its next factory.
+  DC_BAL_PACE=legacy reproduces that historical comparison.
+  Extra banking changes future inventory, timings and schematic trajectories;
+  camper vs standard is NOT a controlled experiment in pressure alone.
 
-    naked, standard   deaths med 4 -> 3   cores med 3 -> 2   s2 100% -> 86%
-    naked, camper     deaths med 5 -> 4   cores med 4 -> 3   s2  93% -> 100%
-    full, standard    deaths med 5 -> 8   cores med 5 -> 7   wins 2/14 both
-    full, camper      deaths med 5 -> 5   wins 2/14 both (23.5 -> 23.4m)
+  M-HUMANBAL, 2026-09-09: costs cut as requested, intact-machine undo added,
+  pressure slowed 10%, floor-transfer warnings shipped. Worm appetite and
+  spawn floor are unchanged. STANDARD favours experimentation; the director
+  delegated the pacing decision and no post-breach penalty was added.
+  The original opening/core/camper bands are explicitly historical in SPEC
+  section 12. Full wins still target 15-25 minutes; s2 survival >=80%.
+  Harder contracts must be winnable, not match STANDARD win rates.
 
-  Every §12 target above still holds, so NO data.js VALUE MOVED (the M-HUMANBAL
-  ledger rule: report, never retune). The two that are closest to their edge —
-  naked cores at the bottom of the 2-5 band, s2 survival at 86% against an 80%
-  floor — are the ones to watch if anything else is added to strata 3-5.
+  Recorded canonical 14-seed release results (not assertions about this run):
+    naked STANDARD: s1 100s, s2 14/14, wins 2/14, cores median 6
+    upgraded STANDARD: wins 9/14, winning time median 17.5 minutes
+    upgraded HAZARD:   wins 9/14, minimum hull median 17 vs STANDARD 65
+    upgraded WARRANT:  wins 5/14, minimum hull median 0
+    upgraded campers: STANDARD/HAZARD/WARRANT each 11/14 wins
 
-  The win target is deliberately NOT checked on a naked rig. SPEC §12 scopes it
-  to "competent play", and the Foundry is the game's answer to a first run that
-  ends at stratum 4. A naked bot going 0/14 is the intended shape of run one.
-
-  KNOWN CEILING: at high loadout most remaining deaths are 'no-breach' stalls at
-  s5+ — look for cu2X / crystal-noroute in the per-stratum tags. That is the bot
-  failing to build the tier-2 chain, not the stratum being unbeatable. Do NOT
-  tune data.js against those stalls; fix the bot's build policy first.
-
-  M-TIER2 did exactly that once: the router now lays an UNDERGROUND PAIR over
-  ground no belt can cross, which is what 'crystal-noroute' always was, and the
-  standard stall count halved. The rows that remain are cu2X — a copper smelter
-  it cannot site next to a charge assembler out on the crystals. That is the
-  next piece of bot, not the next piece of tuning.
-
-  DILUTED (win count): M-SCHEMS2 took the deck from 18 cards to 25, and a
-  bot that picks off a FIXED PRIORITY LIST is exactly what a bigger deck
-  punishes — its survival cards (Hull Plating, Seismic Dampers) are offered
-  far less often, and every id it does not recognise is a pick spent at
-  random. Canonical 14 seeds went 10/14 @ 22.9m to 2/14 @ 21.7m.
-
-  This was ISOLATED rather than assumed, and the experiment is worth
-  repeating if the number moves again:
-
-    node tools/ab.js "D.SCHEMATICS = D.SCHEMATICS.filter(s =>
-      ['s_boiler','s_echo','s_chute','s_jury','s_insure','s_loop',
-       's_whisper'].indexOf(s.id) < 0)"          -> 10/14 @ 22.9m, restored
-
-    node tools/ab.js "D.SCHEMATICS.forEach(s => { if ([...same...]
-      .indexOf(s.id) >= 0) s.id = 'x' + s.id; })" -> 0/14, deaths at the
-                                                     IDENTICAL depths
-
-  The second one is the answer: the seven cards DEALT BUT INERT cost exactly
-  as much as the seven cards working. So the drop is the deck's size against
-  this bot's policy, not the cards' effects — the shape the footer's KNOWN
-  CEILING paragraph has always described. 'pickOrder' was extended to rank
-  the new batch (that is the sanctioned fix, and it bought back 2 wins); the
-  rest is the bot needing to read an offer instead of a list, which is the
-  next piece of bot. A human picking knowingly is not diluted by variety —
-  that is what the batch is FOR. No data.js value moved.
-
-  M-CONTRACTS (DC_BAL_CONTRACT): the three papers, measured on the FULL
-  loadout, 14 canonical seeds, 2026-08-24. STANDARD is this table exactly —
-  the naked sweep was diffed byte for byte before and after the brief and did
-  not move. The riders are checked for WINNABLE AT ALL, never banded:
-
-    contract   standard policy                        camper
-    STANDARD   2/14 @ 21.9m  deaths med 8  quakes 27  2/14  deaths med 5
-    HAZARD     2/14 @ 21.9m  deaths med 7  quakes 19  1/14  deaths med 5
-    WARRANT    2/14 @ 21.9m  deaths med 7  quakes 16  0/14  deaths med 5
-
-  Both riders win on the same two seeds STANDARD wins on and kill the rig a
-  stratum earlier on the rest (fewer quakes survived: the bill is bigger).
-  The terms were CHOSEN by this sweep, not typed. The spec's illustrative
-  cards carried a plate advance (+30 / +20) as a sweetener; with it, HAZARD
-  went 4/14 and the WARRANT 3/14 — EASIER than STANDARD, because a faster
-  stratum 1 (34s vs 41s) is worth more to this bot than any quake rider
-  costs, and doubling the rider (1.5x / 2.0x) did not close that. Ten plates
-  still did it (5/14). So the advance is gone, the wage is the whole
-  sweetener, and the second term is a hull rating (-20 / -30), which reads
-  as a term and measures as one. tools/ab.js reproduces every row:
-
-    DC_BAL_META=<full> DC_BAL_CONTRACT=hazard node tools/ab.js \
-      'D.CONTRACT_BY_ID.hazard.fx.startBonus={ironPlate:30}'   -> 4/14
-
-  Logged for M-HUMANBAL rather than tuned further: the camper's WARRANT
-  0/14 is the bot overstaying under a 1.5x bill, which is what the paper
-  says will happen — but a human who camps on a Warrant should be told so
-  by the paper, and the two hull terms are the numbers to revisit once a
-  human has signed one.
-
-  M-ROCKORE (the spoil): NOT MEASURED BY THIS HARNESS, and the sweep says so
-  by not moving. A completed ROCK dig now pays 1-2 ore about 30% of the time
-  (D.EVENTS.rockOre). Both canonical-14 sweeps were diffed row for row before
-  and after the brief and are IDENTICAL — naked and full Foundry, both
-  policies, every per-stratum time:
-
-    DC_BAL_META=<full> node tools/ab.js 'D.EVENTS.rockOre.chance = 0'   -> same table
-
-  That is NOT the feature being inert. It is the BOT: instrumented over the
-  whole sweep it completes 26 rock excavations in the 28 naked runs and 63 in
-  the 28 full ones — roughly two holes a run, all of them incidental (a belt
-  path or a 2x2 pad that happened to have rock on it). It has no policy that
-  says "the veins are gone, dig", because it never gets stranded the way a
-  human does; it dies to quakes with an extractor still running. Seven and 26
-  payouts respectively, ~40 ore total across 56 runs, is below this harness's
-  resolution and always would be. A sweep that DID move here would mean the
-  bot had started farming, which is the failure mode the numbers are set to
-  prevent — so the identity is the result, not the absence of one.
-
-  What the numbers rest on instead is the arithmetic of the price, which the
-  bot cannot argue with. X costs 4.00s of standing still per hole; the spoil
-  pays 0.30 x 1.5 = 0.45 ore a hole, so a shovel sustains 0.113 ore/s:
-
-    one extractor          0.500 ore/s      the shovel is 22.5% of it
-    one smelter's intake   0.500 ore/s      ...so 4.4 diggers feed one smelter
-    one smelter's coal     0.167 coal/s     hand-dug coal (45% of s1 spoil,
-                                            35% deep) covers 30% / 24% of it
-
-  Four minutes of digging nothing but rock on stratum 1 is ~60 holes, ~27 ore,
-  ~15 iron and ~12 coal — one machine and change, bought with most of a floor
-  under rising instability. Hand-digging stratum 1's whole gear bill (20 gears
-  = 40 plates = 40 iron) is ~6 minutes of pure digging against a 137s median
-  breach. It is a floor under bad luck (SPEC3 M-HUMANBAL Findings 1 and 6:
-  veins far, crate empty), and it can never be a farm, which is §0 law 4. No
-  data.js value was tuned against the bot for it, and none moved.
-
-  DRIFTED (camper): superseded, and in the other direction. The med 8 logged
-  last wave (one PAST the s6-s7 band) is now med 5, one short of it, on the
-  same deck-dilution mechanism. Still logged for M-HUMANBAL rather than
-  patched, per that ledger's standing rule — with the note that the camper
-  band should be re-measured against a bot that picks, not one that lists.`);
+  The campers expose an economy benefit, not a reason to conceal results or
+  force a loss at s6. The old DILUTED footer is superseded: legacy comparisons,
+  current measurements and limitations are documented in docs/RELEASE.md.
+  Rerun both loadouts after sim changes; never infer human experience from
+  a win count, and never retune the game to hide a planner stall.`);
 console.log('─'.repeat(78));
 console.log('\ndone in ' + Math.round(elapsed()) + 's wall');

@@ -73,8 +73,7 @@ event fired in a driven run, the throttle holds, mute persists through a
 save/load, and the whole module no-ops when absent (delete it from the
 require list in a test and assert nothing changes).
 
-Checkpoint-commit AND PUSH after every green milestone with a
-"Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>" trailer. Ship the
+Checkpoint-commit AND PUSH after every green milestone. Ship the
 engine + the seven M1 sounds + M mute first, then the SPEC3 hooks one at a
 time, the Bell last.
 

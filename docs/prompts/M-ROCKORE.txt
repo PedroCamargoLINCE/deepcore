@@ -49,8 +49,7 @@ sweep should be identical unless the bot actually digs rock — if a number
 moves, prove it is bot digs and mark the footer honestly; never tune data.js
 to make the bot look good.
 
-Checkpoint-commit AND PUSH after every green milestone with a
-"Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>" trailer. Ship the
+Checkpoint-commit AND PUSH after every green milestone. Ship the
 roll + payout + determinism test first, then the LOG line, then the balance
 A/B.
 

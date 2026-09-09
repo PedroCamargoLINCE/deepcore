@@ -1,4 +1,23 @@
-# vendor/ — the font subset (M-HIRES Phase 2.5, 2026-08-12)
+# vendor/ — the font subset
+
+## Current: grid-aligned Braille shipped (2026-09-09)
+
+Deepcore Mono now contains all 256 Braille masks. `tools/subset_font.py`
+constructs original eight-dot outlines at the full-block glyph's exact
+1233/2048 advance; no proportional font is transplanted. `tools/glyphs.js`
+explicitly inventories this dynamically generated range. The subset is
+9.8 KiB WOFF2 (about 1.2 KiB more than the previous checked-in face), embedded
+in the existing stylesheet and offline bundle. Font licensing is unchanged;
+the new dot outlines are part of DEEPCORE's code-generated artwork.
+
+Build-time requirements remain fontTools and brotli; there is no new browser
+or test dependency. The runtime metric probe and block fallback remain
+mandatory. Browser review verified aligned Braille icons in schematic cards.
+Regenerate with `node tools/font.js`.
+
+Everything below records earlier decisions, superseded where noted above.
+
+## Historical: M-HIRES Phase 2.5 (2026-08-12)
 
 **Status: §3 below has now been done.** `deepcore-mono.woff2` is a subset of
 DejaVu Sans Mono renamed "Deepcore Mono", carrying exactly the inventory
@@ -33,7 +52,7 @@ DejaVu Sans Mono, which is why `sim.js` draws `»` instead and says so. Being
 over-inclusive is the safe direction: a spare glyph costs bytes, a missing one
 is a tofu box on screen. `tools/subset_font.py` prints anything it had to skip.
 
-## Braille was NOT vendored (M-HIRES Phase 3, 2026-08-12)
+## Historical: Braille was NOT vendored (M-HIRES Phase 3, 2026-08-12)
 
 The mechanism ships and works — `DC.Art.raster.braille()`, the runtime probe
 in `render.js`, the block fallback, and `A.coreSphere(mode)` which builds the

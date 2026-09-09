@@ -747,7 +747,18 @@
 
         const ter = D.TERRAIN[tile.t] || D.TERRAIN.floor;
         let ch = ter.glyph;
-        let fg = tile.t === 'floor' ? floorTint : ter.color;
+        const biome = D.BIOMES && D.BIOMES[Math.min(run.depth, 8) - 1];
+        let fg = tile.t === 'floor' ? (biome ? biome.floor : floorTint)
+          : tile.t === 'rock' && biome ? biome.rock : ter.color;
+        if (biome && tile.t === 'floor' && !tile.ore && !tile.lm && !tile.rubble &&
+            !tile.belt && tile.machine === null && !tile.digT) {
+          const hash = (Math.imul(x + 1, 374761393) ^ Math.imul(y + 1, 668265263) ^ run.seed) >>> 0;
+          if (hash % 19 === 0) { ch = biome.marks[hash % biome.marks.length]; fg = biome.detail; }
+          if (run.stats && run.stats.lastFeedT > 0 && run.totalT - run.stats.lastFeedT < 2 * D.TICK_HZ &&
+              (hash + Math.floor(run.totalT / 2)) % 173 === 0) {
+            ch = run.depth >= 6 ? '\'' : '·'; fg = biome.dust;
+          }
+        }
         if (warm && tile.t === 'floor' &&
             (x - warm.cx) * (x - warm.cx) + (y - warm.cy) * (y - warm.cy) <= warm.r2)
           fg = warmFloor;
@@ -1225,7 +1236,7 @@
         // steady, not blinking: a bottleneck is a state that lasts minutes,
         // and the blink is reserved for the things that are about to hurt
         text(SBC + CHAIN_FLAG_X, y, ('←' + s.flag).slice(0, SCW - CHAIN_FLAG_X),
-          s.flag === 'NONE' ? C.amberDim : C.red);
+          s.flag === 'PACE' ? C.cyan : s.flag === 'NONE' ? C.amberDim : C.red);
       }
       y++;
     }
@@ -1234,7 +1245,11 @@
     sideWalls(y);
     const ready = run.status === 'breachReady';
     if (ready) {
-      text(SBC, y, 'BREACH READY [D]', phase ? C.white : C.green);
+      const reserve = DC.Sim.departureReserve ? DC.Sim.departureReserve() : 25;
+      text(SBC, y, (run.inv.ironPlate || 0) < reserve
+        ? 'PACK ' + reserve + ' PLATES · [D] DOWN' : 'BREACH READY [D]', phase ? C.white : C.green);
+    } else if (DC.Sim.supplyWarning && DC.Sim.supplyWarning(run)) {
+      text(SBC, y, 'NO PLATES: [X] RECLAIM', C.red);
     } else if (ch.breachSec === null || !isFinite(ch.breachSec)) {
       // nothing is making what the rig still wants; the stage flags above
       // already say which link is missing, so this row does not repeat it
@@ -1279,11 +1294,18 @@
       for (let j = 0; j < ln.length; j++) {
         if (ln[j] === ' ') continue;
         const rock = i >= RIG_GROUND_ROW && GROUND_CH.indexOf(ln[j]) >= 0;
-        put(ox + j, y + i, ln[j], rock ? ground : SK.amber);
+        const base = rock ? ground : '│║╢╟'.indexOf(ln[j]) >= 0 ? C.steel
+          : ln[j] === '▪' ? C.gold : SK.amber;
+        const fx = DC.FX && DC.FX.rigCell
+          ? DC.FX.rigCell(run, i, j, ln[j], base) : null;
+        put(ox + j, y + i, fx ? fx[0] : ln[j], fx ? fx[1] : base);
       }
     }
     // published for fx.js and the suites: where the in-run rig actually landed
     layout.runRig = { x: ox, y: y, w: blockWidth(rig), h: h };
+    if (DC.FX && DC.FX.rigSmoke) {
+      for (const p of DC.FX.rigSmoke(run)) put(ox + p.x, y + p.y, p.ch, p.fg);
+    }
     return y + h;
   }
 
@@ -1312,6 +1334,7 @@
     return ' ' + ((D.ITEMS[id] || {}).glyph || '?') + ' ';
   }
   function buildIcon(t) {
+    if (brailleOK && DC.Art && DC.Art.buildIconsHi) return DC.Art.buildIconsHi[t];
     const ic = DC.Art && DC.Art.buildIcons && DC.Art.buildIcons[t];
     if (typeof ic === 'string' && ic.length) return ic;
     return ' ' + ((D.BUILDINGS[t] || {}).letter || '?') + ' ';
@@ -1594,11 +1617,16 @@
     //    lights its own limiting stage and STOCK draws its own trend arrow —
     //    this only says LOOK THERE.
     if (L.panels) {
-      const sr = layout.stock && layout.stock.ironOre;
+      // M-TUTORIAL2: the feed beat watches GEARS, so it marks the gear rows —
+      // the last CHAIN stage and STOCK's gear line — where the ore beat marks
+      // iron ore and the limiting stage.
+      const feed = L.beat === 'feed';
+      const sr = layout.stock && (feed ? layout.stock.gear : layout.stock.ironOre);
       if (sr) for (let i = 0; i < sr.w; i++) tutorMark(sr.col + i, sr.row, hot, false);
       const rows = layout.chain || [];
       let pick = null;
-      for (let i = 0; i < rows.length; i++) if (rows[i].flag) { pick = rows[i]; break; }
+      if (feed && rows.length) pick = rows[rows.length - 1];
+      if (!pick) for (let i = 0; i < rows.length; i++) if (rows[i].flag) { pick = rows[i]; break; }
       if (!pick && rows.length) pick = rows[0];
       if (pick) for (let i = 0; i < pick.w; i++) tutorMark(pick.col + i, pick.row, hot, false);
     }
@@ -1620,16 +1648,54 @@
     const ttl = (' ' + T.title(run) + ' ').slice(0, Math.max(0, L.w - 4));
     text(L.col + 2, L.row, ttl, C.white, C.bg);
 
+    // M-TUTORIAL2 ("paperwork as theater"): the form's stamp strip, laid into
+    // the bottom border — one box per lesson, filled as each passes, the
+    // current one in white. Centred, with a cell of border either side.
+    if (T.stamps) {
+      const stp = T.stamps(run) || [];
+      if (stp.length) {
+        const sx = L.col + ((L.w - stp.length - 2) >> 1);
+        const brow = L.row + L.h - 1;
+        text(sx, brow, ' '.repeat(stp.length + 2), C.amber, C.bg);
+        // ▣ stamped, ▪ under the pen, · a blank on the form — all three are
+        // in the vendored font's subset (the hollow box U+25A2 is NOT, and
+        // headless.js's tofu audit is what says so).
+        for (let i = 0; i < stp.length; i++) {
+          const s = stp[i];
+          put(sx + 1 + i, brow, s.done ? '▣' : s.cur ? '▪' : '·',
+              s.done ? C.green : s.cur ? C.white : C.darkgray, C.bg);
+        }
+      }
+    }
+
     const tx = L.col + 1 + S.PAD;
+    // M-TUTORIAL2 (Finding 4): the face, left of the prose, on the prose rows
+    // only. Its expression is a pure read of sim state (Tutorial.mood — law 7)
+    // and its colour repeats the reading so it lands at one glance: danger red,
+    // approval green, the joke white, the shift amber.
+    const mood = (T.mood && T.mood(run)) || 'deadpan';
+    const face = A.gritFace ? A.gritFace(mood) : null;
+    const moodC = mood === 'alarmed' ? C.red : mood === 'pleased' ? C.green
+                : mood === 'proud' ? C.white : C.amber;
+    if (face) {
+      for (let i = 0; i < Math.min(face.length, S.PROSE_ROWS); i++)
+        text(tx, L.row + 1 + i, face[i], moodC, C.bg);
+    }
+    const px = tx + (face ? S.FACE_W : 0);
     for (let i = 0; i < prose.length; i++)
-      text(tx, L.row + 1 + i, prose[i], C.cyan, C.bg);
+      text(px, L.row + 1 + i, prose[i], C.cyan, C.bg);
 
     // the warn row, the action row and the way out — the three rows that are
-    // never a joke
+    // never a joke. They run the FULL interior, under the face's column: if
+    // the face and the line compete, the line wins (law 6).
     const warn = T.warn(run);
-    if (warn && warn.length) tutorSegs(tx, L.row + 1 + S.PROSE_ROWS, warn, S.TEXT_W, C.red);
-    tutorSegs(tx, L.row + 2 + S.PROSE_ROWS, T.action(run) || [], S.TEXT_W, C.green);
-    tutorSegs(tx, L.row + 3 + S.PROSE_ROWS, T.foot(run) || [], S.TEXT_W, C.amberDim);
+    if (warn && warn.length) tutorSegs(tx, L.row + 1 + S.PROSE_ROWS, warn, S.ACTION_W, C.red);
+    // M-TUTORIAL2: the sign-off. On the outro the blank row carries GRIT's
+    // countersignature, in the contracts desk's 'x  ' family and its green.
+    const sig = T.sig && T.sig(run);
+    if (sig && sig.length) tutorSegs(tx, L.row + 1 + S.PROSE_ROWS, sig, S.ACTION_W, C.green);
+    tutorSegs(tx, L.row + 2 + S.PROSE_ROWS, T.action(run) || [], S.ACTION_W, C.green);
+    tutorSegs(tx, L.row + 3 + S.PROSE_ROWS, T.foot(run) || [], S.ACTION_W, C.amberDim);
   }
 
   // ================= TITLE =================
@@ -1797,13 +1863,14 @@
       box(cx, rowc, w, h, ui.hoverCard === i ? C.white : accent);
       // Icon slot: 10x5 schematic icon (v1.1 §C.3) in its thematic color, or a
       // dim placeholder — the name always lands on the same row either way.
-      const ic = DC.Art && DC.Art.schemIcons && DC.Art.schemIcons[id];
+      const ic = DC.Art && DC.Art.detailIcon ? DC.Art.detailIcon(id, 10, 5, brailleOK)
+        : DC.Art && DC.Art.schemIcons && DC.Art.schemIcons[id];
       if (Array.isArray(ic) && ic.length && typeof ic[0] === 'string') {
         const icc = schemColor(id);
         const ir = ic.slice(0, 5);
         let iy = rowc + 1 + ((5 - ir.length) >> 1);
         for (const ln of ir) {
-          text(cx + Math.max(1, (w - ln.length) >> 1), iy++, ln.slice(0, w - 2), icc);
+          drawIconRow(cx + Math.max(1, (w - ln.length) >> 1), iy++, ln.slice(0, w - 2), icc);
         }
       } else {
         const ph = ['┌─┐', '│◇│', '└─┘'];
@@ -1911,7 +1978,12 @@
   // The Foundry page's two columns, as a block that centres itself: the rig
   // box, a gutter, and the upgrade list (44 columns holds the longest desc,
   // 'Instability rises 12% slower (per level).', with air to spare).
-  const FOUNDRY_RIG_W = 28, FOUNDRY_GAP = 3, FOUNDRY_LIST_W = 46;
+  function drawIconRow(x, y, ln, color) {
+    for (let i = 0; i < ln.length; i++) {
+      if (ln[i] !== ' ') put(x + i, y, ln[i], i % 3 === 0 ? mix(color, C.white, 0.5) : color);
+    }
+  }
+  const FOUNDRY_RIG_W = 28, FOUNDRY_GAP = 3, FOUNDRY_LIST_W = 50;
   // v1.1 §C.2: rig portrait left, upgrade list right. On purchase the engine
   // sets ui.flashPart = {id, until}; that part's overlay cells blink white.
   function drawRigPortrait(x0, y0, w, upgrades, flash) {
@@ -1986,7 +2058,7 @@
     }
 
     // right column: upgrade list (2 rows each: stat line + dim desc)
-    const lx = fx0 + FOUNDRY_RIG_W + FOUNDRY_GAP;
+    const lx = fx0 + FOUNDRY_RIG_W + FOUNDRY_GAP + 4;
     for (let i = 0; i < D.META_UPGRADES.length; i++) {
       const up = D.META_UPGRADES[i];
       const lvl = (meta.upgrades && meta.upgrades[up.id]) || 0;
@@ -1994,6 +2066,14 @@
       const cost = maxed ? 0 : up.costs[lvl];
       const afford = !maxed && (meta.cores || 0) >= cost;
       const row = py + i * 2;
+      if (DC.Art && DC.Art.detailIcon) {
+        const icon = DC.Art.detailIcon(up.id, 3, 2, brailleOK);
+        const materials = { m_stock:C.amber, m_hull:C.steel, m_damp:C.green,
+          m_torque:C.orange, m_fix:C.red, m_scan:C.cyan, m_salv:C.steel,
+          m_deep:C.magenta, m_schem:C.blue };
+        const hue = maxed ? C.green : afford ? materials[up.id] || SK.amber : C.gray;
+        for (let j = 0; j < icon.length; j++) drawIconRow(lx - 4, row + j, icon[j], hue);
+      }
       put(lx, row, LETTERS[i], afford ? C.amber : C.darkgray);
       put(lx + 1, row, ')', C.darkgray);
       text(lx + 3, row, U.pad(up.name, 17), maxed ? C.amberDim : afford ? C.amber : C.darkgray);
@@ -2002,7 +2082,7 @@
       text(lx + 24, row, lvl + '/' + up.max, C.gray);
       text(lx + 28, row, maxed ? ' MAX' : U.padL(cost + '◈', 4),
         maxed ? C.amberDim : afford ? C.magenta : shade(C.red, 0.8));
-      text(lx + 3, row + 1, up.desc.slice(0, FOUNDRY_LIST_W - 3), C.darkgray);
+      text(lx + 3, row + 1, up.desc.slice(0, FOUNDRY_LIST_W - 7), C.gray);
     }
 
     // Foreman surface (M-POLISH backlog): GRIT talks on the Foundry floor even

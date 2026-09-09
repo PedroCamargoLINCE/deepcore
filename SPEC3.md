@@ -15,9 +15,8 @@ dispatch prompt):
 2. All four suites must stay green: `node test/headless.js`, `test/integration.js`,
    `test/barks_test.js`, `test/rig_test.js`. Extend them for your feature.
    Rebuild `node tools/build.js` and confirm it still parses.
-3. Checkpoint commits after every green milestone
-   (`Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>` trailer; never push,
-   never rewrite history).
+3. Checkpoint commits after every green milestone. Do not add AI attribution
+   trailers. Preserve human credits. Rewrite history only when the user asks.
 4. Sim/map/meta/art/barks stay DOM-free and deterministic (`run.rng` only —
    render-side animation may use its own frame clock freely; it is throwaway
    state and MUST NOT feed back into sim).
@@ -1182,6 +1181,17 @@ and the induction never show the screen.
 
 ### M-HUMANBAL — Final Balance: the pass a bot cannot do (P0 — dispatch LAST)
 
+**Completed 2026-09-09.** The director requested every outstanding item and
+delegated the remaining pacing choice for immediate fun and meta-fun. The
+implementation/decision ledger is `docs/RELEASE.md`: all findings below are
+resolved, including the new F14. Costs + floor-transfer teaching + fresh-build
+undo were selected; STANDARD stays generous, with no post-breach surcharge.
+Worm appetite stays unchanged. The face's six-column allocation is accepted
+with tested 3×30 prose, and the bot now evaluates all schematic offers.
+Historical numeric claims below describe the pre-tuning state; do not use
+them as current constants or redispatch completed work. SPEC §12 records the
+explicitly superseded opening/core/camper bands and retained safety targets.
+
 > Director, 2026-08-17, after playing: *"everything i tell you we will add to a
 > final balance updates wave, where we solve issues of balancing with human
 > gameplay."*
@@ -1547,6 +1557,14 @@ appetite (5 ore) and spawn floor (s3) together with those — e.g. a worm that
 skirts the vein your extractor is standing on is a different first run from
 one that eats it.
 
+#### Finding 14 (CRAFT) — explain overdrive and the drill's appetite
+
+The director asked what overdrive actually does and what the drill consumes.
+Implemented 2026-09-09: rig inspection and toggle feedback explain gears,
+then required core charges; overdrive doubles feeding and increases pressure,
+but cannot manufacture fuel or accelerate production. Empty stock means no
+progress. The field manual and README reinforce the same explanation.
+
 **Contracts:** `js/data.js` (values — this brief and M-POLISH are the only two
 that may change them), `js/sim.js` (refund/undo window), `js/render.js` (CHAIN's
 colour rule), `test/balance.js`, `test/headless.js` (constructed dead-end).
@@ -1580,8 +1598,7 @@ is fixed in a way that re-breaks an earlier one.
 > `SPEC3.md` section **[M-XXX]** in full, plus `js/data.js`. Implement exactly
 > that brief. Honor SPEC3's rules of engagement (top of file): all four test
 > suites green + extended for your feature, `tools/build.js` parses,
-> checkpoint commit after every green milestone with the Co-Authored-By
-> trailer, DOM-free determinism in sim/map/meta/art/barks, GRIT voice
+> checkpoint commit after every green milestone without AI attribution trailers, DOM-free determinism in sim/map/meta/art/barks, GRIT voice
 > guardrails. data.js: additive only [unless M-POLISH]. When the brief names
 > another module as a dependency hook, guard it (feature absent = no-op).
 > Return: what you built, what you deviated on and why, test output.

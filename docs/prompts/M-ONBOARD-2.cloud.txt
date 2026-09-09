@@ -106,8 +106,7 @@ ACCEPTANCE
   test/barks_test.js, test/rig_test.js, test/balance.js) and node tools/build.js
   parses. test/balance.js must not regress — read its footer first.
 
-Checkpoint-commit AND PUSH your branch after every green milestone, with a
-Co-Authored-By: Claude Opus 5 <noreply@anthropic.com> trailer. Ship the
+Checkpoint-commit AND PUSH your branch after every green milestone. Ship the
 machinery first with a handful of lines, then write the rest — a session limit
 mid-brief should leave a working tutorial with twenty jokes, not a finished
 script with nowhere to put it.

@@ -1,5 +1,6 @@
 dist/
 node_modules/
+.history-backups/
 # Agent scratch: probe scripts and sweep dumps written while investigating a
 # brief. Ignored so a stray `git add -A` can never sweep half-finished tooling
 # into a commit — which is exactly how a broken test/balance.js once landed.
