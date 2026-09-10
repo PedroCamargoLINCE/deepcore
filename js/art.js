@@ -694,7 +694,7 @@
         [rep(IT.coal.glyph, chgIn.coal), IT.coal.color], [' → ', 'body'],
         [IT.charge.glyph, IT.charge.color], [' charge', 'body'],
       ]);
-      link(28, true, 'any tile of the rig takes a delivery');
+      link(28, true, 'cold seam: charges skip coal. any rig tile takes delivery');
       stage(29, D.BUILDINGS.hub, [
         ['feed it ', 'body'], [IT.gear.glyph, IT.gear.color], [' and ', 'body'],
         [IT.charge.glyph, IT.charge.color],

@@ -709,7 +709,7 @@
     // A placement puzzle. No coal in the rock at all, and a smelter only works
     // where it can reach the planet's own furnace — which is out at the map's
     // edge, a long belt from the rig, and does not burn its smith.
-    { id: 'coldseam', name: 'COLD SEAM', tag: 'smelt beside magma',
+    { id: 'coldseam', name: 'COLD SEAM', tag: 'lava smelts; coal-free charges',
       magma: 2 },
     // M-WORMS. Written, gated, and dealt the day that module loads.
     { id: 'worms', name: 'WORM SEASON', tag: 'three of them, hungry',

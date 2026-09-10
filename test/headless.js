@@ -3572,7 +3572,79 @@ function humanBalanceSection() {
   assertEq(pick(D,r),'s_charge','the charge gate outranks unusable salvage');
 }
 
+function checkChargeProgression() {
+  // Missing copper used to soft-lock real floor-5 runs. Check the ingredients
+  // after ALL generation steps, including landmarks and Cold Seam's forge.
+  for (const depth of [5, 6, 7, 8, 9, 12]) {
+    for (const mutator of (depth > 8 ? [null, 'coldseam'] : [null])) {
+      for (let seed = 1; seed <= 100; seed++) {
+        const map = DC.MapGen.generate(depth, DC.util.mulberry32(seed), {}, mutator);
+        const start = (map.hub.y + 1) * D.MAP_W + map.hub.x + 1;
+        const queue = [start], seen = new Set(queue), found = {};
+        for (let i = 0; i < queue.length; i++) {
+          const k = queue[i], x = k % D.MAP_W, y = Math.floor(k / D.MAP_W);
+          const t = map.grid[y][x];
+          if (t.ore && t.oreAmt > 0) found[t.ore] = (found[t.ore] || 0) + t.oreAmt;
+          for (const d of D.DIRS) {
+            const nx = x + d.dx, ny = y + d.dy, nk = ny * D.MAP_W + nx;
+            if (nx < 0 || ny < 0 || nx >= D.MAP_W || ny >= D.MAP_H || seen.has(nk)) continue;
+            if (map.grid[ny][nx].t !== 'floor') continue;
+            seen.add(nk); queue.push(nk);
+          }
+        }
+        assert(found.copperOre > 0 && found.crystal > 0,
+          'charge ingredients reachable: depth=' + depth + ' seed=' + seed + ' mutator=' + mutator);
+        if (mutator === 'coldseam') assert(!found.coal, 'repair does not invent Cold Seam coal');
+      }
+    }
+  }
+  // Opening and already-complete deep maps are byte-identical. Even a repair
+  // draws no new random numbers, preserving downstream quake/offer rolls.
+  for (const f of [[1, 1337, 4208060121, 0.2895435974933207],
+                   [5, 1, 702061551, 0.45830710930749774],
+                   [5, 4, null, 0.4234034491237253]]) {
+    const rng = DC.util.mulberry32(f[1]);
+    const map = DC.MapGen.generate(f[0], rng, {});
+    let hash = 2166136261;
+    for (const c of JSON.stringify(map)) hash = Math.imul(hash ^ c.charCodeAt(0), 16777619);
+    if (f[2] !== null) assertEq(hash >>> 0, f[2], 'unaffected map is byte-identical');
+    assertEq(rng(), f[3], 'charge repair leaves RNG stream unchanged');
+  }
+  // Exercise actual assembler jobs, not just a recipe-table assertion.
+  for (const cold of [false, true]) for (const echo of [false, true]) {
+    const r = flatRun(4242, 9);
+    r.mutator = cold ? 'coldseam' : null;
+    r.mods.echoCharge = echo;
+    assert(S.place(r, 'assembler', 3, 3, 1), 'charge regression assembler placed');
+    const m = machAt(r, 3, 3);
+    m.recipe = 'charge'; m.input = { crystal: 4, copperPlate: 4, coal: 0 };
+    let made = 0;
+    for (let i = 0; i < D.RECIPES.charge.ticks * 6; i++) {
+      S.tick(r);
+      while (m.out.length) { assertEq(m.out.shift(), 'charge', 'actual charge output'); made++; }
+    }
+    assertEq(made, cold ? (echo ? 5 : 4) : 0, 'coal exception and Echo compose correctly');
+    assertEq(m.input.crystal, cold ? 0 : 4, 'normal charge still waits for coal');
+    assertEq(m.input.coal, 0, 'no negative/missing coal buffer');
+    const ch = S.chain(r), rate = D.TICK_HZ / D.RECIPES.charge.ticks;
+    const multiplier = echo ? 1 - 1 / D.ECHO_EVERY : 1;
+    assertEq(ch.flow.coal || 0, cold ? 0 : -rate * 2 * multiplier,
+      'CHAIN reflects the real coal demand');
+    const lines = S.describeTile(r, 3, 3);
+    assertEq(lines.some(l => /coal-free charges/.test(l.text)), cold,
+      'SCAN teaches the exception only on Cold Seam');
+    assert(lines.every(l => l.text.length <= S.SCAN_W), 'charge SCAN stays in its panel');
+    assert(S.place(r, 'belt', 2, 3, 1), 'test coal belt points into assembler');
+    r.grid[3][2].belt.item = 'coal';
+    for (let i = 0; i < D.BELT_PERIOD * 2; i++) S.tick(r);
+    assertEq(r.grid[3][2].belt.item, cold ? 'coal' : null,
+      'Cold Seam refuses obsolete coal cargo; normal charges accept it');
+  }
+  assertEq(D.RECIPES.charge.in.coal, 2, 'Cold Seam never mutates the global recipe');
+}
+
 function main() {
+  checkChargeProgression();
   humanBalanceSection();
   checkArt();
   const glyphN = checkGlyphInventory();

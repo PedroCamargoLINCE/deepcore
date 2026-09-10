@@ -928,7 +928,7 @@
   const MUTATOR_LINES = {
     dark: "Lights are losing. Stay in the lamp, kid. I mean it this time.",
     hungry: "She's biting double and twice as often. Feed her or she eats us.",
-    coldseam: "No coal in this rock. Smelt at the lava like our grandads did.",
+    coldseam: "No coal. Smelt at the lava; charges skip the fuel. Company calls it efficiency.",
     worms: "Three of 'em in the walls. Don't name them. You'll get attached.",
     glass: "Floor's glass under the rubble. Whole place is one bad step.",
     echo: "...Did you hear that? No? Good. Forget I said anything. Dig.",

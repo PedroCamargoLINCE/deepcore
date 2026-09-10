@@ -22,6 +22,8 @@ build step). Or the single-file build: `dist/deepcore.html`.
 - A run to the Core takes roughly 15–25 minutes. Death is permanent; progress
   isn't — cores banked from every run buy permanent Foundry upgrades.
 - After victory, the Mantle continues downward forever, for longer runs.
+  Cold Seam has no coal veins: smelt beside magma and craft coal-free charges
+  from crystal and copper plates. Normal floors still require coal for charges.
 - Press `H` in game for the full manual.
 
 ## Controls

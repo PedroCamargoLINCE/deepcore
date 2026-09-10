@@ -3,7 +3,7 @@
 Living orientation doc. Any new session should be able to read **this file plus
 the specs** and pick the work up cold — no prior conversation required.
 
-Last updated: 2026-09-09, completion of the 1.2 board.
+Last updated: 2026-09-09, 1.2 completion and charge-progression audit.
 
 ## Current handoff — read this before the historical notes
 
@@ -12,6 +12,16 @@ M-HUMANBAL work is implemented and tested. `docs/RELEASE.md` is the current
 decision ledger and contains before/after balance evidence, test commands,
 and the harness limitations. All original waves are implemented; the older
 status bullets below are historical, not a fresh queue to dispatch.
+
+The follow-up audit found and repaired two real progression bugs: charge-gated
+maps could contain no copper, and Cold Seam removed coal while still requiring
+it for charges. SPEC3 F15–16 and `docs/RELEASE.md` record the correction. Earlier
+claims that all three floor-5 stalls were planner failures were wrong: 42 and
+555 had no copper, while 90210 had ore but boxed in its assembler.
+With the repair and unchanged bot routing, upgraded STANDARD wins 11/14
+(previously 9/14); HAZARD 11/14; WARRANT 7/14. Seed 90210 still has a boxed-in
+charge assembler despite 12 live copper tiles. No difficulty retuning was
+added to hide that layout failure. The offline bundle now builds at 773 KiB.
 
 The director delegated the remaining fun/pacing choice: keep STANDARD
 forgiving, allow useful first-run Foundry purchases, and put extra risk/reward

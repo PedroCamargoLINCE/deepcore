@@ -863,11 +863,20 @@
   // merely-full buffer is back-pressure, which is ordinary, while a belt
   // stopped against a machine that will never want its cargo is a mistake.
   // Teaching the first as if it were the second would be worse than silence.
+  function recipeInputs(run, id) {
+    const inputs = D.RECIPES[id].in;
+    if (id !== 'charge' || !isMut(run, 'coldseam')) return inputs;
+    // Cold Seam removes coal from the map. Its charge catalyst is geothermal;
+    // acceptance, crafting and CHAIN must all describe the same exception.
+    const out = {};
+    for (const k in inputs) if (k !== 'coal') out[k] = inputs[k];
+    return out;
+  }
   function machineWants(run, m, item) {
     if (m.type === 'hub') return true;
     if (m.type === 'smelter')
       return item === 'ironOre' || item === 'copperOre' || item === 'coal';
-    if (m.type === 'assembler') return !!D.RECIPES[m.recipe || 'gear'].in[item];
+    if (m.type === 'assembler') return !!recipeInputs(run, m.recipe || 'gear')[item];
     if (m.type === 'damper') return item === 'coal';
     if (m.type === 'splitter' || m.type === 'loader') return true;
     // A gate takes what it passes. With Sorting Gates it takes everything and
@@ -1083,7 +1092,7 @@
     } else if (m.type === 'assembler') {
       if (!m.recipe) m.recipe = 'gear';
       if (!m.job && m.out.length === 0) {
-        const rec = D.RECIPES[m.recipe];
+        const inputs = recipeInputs(run, m.recipe);
         // M-SCHEMS2/Echo Charges: the fifth charge needs nothing at all — not
         // a discount on the recipe but a job that starts with the buffer as it
         // is, so a line four charges deep gets its fifth even while the
@@ -1092,10 +1101,10 @@
                      ((run.echoN || 0) + 1) % D.ECHO_EVERY === 0;
         let can = true;
         if (!free)
-          for (const k in rec.in)
-            if ((m.input[k] || 0) < rec.in[k]) { can = false; missing = k; break; }
+          for (const k in inputs)
+            if ((m.input[k] || 0) < inputs[k]) { can = false; missing = k; break; }
         if (can) {
-          if (!free) for (const k in rec.in) m.input[k] -= rec.in[k];
+          if (!free) for (const k in inputs) m.input[k] -= inputs[k];
           if (m.recipe === 'charge' && run.mods.echoCharge)
             run.echoN = (run.echoN || 0) + 1;
           m.job = m.recipe;
@@ -1480,11 +1489,12 @@
         if (m.status === 'cold') coldN++;
       } else if (m.type === 'assembler') {
         const rec = D.RECIPES[m.recipe || 'gear'];
+        const inputs = recipeInputs(run, m.recipe || 'gear');
         // M-SCHEMS2/Echo Charges: one charge in five costs nothing, so the
         // whole recipe draws four fifths of what it reads on the card.
         const inMult = (m.recipe === 'charge' && run.mods && run.mods.echoCharge)
           ? 1 - 1 / D.ECHO_EVERY : 1;
-        for (const k in rec.in) add2(k, -r * rec.in[k] * inMult);
+        for (const k in inputs) add2(k, -r * inputs[k] * inMult);
         for (const k in rec.out) add2(k, r * rec.out[k]);
         if (m.recipe === 'charge') { chargeRate += r * (rec.out.charge || 1); chargeN++; }
         else {
@@ -2293,6 +2303,8 @@
         const out = Object.keys(D.RECIPES[m.recipe || 'gear'].out)[0];
         L.push({ text: 'recipe: ' + D.ITEMS[out].name, color: D.COLORS.blue });
         L.push({ text: 'click: cycle recipe', color: D.COLORS.amberDim });
+        if (m.recipe === 'charge' && isMut(run, 'coldseam'))
+          L.push({ text: 'cold seam: coal-free charges', color: D.COLORS.magma });
       }
       // M-MANTLE / M-SCHEMS2: a smelter at the forge has no fuel line, because
       // it has no fuel — the sentence that replaces it is the reason why.

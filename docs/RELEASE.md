@@ -22,6 +22,8 @@ added. Upgrades should feel effective, not be cancelled by hidden punishment.
 | F6 — floor-two cliff | Breach feedback, CHAIN and the tutorial explain that machines stay behind. Pack 25 plates: the new 19-plate basic factory plus six belts. Costs + teaching chosen; no default salvage or free arrival stock. |
 | F7 + F13 — pressure / worms | Instability grows 10% slower across strata and Mantle. Worms still begin on floor 3 and eat 5 ore; the cheaper factory restores margin without removing their threat or free-tunnel benefit. |
 | DILUTED / harness decision | Replaced the fixed card list with an explicit, state-aware score for all 25 schematics. Corrected the camper's timing comparison. Both old behaviours remain selectable for A/B checks. Stale footer claims were removed; known planner limits remain visible. |
+| F15 — missing charge ingredients | Post-release audit found genuine zero-copper floors. Missing reachable copper/crystal now gets four normal-richness deposits, with no extra RNG draw or changes to resource-complete maps. |
+| F16 — Cold Seam charge dead end | Coal-free charge crafting on Cold Seam, consistently taught and reflected in cargo acceptance, consumption and CHAIN. Normal recipes and the lava-smelting challenge remain intact. |
 
 F8 (dig spoil) and F12 (contracts) were already implemented and are retained.
 The save key and schema remain unchanged: new timing/tutorial counters belong
@@ -49,7 +51,7 @@ Same legacy picker/pace before and after the tuning isolates the game change:
 | Upgraded wins | 2/14 | 11/14 |
 | Upgraded winning time, median | 21.9 min | 17.8 min |
 
-Final release policy (adaptive picker + corrected camper timing):
+Initial 1.2 policy results, before F15–16 (adaptive picker + corrected camper timing):
 
 | Rig / contract | Standard-policy wins | Median winning time | Camper wins |
 |---|---:|---:|---:|
@@ -77,12 +79,30 @@ able to exploit a good factory is allowed; endlessly idling still accumulates
 instability, and the contracts increase the bill. The challenge can be chosen
 without making early experimentation expensive.
 
-Known harness limitation: the final upgraded STANDARD bot still stalls on
-three floor-5 charge-chain placements. These are reported, not disguised as
-balance deaths. The harness does not improvise every legal routing or tier-II
-solution, nor measure a human's tutorial comprehension, digging or enjoyment.
-The adaptive picker is more faithful, not calibrated to maximize these seeds;
-its 9 wins versus the legacy picker's 11 are reported honestly.
+Correction from the post-release audit: floor-5 stalls in upgraded
+STANDARD included **missing copper**, not only planner failures. Expanding
+the copper-chain search did not help; inspecting the actual grids found zero
+copper ore. F15 repairs generation rather than changing the bot's routing.
+The historical 9/14 above is retained as the before measurement. The harness
+still cannot improvise every layout or measure comprehension and enjoyment,
+but that does not justify dismissing unexplained stalls as bot limitations.
+
+After the F15–16 repair, with the SAME adaptive picker and routing:
+
+| Rig / contract | Standard-policy wins | Median winning time | Camper wins |
+|---|---:|---:|---:|
+| Naked / STANDARD | 2/14 | 21.7 min | 5/14 |
+| Upgraded / STANDARD | 11/14 | 17.1 min | 10/14 |
+| Upgraded / HAZARD | 11/14 | 17.1 min | 10/14 |
+| Upgraded / WARRANT | 7/14 | 16.8 min | 10/14 |
+
+Opening timings and STANDARD floor-two survival are unchanged; naked median
+cores rise to 7. Upgraded minimum hull medians are now 81 / 41 / 23 across the
+three contracts. STANDARD seeds 42 and 555 now win. Seed 90210 still stalls:
+its diagnostic snapshot has 12 live copper tiles but no free routing-field
+entry around its charge assembler. That is a different failure from missing
+ore; a wider 96-site/four-facing search did not recover the boxed-in layout.
+No bot-routing expansion or pressure/cost retuning was shipped for it.
 
 ## Verification and reproduction
 
@@ -91,6 +111,10 @@ save migrations, keyboard-only tutorial completion, pre-completed tutorial
 steps, no-coal suspension, real TAB skip, all faces and biome palettes, both
 icon encodings, truthful chain states, refund deadlines/damage, and rig state
 animation. Attribution tests separately preserve human coauthors.
+Charge regressions cover 800 generated maps, unchanged-map/RNG fixtures,
+real Cold Seam and normal assembler jobs, Echo composition, belt acceptance,
+and honest CHAIN/SCAN output. A separate 4,000-map audit found no missing
+charge ingredient or inaccessible Cold Seam smelter site.
 
 ```
 node test/headless.js

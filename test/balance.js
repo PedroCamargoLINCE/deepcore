@@ -28,11 +28,10 @@
    stages they reached ([c1+b2+asm+a2...]) so a bad row can be read as "the bot
    could not plan X" rather than "the balance is wrong".
 
-   KNOWN BOT CEILING: the stratum-5 charge factory (crystal + coal + a copper
-   smelter, all belted into one assembler) fails to plan on roughly a third of
-   maps and shows up as `no-breach` with a `cu2X`/`cryX` stage count. Those
-   rows are a planner limit, not a balance signal — treat win rates as a LOWER
-   bound on competent human play.
+   DIAGNOSE STALLS: a `cu2X`/`cryX` no-breach row can mean a routing limit OR
+   a real game defect. The September audit found zero copper on stalled
+   floor-5 maps; generation now repairs missing charge ingredients. Inspect
+   resources, connectivity and production before classifying another stall.
 
    M-TIER2 LIFTED HALF OF THAT CEILING. The commonest single cause of those
    rows was `crystal-noroute`: a crystal vein on the far side of a chasm, and
@@ -1381,8 +1380,8 @@ console.log('\n' + '─'.repeat(78));
 console.log('WHAT THIS HARNESS MEASURES');
 console.log(`
   This is a SCRIPTED BOT, not a player or a measure of fun. It routes a
-  prescribed factory and has known deep-floor charge-chain siting failures.
-  A no-breach row is a planner failure, not proof a floor is unbeatable.
+  prescribed factory and has limited deep-floor charge-chain siting options.
+  A no-breach row needs diagnosis: missing resources are NOT planner failures.
   It does not test tutorial comprehension, exploratory digging or undo.
 
   Default loadout is a NAKED rig. The canonical upgraded, salvage-less rig is:
@@ -1409,12 +1408,20 @@ console.log(`
   section 12. Full wins still target 15-25 minutes; s2 survival >=80%.
   Harder contracts must be winnable, not match STANDARD win rates.
 
-  Recorded canonical 14-seed release results (not assertions about this run):
+  Historical 1.2 results BEFORE the charge-resource repair (not this run):
     naked STANDARD: s1 100s, s2 14/14, wins 2/14, cores median 6
     upgraded STANDARD: wins 9/14, winning time median 17.5 minutes
     upgraded HAZARD:   wins 9/14, minimum hull median 17 vs STANDARD 65
     upgraded WARRANT:  wins 5/14, minimum hull median 0
     upgraded campers: STANDARD/HAZARD/WARRANT each 11/14 wins
+
+  After the charge-resource repair, with the SAME picker and routing:
+    naked STANDARD: s1 100s, s2 14/14, wins 2/14, cores median 7
+    upgraded STANDARD/HAZARD: wins 11/14, median winning time 17.1 minutes
+    upgraded WARRANT: wins 7/14, median winning time 16.8 minutes
+    upgraded campers: each 10/14; naked camper 5/14
+  Seed 90210 still boxes in its charge assembler despite 12 live copper tiles.
+  That diagnosed layout limit is distinct from the repaired missing-ore bug.
 
   The campers expose an economy benefit, not a reason to conceal results or
   force a loss at s6. The old DILUTED footer is superseded: legacy comparisons,

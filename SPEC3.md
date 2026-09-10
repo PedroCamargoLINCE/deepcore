@@ -1184,7 +1184,8 @@ and the induction never show the screen.
 **Completed 2026-09-09.** The director requested every outstanding item and
 delegated the remaining pacing choice for immediate fun and meta-fun. The
 implementation/decision ledger is `docs/RELEASE.md`: all findings below are
-resolved, including the new F14. Costs + floor-transfer teaching + fresh-build
+resolved, including F14 and the post-release F15–16 progression audit below.
+Costs + floor-transfer teaching + fresh-build
 undo were selected; STANDARD stays generous, with no post-breach surcharge.
 Worm appetite stays unchanged. The face's six-column allocation is accepted
 with tested 3×30 prose, and the bot now evaluates all schematic offers.
@@ -1564,6 +1565,31 @@ Implemented 2026-09-09: rig inspection and toggle feedback explain gears,
 then required core charges; overdrive doubles feeding and increases pressure,
 but cannot manufacture fuel or accelerate production. Empty stock means no
 progress. The field manual and README reinforce the same explanation.
+
+#### Finding 15 (BUG) — a charge gate with no copper is not a routing puzzle
+
+Post-release audit, 2026-09-09: full-Foundry STANDARD floor-5 stalls included
+maps containing **zero copper ore**, not merely bot-routing failures.
+Wider site/facing searches changed nothing. Fresh
+map generation also omitted copper on 10 of seeds 1–100 at depth 5. Carried
+inventory cannot feed an assembler, so stock was not a dependable escape.
+
+Resolved: charge-gated maps deterministically repair missing reachable copper
+or crystal with four normal-richness deposits and floor/rock access paths.
+Existing veins, hazards and the hub clearing are preserved; resource-complete
+maps and the generation RNG position are unchanged. This is a solvability
+invariant, not a cost/pressure adjustment. A no-breach row now requires actual
+diagnosis instead of being automatically dismissed as a planner limitation.
+
+#### Finding 16 (BUG) — Cold Seam demanded fuel it deliberately removed
+
+Cold Seam generates no coal and makes smelters use magma, but the old charge
+assembler still required two coal per job. Resolved: Cold Seam charges use
+crystal and copper plates only; normal floors retain the original recipe.
+Acceptance, consumption, CHAIN projections and SCAN use the same exception.
+Echo Charges still grants its fifth job free. The mutator banner, GRIT,
+field manual and README explain the coal-free charge rule. Magma-adjacent
+smelting remains the floor's placement challenge; no coal vein is invented.
 
 **Contracts:** `js/data.js` (values — this brief and M-POLISH are the only two
 that may change them), `js/sim.js` (refund/undo window), `js/render.js` (CHAIN's

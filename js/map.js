@@ -394,6 +394,44 @@
       }
     }
 
+    // -- 7c. a charge gate must have its ingredients -----------------------
+    // Weighted vein rolls can omit copper entirely. Carried ore cannot feed
+    // an assembler, so that is a dead floor, not a difficult factory layout.
+    // Repair ONLY missing reachable resources, without spending any RNG or
+    // touching existing veins/hazards/the clearing. Four ordinary-richness
+    // deposits buy a real production line, not a one-charge consolation.
+    if (S.breach.charge > 0) {
+      for (const type of ['copperOre', 'crystal']) {
+        const reachable = reachSet();
+        if (Array.from(reachable).some(k => {
+          const t = grid[Math.floor(k / W)][k % W];
+          return t.ore === type && t.oreAmt > 0;
+        })) continue;
+        const start = hcy * W + hcx;
+        const queue = [start], parents = new Map([[start, null]]);
+        let placed = 0;
+        for (let i = 0; i < queue.length && placed < 4; i++) {
+          const k = queue[i], x = k % W, y = Math.floor(k / W);
+          const t = grid[y][x];
+          if (!inClear(x, y) && !t.ore && t.machine === null) {
+            // Every repair is connected to the hub through diggable ground.
+            for (let p = k; p !== null; p = parents.get(p))
+              grid[Math.floor(p / W)][p % W].t = 'floor';
+            t.ore = type;
+            t.oreAmt = Math.round(S.rich[0] * richMul);
+            placed++;
+          }
+          for (const d of D.DIRS) {
+            const nx = x + d.dx, ny = y + d.dy, nk = ny * W + nx;
+            if (!inb(nx, ny) || parents.has(nk)) continue;
+            const nt = grid[ny][nx];
+            if (nt.t !== 'floor' && nt.t !== 'rock') continue;
+            parents.set(nk, k); queue.push(nk);
+          }
+        }
+      }
+    }
+
     // -- 8. landmark (M-WONDERS) -------------------------------------------
     // Runs LAST, on a finished map, and is the only step that can be refused.
     //
