@@ -815,6 +815,11 @@
       e.preventDefault();
       return;
     }
+    if (lk === 'v' && !e.ctrlKey && !e.metaKey && !e.altKey && DC.Engraving && DC.Render.setArtMode) {
+      if(!e.repeat)DC.Render.setArtMode(DC.Render.artMode()==='classic'?'engraved':'classic');
+      e.preventDefault();
+      return;
+    }
     switch (st.screen) {
       case 'title':
         if (k === 'Enter') openContracts(st);

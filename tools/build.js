@@ -49,14 +49,18 @@ if (missing.length) {
   console.error('build: ' + missing.join(', ') + ' not referenced by index.html');
   process.exit(1);
 }
-const bundle = files
+// The frozen ascii-native branch is the historical port. This second artifact
+// also lets a player use current game fixes without loading the fine-art layer.
+const classic = process.argv.includes('--classic');
+const activeFiles = classic ? files.filter(f => f !== 'js/engraving.js') : files;
+const bundle = activeFiles
   .map((f) => '/* ==== ' + f + ' ==== */\n' + read(f))
   .join('\n');
 html = html.replace(scriptTag, '');
 html = html.replace('</body>', '<script>\n' + bundle + '\n</script>\n</body>');
 
 fs.mkdirSync(path.join(root, 'dist'), { recursive: true });
-const out = path.join(root, 'dist', 'deepcore.html');
+const out = path.join(root, 'dist', classic ? 'deepcore-classic.html' : 'deepcore.html');
 fs.writeFileSync(out, html);
 console.log('build: wrote ' + out + ' (' + (html.length / 1024).toFixed(0) + ' KiB, ' +
-  files.length + ' scripts inlined)');
+  activeFiles.length + ' scripts inlined)');

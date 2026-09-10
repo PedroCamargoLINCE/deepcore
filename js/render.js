@@ -135,6 +135,107 @@
   let fontReady = false;             // the vendored face has loaded and been measured
   let brailleOK = false;             // braille is present AND cell-width (probed)
 
+  // The engraved edition owns a finer art lattice, not a finer simulation.
+  // Each illustration is rasterised once to a cached canvas; UI glyphs and
+  // modal backgrounds are painted over it. Input still uses the exact grid.
+  let artMode = 'engraved';
+  const plates = [], plateCache = new Map();
+  const terrainPlates = [];
+  let terrainCache = null;
+  function engraved() { return artMode === 'engraved' && !!DC.Engraving; }
+  function artChrome() {
+    try {
+      const frame=root.document && root.document.getElementById('frame');
+      if(frame && frame.dataset)frame.dataset.art=engraved()?'engraved':'classic';
+    } catch(e) { /* page chrome is optional */ }
+  }
+  function illustration(kind, x, y, w, h, options) {
+    if (!engraved()) return false;
+    plates.push({kind,x,y,w,h,options:options||{}});
+    return true;
+  }
+  function rigOptions(run, meta, extra) {
+    const active = !!(run && run.stats && run.stats.lastFeedT > 0 &&
+      run.totalT - run.stats.lastFeedT < 2 * D.TICK_HZ && run.status !== 'dead');
+    return Object.assign({upgrades:(meta && meta.upgrades)||{}, active,
+      phase:active ? Math.floor(run.totalT / (run.overdrive ? 1 : 2)) % 3 : 0,
+      cat:!!(meta&&meta.catFound),
+      ground:run && D.BIOMES ? shade(D.BIOMES[Math.min(run.depth,8)-1].rock,1.65) : null,
+      accent:SK.amber}, extra||{});
+  }
+  function paintIllustrations() {
+    for (const p of plates) {
+      // Three times the linear definition; small canvases use two for a
+      // readable micro-font. Density is independent of device pixel ratio.
+      const sub = fontPx >= 18 ? 3 : 2;
+      const w = Math.round(p.w * sub), h = Math.round(p.h * sub);
+      const key = JSON.stringify([p.kind,w,h,cw,ch,dpr,fontReady,p.options]);
+      let cached = plateCache.get(key);
+      if (!cached) {
+        const data = DC.Engraving.create(p.kind,w,h,p.options);
+        const colors = DC.Engraving.palette(p.options.accent,p.options.ground);
+        const pw = p.w*cw, ph = p.h*ch;
+        let cv = null;
+        try { cv = root.document && root.document.createElement('canvas'); } catch(e) { /* bare tests */ }
+        if (!cv || !cv.getContext) continue;
+        // A single plate must also fit the budget on very large displays.
+        // Leave rounding headroom before the integer canvas dimensions.
+        const artDpr=Math.min(dpr,2,Math.sqrt(11900000/(pw*ph)));
+        cv.width = Math.ceil(pw*artDpr); cv.height = Math.ceil(ph*artDpr);
+        const cx = cv.getContext('2d'); if (!cx) continue;
+        cx.setTransform(artDpr,0,0,artDpr,0,0);
+        const pitch = pw/data.w, rowH=ph/data.h;
+        cx.font=(fontPx/sub)+'px '+FONT_STACK;
+        cx.textBaseline='middle'; cx.textAlign='left';
+        const step=cx.measureText('M').width || pitch;
+        cx.save(); cx.scale(pitch/step,1);
+        for(let y=0;y<data.h;y++) {
+          const row=data.rows[y]; let x=0;
+          while(x<data.w) {
+            if(row[x]===' '){x++;continue;}
+            const tone=data.tones[y*data.w+x];let end=x+1;
+            while(end<data.w && data.tones[y*data.w+end]===tone)end++;
+            cx.fillStyle=colors[tone];
+            cx.fillText(row.slice(x,end),x*step,(y+.55)*rowH);
+            x=end;
+          }
+        }
+        cx.restore();
+        cached={canvas:cv,pw,ph};
+        // Strict bound: resize, changing liveries and an endless Mantle must
+        // not turn the illustration cache into a history of the whole run.
+        const pixels=()=>Array.from(plateCache.values()).reduce((n,v)=>n+v.canvas.width*v.canvas.height,0);
+        while(plateCache.size && (plateCache.size>=28 || pixels()+cv.width*cv.height>12000000))
+          plateCache.delete(plateCache.keys().next().value);
+        plateCache.set(key,cached);
+      }
+      if(ctx.drawImage)ctx.drawImage(cached.canvas,p.x*cw,p.y*ch,cached.pw,cached.ph);
+    }
+  }
+  function paintTerrain() {
+    if(!terrainPlates.length || !DC.Engraving) return;
+    const key=JSON.stringify([cw,ch,dpr,fontReady,terrainPlates]);
+    if(!terrainCache || terrainCache.key!==key) {
+      let cv=null;
+      try {cv=root.document&&root.document.createElement('canvas');}catch(e){/* optional */}
+      if(!cv || !cv.getContext)return;
+      cv.width=Math.ceil(D.MAP_W*cw*dpr);cv.height=Math.ceil(D.MAP_H*ch*dpr);
+      const cx=cv.getContext('2d');if(!cx)return;
+      cx.setTransform(dpr,0,0,dpr,0,0);
+      cx.font=(fontPx/3)+'px '+FONT_STACK;
+      cx.textBaseline='middle';cx.textAlign='left';
+      const step=cx.measureText('M').width || cw/3;
+      cx.save();cx.scale(cw/3/step,1);
+      for(const p of terrainPlates) {
+        const rows=DC.Engraving.tile(p[2],p[3],p[4]);
+        cx.fillStyle=p[5];
+        for(let y=0;y<3;y++)cx.fillText(rows[y],p[0]*3*step,(p[1]+(y+.55)/3)*ch);
+      }
+      cx.restore();terrainCache={key,canvas:cv};
+    }
+    if(ctx.drawImage)ctx.drawImage(terrainCache.canvas,D.MAP_X*cw,D.MAP_Y*ch,D.MAP_W*cw,D.MAP_H*ch);
+  }
+
   // Render's own animation clock (M-HIRES Phase 0). Same contract as fx.js's:
   // driven by elapsed milliseconds, expressed in virtual 60 fps frames, so the
   // gameover/victory blink, the flashPart pulse and the descent animation run
@@ -829,6 +930,19 @@
         // as coal, magma still reads as magma, and the map is never harder to
         // read during the 42 seconds than it was before them (SPEC3 §0 law 6).
         if (egg) fg = eggTint(fg);
+        const natural = !tile.ore && !tile.lm && !tile.rubble && !tile.digT &&
+          !tile.belt && tile.machine == null;
+        const body = tile.machine != null && tile.machine !== 0 && ch === '▓';
+        if(engraved() && ((natural && (tile.t==='rock'||tile.t==='obsidian')) || body)) {
+          let edge=0;
+          for(let i=0;i<4;i++) {
+            const d=[D.DIRS[0],D.DIRS[3],D.DIRS[2],D.DIRS[1]][i];
+            const other=run.grid[y+d.dy] && run.grid[y+d.dy][x+d.dx];
+            if(other && other.revealed && other.t!==tile.t)edge|=1<<i;
+          }
+          terrainPlates.push([gc-D.MAP_X,y,body?'machine':tile.t,edge,(x*7+y*11)%3,fg]);
+          ch=' ';
+        }
         put(gc, gr, ch, fg);
       }
     }
@@ -1283,10 +1397,19 @@
   const RIG_GROUND_ROW = 7;              // rigBase row 7 is the surface line
 
   function drawRigPanel(y, run, meta, accent) {
-    y = panelEdge(SB2, SBW2, y, 'top', 'YOUR RIG');
+    const broadcast = engraved() && DC.Tutorial && DC.Tutorial.active(run);
+    y = panelEdge(SB2, SBW2, y, 'top', broadcast ? 'GRIT / INTERCOM' : 'YOUR RIG');
     const rig = composeRigSafe(meta && meta.upgrades) || placeholder('rig');
     const h = Math.min(rig.length, 12);
     const ox = SBC2 + Math.max(0, (SCW2 - blockWidth(rig)) >> 1);
+    const portraitOptions = broadcast ? {accent:SK.amber,
+      talking:!!(run.foreman && run.totalT<run.foreman.until && Math.floor((run.totalT-run.foreman.t0)/3)%2),
+      alarm:DC.Tutorial.mood(run)==='alarmed'} : rigOptions(run,meta);
+    if (illustration(broadcast?'grit':'rig', SBC2, y, SCW2, h, portraitOptions)) {
+      for (let i=0;i<h;i++) panelWalls(SB2,SBW2,y+i);
+      layout.runRig={x:SBC2,y,w:SCW2,h,engraved:true};
+      return y+h;
+    }
     const ground = mix(C.rock, accent || C.amber, 0.35);
     for (let i = 0; i < h; i++) {
       panelWalls(SB2, SBW2, y + i);
@@ -1714,7 +1837,15 @@
     const rig = composeRigSafe(meta.upgrades);
     let below;
     layout.title = { rig: null, enter: null };
-    if (rig) {
+    if (engraved()) {
+      illustration('grit',8,7,29,17,{accent:SK.amber});
+      illustration('rig',41,7,63,17,rigOptions(null,meta));
+      text(8,6,'PERSONNEL / 001',SK.dim);
+      text(43,6,'DMC / MOBILE EXTRACTION PLATFORM',SK.dim);
+      text(8,24,'FOREMAN GRIT',C.cyan);
+      text(43,24,'YOUR RIG. YOUR DEBT. THEIR PLANET.',SK.amber);
+      below=26;
+    } else if (rig) {
       const rx = blockX(rig, COLS), ry = 7;
       for (let i = 0; i < rig.length && ry + i < 24; i++) text(rx, ry + i, rig[i], SK.amber);
       below = Math.min(ry + Math.min(rig.length, 24 - ry) + 1, 24);
@@ -1736,6 +1867,7 @@
     }
     ctext(below, 'an automated descent toward the core', C.gray);
     ctext(below + 1, 'build the line · feed the drill · keep moving', C.amberDim);
+    if (DC.Engraving) textR(COLS-2,30,'[V] '+(engraved()?'ENGRAVED':'CLASSIC')+' / SWITCH VIEW',C.darkgray);
     // menu
     const segs = [
       ['[ENTER]', C.green], [' BEGIN DESCENT   ', C.amber],
@@ -1835,7 +1967,8 @@
       ctext(4, fxTyped('descend', 'STRATUM ' + target + ' — ' + nst.name, 24), accent);
       const fi = Math.min(Math.floor(anim / 10), frames.length - 1);
       const fh = frames[fi].length;
-      drawArt(frames[fi], 7, artColor('descent', C.orange));
+      if(!illustration('descent',28,7,56,fh,{phase:fi,accent}))
+        drawArt(frames[fi], 7, artColor('descent', C.orange));
       const d0 = (target - 1) * D.DEPTH_M;
       const prog = animLen ? anim / animLen : 1;
       const dm = Math.min(target * D.DEPTH_M, d0 + Math.floor(prog * D.DEPTH_M));
@@ -1865,7 +1998,9 @@
       // dim placeholder — the name always lands on the same row either way.
       const ic = DC.Art && DC.Art.detailIcon ? DC.Art.detailIcon(id, 10, 5, brailleOK)
         : DC.Art && DC.Art.schemIcons && DC.Art.schemIcons[id];
-      if (Array.isArray(ic) && ic.length && typeof ic[0] === 'string') {
+      if (illustration('schematic',cx+3,rowc+1,w-6,5,{id,accent:schemColor(id)})) {
+        // Small text remains at the original size beneath the fine art.
+      } else if (Array.isArray(ic) && ic.length && typeof ic[0] === 'string') {
         const icc = schemColor(id);
         const ir = ic.slice(0, 5);
         let iy = rowc + 1 + ((5 - ir.length) >> 1);
@@ -1987,6 +2122,10 @@
   // v1.1 §C.2: rig portrait left, upgrade list right. On purchase the engine
   // sets ui.flashPart = {id, until}; that part's overlay cells blink white.
   function drawRigPortrait(x0, y0, w, upgrades, flash) {
+    if (illustration('rig',x0,y0,w,12,{upgrades:upgrades||{},accent:flash&&flash.on?C.white:SK.amber})) {
+      layout.foundryRig={x:x0,y:y0,w,h:12,engraved:true};
+      return;
+    }
     const rig = composeRigSafe(upgrades);
     if (!rig) {
       const ph = placeholder('rig');
@@ -2262,7 +2401,8 @@
     // found its own centre.
     const ax = VG_X + 1 + blockX(inner, 38);
     let ay = VG_ROW + 1 + Math.max(0, (12 - inner.length) >> 1);
-    for (const ln of inner) text(ax, ay++, ln.slice(0, 38), C.rock);
+    if(!illustration('encounter',VG_X+1,VG_ROW+1,38,12,{id:ev.id,accent}))
+      for (const ln of inner) text(ax, ay++, ln.slice(0, 38), C.rock);
 
     let py = VG_ROW + 15;
     for (const p of (ev.text || []).slice(0, 2)) {
@@ -2374,6 +2514,10 @@
     const page = pages[helpIndex(state, pages.length)];
     const x0 = Math.max(0, (COLS - page.w) >> 1);
     const y0 = Math.max(0, (ROWS - page.h) >> 1);
+    if(DC.Engraving) {
+      text(x0+2,y0+2,'[V]',C.green);
+      text(x0+6,y0+2,'ENGRAVED / CLASSIC — same save, same game',C.gray);
+    }
     for (let r = 0; r < page.rows.length; r++) {
       const row = page.rows[r];
       for (let s = 0; s < row.length; s++) {
@@ -2427,7 +2571,9 @@
 
   function drawGameover(state, phase) {
     const lines = art('gameover');
-    drawArt(lines, 1, artColor('gameover', C.red));
+    if (illustration('rig',22,1,68,lines.length,rigOptions(null,state.meta,{wreck:true,accent:C.red}))) {
+      ctext(1,'RIG LOST / ASSET WRITTEN OFF',C.red);
+    } else drawArt(lines, 1, artColor('gameover', C.red));
     layout.artBlock = { row: 1, h: lines.length };   // fx: dust motes drift here
     const y = Math.min(1 + lines.length + 1, 26);
     statsBlock(y, fallbackResult(state.run, false));
@@ -2526,7 +2672,8 @@
     const full = toastSafe(state.run).slice(0, 70);
     const typed = full ? fxTyped('toast', full, 14) : '';
     const lines = crackedCore(sphere, full && typed.length >= full.length);
-    drawArt(lines, 1, artColor('victory', C.magmaHot));
+    if (!illustration('core',23,1,66,lines.length,{cracked:!!(full&&typed.length>=full.length),accent:SK.amber}))
+      drawArt(lines, 1, artColor('victory', C.magmaHot));
     // fx: the core sphere pulses. `w` is published so the pulse bands against
     // the sphere's real half-width instead of a hardcoded one (M-HIRES).
     layout.artBlock = { row: 1, h: lines.length, w: artWidth(lines) };
@@ -2809,6 +2956,8 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = C.bg;
     ctx.fillRect(0, 0, COLS * cw, ROWS * ch);
+    paintTerrain();
+    paintIllustrations();
     // background runs
     for (let r = 0; r < ROWS; r++) {
       let c = 0;
@@ -2950,6 +3099,13 @@
     init: function (cv) {
       canvas = cv;
       ctx = cv.getContext('2d');
+      try {
+        const q=new URLSearchParams((root.location&&root.location.search)||'');
+        let saved=null;
+        try {saved=root.localStorage && root.localStorage.getItem('deepcore_visual_v1');}catch(e){/* file:// privacy */}
+        artMode=(q.get('art')||saved)==='classic'?'classic':'engraved';
+      } catch(e) { artMode='engraved'; }
+      artChrome();
       DC.Render.resize();
       DC.Render.watchFont();
     },
@@ -2983,6 +3139,15 @@
       } catch (e) { return false; }   // no document, or a hostile CSP
     },
     fontReady: function () { return fontReady; },
+    artMode: function () { return engraved()?'engraved':'classic'; },
+    setArtMode: function (mode) {
+      artMode=mode==='classic'?'classic':'engraved';
+      artChrome();
+      try { if(root.localStorage)root.localStorage.setItem('deepcore_visual_v1',artMode); } catch(e) { /* optional */ }
+      return DC.Render.artMode();
+    },
+    illustrationStats: function () { return {regions:plates.length,cached:plateCache.size,
+      pixels:Array.from(plateCache.values()).reduce((n,v)=>n+v.canvas.width*v.canvas.height,0)}; },
     FONT_FAMILY: FONT_FAMILY,
 
     // Which sub-cell technique the art may use on THIS machine, right now.
@@ -3037,6 +3202,8 @@
       advanceClock(nowMs);
       const phase = Math.floor(frameN / 30) % 2;   // 1 Hz blink, wall time
       clearBuf();
+      plates.length=0;
+      terrainPlates.length=0;
       applyLivery(state.meta);   // M-RIGSKINS: the chrome for this frame
       // SPEC3 §A: fx.js advances its frame clock and takes its per-frame read
       // of the world BEFORE anything draws; its overlay lands after everything.

@@ -3,9 +3,18 @@
 Living orientation doc. Any new session should be able to read **this file plus
 the specs** and pick the work up cold — no prior conversation required.
 
-Last updated: 2026-09-09, 1.2 completion and charge-progression audit.
+Last updated: 2026-09-09, 1.3 Engraved visual edition.
 
 ## Current handoff — read this before the historical notes
+
+The director subsequently requested a complete aesthetics overhaul, with no
+commitment to the old visuals, keeping gameplay and lore. `docs/AESTHETICS.md`
+records the implemented Engraved edition: high-definition character portraits,
+machinery, encounters and terrain; V switches to Classic. `ascii-native` is a
+published branch at `e30d1a8`, preserving the exact pre-overhaul release.
+`node tools/build.js --classic` also produces a separate classic artifact.
+Include `node test/engraving_test.js` in verification. The naked/upgraded
+canonical sweeps remain byte-identical to the pre-overhaul game.
 
 The outstanding tutorial, biome, icon/font, rig-animation, overdrive and
 M-HUMANBAL work is implemented and tested. `docs/RELEASE.md` is the current

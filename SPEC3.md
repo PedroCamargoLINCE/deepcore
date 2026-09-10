@@ -1,5 +1,12 @@
 # DEEPCORE — SPEC3: The Final Brainstorm (v1.2 Creative Addendum)
 
+**Visual-policy update, 2026-09-09:** the director requested the Engraved edition
+and explicitly released all commitments to the old visuals, retaining gameplay
+and lore. `docs/AESTHETICS.md` is the current visual contract. The fine ASCII
+illustration layer is independent of the logical game grid; the original
+one-grid-only/sprite prohibitions below are historical constraints, not grounds
+to reject the director's new direction. Classic remains a separate port.
+
 This is a **design-only** document: no code was changed in this pass. It is the
 creative inflation layer for a game that is already feature-complete and green
 (4 test suites at HEAD, single-file bundle builds). Every section is written as

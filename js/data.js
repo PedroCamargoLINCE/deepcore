@@ -943,8 +943,8 @@
   D.CONTRACT_DEFAULT = 'standard';
 
   D.SAVE_KEY = 'deepcore_save_v1';
-  // Display only (title-screen corner). v1.2 completes the induction, living
-  // ASCII art and human-balance board. The save
+  // Display only (title-screen corner). v1.3 is the Engraved visual edition,
+  // with the completed human-balance board unchanged. The save
   // key is deliberately NOT versioned with it: no save format change here.
-  D.VERSION = '1.2';
+  D.VERSION = '1.3';
 })();

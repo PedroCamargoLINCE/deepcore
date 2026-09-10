@@ -6,6 +6,18 @@ workers, verifies, merges) or **THE LABORER** (one brief, one branch). Know whic
 
 **The director owns all balance and model decisions. We ship good energy only.**
 
+## Current visual direction — director override, 2026-09-09
+
+The director requested a COMPLETE aesthetic overhaul, inspired by dense ASCII
+portraiture and phosphor-terminal illustrations, not large Dwarf Fortress-like
+symbols alone. Gameplay and lore are preserved; the old visual layout is not
+sacred. Read `docs/AESTHETICS.md`. `js/engraving.js` is the fine-character art
+layer; `V` switches back to Classic. `ascii-native` preserves the pre-overhaul
+release and `node tools/build.js --classic` emits a separate classic artifact.
+This supersedes old rules requiring every visible detail to occupy one logical
+cell. Readability, offline operation, save safety and simulation RNG isolation
+remain requirements. Add `node test/engraving_test.js` to the gauntlet.
+
 ## Where the truth lives
 
 - **`SPEC3.md`** — design canon. The Eight Laws (§0), the lineage, every brief,

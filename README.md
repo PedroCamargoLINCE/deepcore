@@ -19,6 +19,13 @@ stay: quakes, rubble, magma. This is not a game about surviving. Get through.
 Open `index.html` in any modern browser (double-click works — no server, no
 build step). Or the single-file build: `dist/deepcore.html`.
 
+The default is **Engraved**, the high-definition ASCII edition: shaded character
+portraits, detailed machinery and illustrated encounters. Press `V` at any time
+to switch between Engraved and Classic; gameplay and your save are unchanged.
+`?art=classic` opens the classic view directly. Build a standalone classic port
+with `node tools/build.js --classic` (`dist/deepcore-classic.html`). The original
+1.2 presentation is also preserved on the `ascii-native` branch.
+
 - A run to the Core takes roughly 15–25 minutes. Death is permanent; progress
   isn't — cores banked from every run buy permanent Foundry upgrades.
 - After victory, the Mantle continues downward forever, for longer runs.
@@ -42,6 +49,7 @@ The mouse is optional: every action has a keyboard route through the map cursor.
 | `R` | rotate facing (output side of the next machine) |
 | `X` | demolish / excavate rock |
 | `C` | overdrive the drill (faster breach, faster instability) |
+| `V` | switch Engraved / Classic visuals, without restarting |
 | `D` | descend when the breach is ready |
 | `Space` | pause |
 | `Esc` | disarm lay-mode → cancel tool → pause menu |

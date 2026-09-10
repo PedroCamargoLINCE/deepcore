@@ -46,3 +46,20 @@ noscript pre {
   color: #e8b45a;
   font-family: monospace;
 }
+
+/* Engraved edition: a recessed, warm-phosphor instrument face. Keep the
+   character edges sharp: no barrel distortion, chromatic splitting, moving
+   scanlines or full-screen blur. V restores the original presentation. */
+#frame[data-art="engraved"] {
+  border-radius: 7px;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px #29302a, 0 0 0 5px #111512,
+    0 0 50px rgba(74, 94, 62, .12);
+}
+#frame[data-art="engraved"] #scanlines {
+  background:
+    radial-gradient(ellipse at center, transparent 68%, rgba(0,0,0,.2) 100%),
+    repeating-linear-gradient(to bottom, transparent 0px,
+      transparent calc(var(--scanline) - 1px), rgba(0,0,0,.055) var(--scanline));
+  box-shadow: inset 0 0 2px rgba(221, 191, 132, .18);
+}
