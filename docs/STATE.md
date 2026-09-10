@@ -24,6 +24,43 @@ Keep personal untracked artifacts intact. AI commit-attribution trailers are
 forbidden by the director; this overrides old agent habits. Use the local
 `.githooks/commit-msg` guard. Human credits remain welcome.
 
+### Release / history cleanup — 2026-09-09
+
+Game implementation and attribution guard are in `bfef873` (the rewritten
+equivalent of the original `41563c3` checkpoint). All five suites and the
+attribution tests pass; the rebuilt offline bundle is 771 KiB. Real Chromium
+selects Braille with zero width mismatches across all 256 masks. The local
+commit guard uses an absolute path so it also protects the old worktree.
+
+Historical cleanup removed AI credits/session footers from **181 messages**;
+**184 commit IDs** changed because parent hashes changed too. Every tree,
+author/committer identity and date, and original merge relationship was
+verified unchanged. Nine signatures authenticating old commit bytes were
+removed from their rewritten equivalents, not falsely carried forward.
+
+The verified original history, original working patches, commit map and
+verification report are in the ignored local directory:
+`.history-backups/ai-cleanup-2026-09-09-9PPPwV/`.
+Six clean merged worktrees were archived there before removal, along with
+eleven merged local branch refs. The archive includes their ignored files;
+the bundle preserves their original commits. Personal artifacts remain intact.
+
+Preserve `/home/pedro/Documents/games/deepcore-tut2`: its six modified source
+files remain byte-identical to the recovery checkpoint. Its committed face
+and unfinished act two are fully implemented in master. A recovery merge
+records that branch's ancestry without replacing the completed implementation.
+
+Release publication uses an atomic exact-ref force-with-lease push: rewritten
+master and the preserved tutorial branch replace their old tips, and fourteen
+verified-merged remote branches are removed. The local backup's
+`publication.json` records successful remote verification. Other clones must
+be resynchronized; merging old history would restore the removed credits.
+
+GitHub retains merged-PR snapshots `refs/pull/1/head` and `refs/pull/2/head`.
+Branch-history cleanup does not erase those server-held copies or old-SHA
+caches. Do not describe this as erasing every historical copy on GitHub.
+GitHub CLI 2.98.0 is installed and authenticated.
+
 ---
 
 ## What this is
