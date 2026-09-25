@@ -5,6 +5,9 @@
 The director subsequently requested a fully graphical edition with **no ASCII**
 commitment, and emphasized Papers, Please as an aesthetic reference. This now
 lives in `graphical.html`, independently of the two editions documented below.
+Subsequent feedback rejected an institutional/website look: Bedrock now uses
+a colorful arcade cabinet and full-screen cavern presentation. Paper is an
+in-world prop, not the overall interface. The browser is the game's host.
 Read `docs/BEDROCK.md` for its art direction, architecture, controls, save
 transfer and verification. Engraved and Classic remain available and unchanged
 as visual editions; the frozen `ascii-native` branch is not rewritten.

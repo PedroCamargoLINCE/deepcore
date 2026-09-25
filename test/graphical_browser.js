@@ -22,12 +22,21 @@ async function main(){
     await send('Runtime.enable');await send('Page.enable');
     await send('Page.navigate',{url:base+'graphical.html'});await delay(650);
     await size(1440,960);
+    await evaluate('DC.state.meta=DC.Meta.newProfile();DC.Render.frame(DC.state,performance.now())');
     assert.strictEqual(await evaluate('DC.state.screen'),'title');await shot('title');
+    if(await evaluate('document.fullscreenEnabled')) {
+      await click('#topbar [data-action="fullscreen"]');
+      assert(await evaluate('!!document.fullscreenElement'),'native fullscreen enters from a real gesture');
+      await click('#topbar [data-action="fullscreen"]');
+      assert(await evaluate('!document.fullscreenElement'),'native fullscreen exits');
+      await size(1440,960);
+    }
     // Begin via an actual native button, not a direct sim call.
     await click('#pages button[data-key="Enter"]');
     let screen=await evaluate('DC.state.screen');
     if(screen==='contract')await click('#pages button[data-key="1"]');
     assert.strictEqual(await evaluate('DC.state.screen'),'run');await shot('induction');
+    assert(await evaluate('DC.Tutorial.active(DC.state.run)&&!!document.querySelector(".tutor")'),'fresh profile sees the actual induction lesson');
     await key('Tab');
     // Isolated fixture, never the user's profile. Stop simulation for stable
     // screenshots, but keep the real frame/input loop and Engine handlers.
@@ -60,6 +69,14 @@ async function main(){
     assert(target,'machine fixture placement exists');
     await clickTile(target.x,target.y);await clickTile(target.x,target.y,'mouseReleased');await delay(80);
     assert.strictEqual(await evaluate('Object.keys(DC.state.run.machines).length'),target.n+1,'map click places the selected machine');
+    assert(await evaluate('DC.Render.debug().feedback.some(e=>e.kind==="build")'),'successful placement gets real build feedback');
+    const feedbackFrozen=await evaluate('JSON.stringify(DC.Render.debug().feedback)');
+    await evaluate('DC.state.ui.paused=true;for(let i=0;i<15;i++)DC.Render.frame(DC.state,performance.now()+i*100)');
+    assert.strictEqual(await evaluate('JSON.stringify(DC.Render.debug().feedback)'),feedbackFrozen,'paused effects do not advance with wall clock');
+    await evaluate('DC.state.ui.paused=false;DC.Render.frame(DC.state,performance.now())');
+    await shot('build-feedback');
+    await evaluate('DC.state.run.t+=7;DC.Render.frame(DC.state,performance.now())');
+    assert.strictEqual(await evaluate('DC.Render.debug().feedback.length'),0,'impact effects expire on sim ticks');
     await click('#toolbelt button[data-key="r"]');assert.strictEqual(await evaluate('DC.state.ui.facing'),2,'rotate uses real engine command');
     await click('#toolbelt button[data-key="1"]');
     const pathCells=[[26,17],[27,17],[28,17],[28,18]];
@@ -68,6 +85,7 @@ async function main(){
     await clickTile(...pathCells[3],'mouseReleased');
     const beltDirs=await evaluate('[[26,17],[27,17],[28,17],[28,18]].map(([x,y])=>DC.state.run.grid[y][x].belt?.dir)');
     assert.deepStrictEqual(beltDirs,[1,1,2,2],'dragged corner is continuous and correctly directed');
+    assert(await evaluate('DC.Render.debug().feedback.some(e=>e.kind==="belt")'),'real belt drag receives feedback');
     await click('#map-controls button[data-action="zoom-in"]');
     const zoomed=await evaluate('DC.Render.debug().camera.zoom');assert(zoomed>1,'map zoom changes the camera');
     const panStock=await evaluate('DC.state.run.inv.ironPlate');
@@ -105,6 +123,10 @@ async function main(){
     await click('#pages button[data-key="1"]');if(await evaluate('DC.state.screen')==='vignette')await click('#pages button[data-key="1"]');
     assert(await evaluate('DC.state.run.mantle&&DC.state.run.depth===9&&DC.state.screen==="run"'),'graphical journey continues into the real Mantle');
     await size(960,700,2);await shot('factory-small');
+    await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});await delay(80);
+    await evaluate('DC.state.run.t+=7;DC.Render.frame(DC.state,performance.now());DC.state.run.gearsFed++;DC.state.run.t++;DC.Render.frame(DC.state,performance.now())');
+    assert.strictEqual(await evaluate('DC.Render.debug().feedback.length'),0,'reduced motion suppresses new particles');
+    await send('Emulation.setEmulatedMedia',{features:[]});
     const overflow=await evaluate('({w:innerWidth,doc:document.documentElement.scrollWidth,body:document.body.scrollWidth})');assert(overflow.doc<=overflow.w&&overflow.body<=overflow.w,'no page horizontal overflow');
     await size(390,844,2);await shot('factory-mobile');
     await evaluate('DC.state.screen="title";DC.Render.frame(DC.state,performance.now())');await shot('title-mobile');
@@ -123,7 +145,7 @@ async function main(){
     await size(960,700);
     await send('Page.navigate',{url:base+'dist/deepcore-graphical.html'});await delay(500);assert.strictEqual(await evaluate('DC.Render.artMode()'),'bedrock');await shot('bundle');
     assert.deepStrictEqual(errors,[],'no browser exceptions');
-    console.log('PASS graphical browser | all screens + 20 encounters | real building / belt corners / rotate / pause | breach -> timed pick -> Core -> Mantle | zoom and pan | renderer state/RNG purity | profile import + recoverable backup | responsive 1440 / 960 / 390 | 8K cache bounds | standalone file:// | screenshots /tmp/deepcore-bedrock-*.png');
+    console.log('PASS graphical browser | all screens + 20 encounters | fresh induction | native fullscreen | real building / belt corners / rotate / pause | tick-driven feedback + reduced motion | breach -> timed pick -> Core -> Mantle | zoom and pan | renderer state/RNG purity | profile import + recoverable backup | responsive 1440 / 960 / 390 | 8K cache bounds | standalone file:// | screenshots /tmp/deepcore-bedrock-*.png');
   }finally{ws.close();}
 }
 main().catch(e=>{console.error(e);process.exitCode=1;});

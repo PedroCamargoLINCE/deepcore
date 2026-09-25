@@ -1,4 +1,4 @@
-/* DEEPCORE / Bedrock — independent graphical renderer and document UI.
+/* DEEPCORE / Bedrock — independent graphical renderer and arcade HUD.
    Only ui.descendAnim is advanced here, matching the engine's existing view
    contract. Actions go through Engine.command; map hits return logical cells.
    No simulation value, profile, RNG, or gameplay rule is owned by this file. */
@@ -71,8 +71,13 @@
   }
   function livery(meta) {
     const id = DC.Meta.livery(meta), def = D.LIVERY_BY_ID[id];
+    if (id === D.LIVERIES[0].id) return A.P.gold;
     return def && def.chrome ? def.chrome.amber : A.P.gold;
   }
+  const itemColors = {
+    ironOre:'#8edbff', copperOre:'#ffac76', coal:'#bdc9e3', crystal:'#d4a2ff',
+    ironPlate:'#9ae8e7', copperPlate:'#ffc298', gear:'#ffda70', charge:'#e1aaff'
+  };
   let canvas, ctx, nodes = {}, lastState = null, screen = '', panelTab = 'chain', lastNow = null;
   let viewport = {
       w: 0,
@@ -90,6 +95,65 @@
     }, lastMapKey = '', surface = null, surfaceKey = '', spriteCache = new Map();
   let htmlCache = {}, pointerBusy = false, pan = null, modelCache = {}, pauseOpen = false, pauseFocus = null;
   let reduced = false, frameCalls = 0, terrainBuilds = 0, mapBuilds = 0, lastRun = null, lastDepth = 0, lastCursor = '';
+  let observed = null, sparks = [], gains = {};
+  // View-local event snapshots. Never inspect unrevealed terrain, spend RNG,
+  // or invent activity for an idle machine. Tick ages freeze with the sim.
+  function feedbackSnapshot(run) {
+    return {
+      run, depth:run.depth, tick:run.t, fed:run.gearsFed + run.chargesFed,
+      inv:Object.assign({},run.inv),
+      cells:run.grid.map(row => row.map(t => !t.revealed ? null :
+        {kind:t.t,rubble:!!t.rubble,belt:!!t.belt})),
+      machines:Object.values(run.machines).filter(m => visible(run,m.x,m.y))
+        .map(m => ({id:m.id,x:m.x+m.w/2,y:m.y+m.h/2}))
+    };
+  }
+  function feedbackEvents(prev, next) {
+    if (!prev || prev.run !== next.run || prev.depth !== next.depth || next.tick < prev.tick) return [];
+    const out = [], ids = new Set(prev.machines.map(m => m.id));
+    for (const m of next.machines)
+      if (!ids.has(m.id)) out.push({kind:'build',x:m.x,y:m.y});
+    for (let y=0;y<next.cells.length;y++) for (let x=0;x<next.cells[y].length;x++) {
+      const a=prev.cells[y][x], b=next.cells[y][x];
+      if (!a || !b) continue;
+      if ((a.kind==='rock' && b.kind==='floor') || (a.rubble && !b.rubble)) out.push({kind:'dig',x:x+.5,y:y+.5});
+      if (!a.belt && b.belt) out.push({kind:'belt',x:x+.5,y:y+.5});
+    }
+    if (next.fed>prev.fed) out.push({kind:'feed',x:next.run.hub.x+1.5,y:next.run.hub.y+1.5});
+    return out.slice(-48);
+  }
+  function observeFeedback(run) {
+    const next=feedbackSnapshot(run), fresh=!observed || observed.run!==run || observed.depth!==run.depth || next.tick<observed.tick;
+    if (fresh) { sparks=[]; gains={}; }
+    else {
+      if (!reduced) for (const e of feedbackEvents(observed,next)) sparks.push(Object.assign({born:run.t},e));
+      for (const id of D.ITEM_ORDER)
+        if (next.inv[id]>observed.inv[id]) gains[id]={born:run.t,amount:next.inv[id]-observed.inv[id]};
+    }
+    sparks=sparks.filter(e=>run.t-e.born<6).slice(-48);
+    for (const id of Object.keys(gains)) if (run.t-gains[id].born>=6) delete gains[id];
+    observed=next;
+  }
+  function drawFeedback(run,s) {
+    if (reduced) return;
+    for (const e of sparks) {
+      if (!visible(run,Math.floor(e.x),Math.floor(e.y))) continue;
+      const age=clamp((run.t-e.born)/6,0,1), x=e.x*s,y=e.y*s;
+      ctx.globalAlpha=1-age;
+      ctx.strokeStyle=e.kind==='dig' ? '#ffc778' : e.kind==='feed' ? '#ffdf7c' : '#77ffdf';
+      ctx.lineWidth=Math.max(1.5,s*.065);
+      if (e.kind!=='dig') {
+        const radius=(e.kind==='feed'?1.6:.45)+age*.65;
+        ctx.beginPath();ctx.ellipse(x,y,radius*s,radius*s*.6,0,0,Math.PI*2);ctx.stroke();
+      }
+      if (e.kind!=='belt') for(let i=0;i<6;i++) {
+        const a=i*Math.PI/3, distance=s*(.25+age*1.15);
+        ctx.fillStyle=i%2?'#ffce71':'#efffff';
+        ctx.fillRect(x+Math.cos(a)*distance,y+Math.sin(a)*distance+age*age*s*.7,s*.1,s*.1);
+      }
+    }
+    ctx.globalAlpha=1;
+  }
   const layout = {
     buildRows: [],
     cards: [],
@@ -142,6 +206,14 @@
       return;
     }
     const a = b.dataset.action;
+    if (a === 'fullscreen') {
+      const doc=root.document;
+      const task=doc.fullscreenElement ? doc.exitFullscreen() : doc.documentElement.requestFullscreen();
+      if (task && task.catch) task.catch(() => {
+        b.title='Full screen is unavailable here. You can use your browser\'s full-screen command.';
+      });
+      return;
+    }
     if (a && a.startsWith('tab:')) {
       panelTab = a.slice(4);
       return;
@@ -393,17 +465,18 @@
       ]);
     if (key === surfaceKey && surface)
       return surface;
-    const dp = Math.min(viewport.dpr, Math.sqrt(11900000 / (D.MAP_W * D.MAP_H * s * s)));
+    // Integer source tiles prevent hairline seams between adjacent rock/floor
+    // faces at fractional zoom. The composed texture still scales as a whole.
+    const pitch=Math.max(1,Math.min(Math.round(s*viewport.dpr),Math.floor(Math.sqrt(12000000/(D.MAP_W*D.MAP_H)))));
     surface = root.document.createElement('canvas');
-    surface.width = Math.ceil(D.MAP_W * s * dp);
-    surface.height = Math.ceil(D.MAP_H * s * dp);
+    surface.width = D.MAP_W * pitch;
+    surface.height = D.MAP_H * pitch;
     const c = surface.getContext('2d');
-    c.setTransform(dp, 0, 0, dp, 0, 0);
-    c.fillStyle = '#142925';
-    c.fillRect(0, 0, D.MAP_W * s, D.MAP_H * s);
+    c.fillStyle = '#090f24';
+    c.fillRect(0, 0, surface.width, surface.height);
     for (const t of tiles)
       if (t)
-        A.tile(c, t, t.x * s, t.y * s, s);
+        A.tile(c, t, t.x * pitch, t.y * pitch, pitch);
     surfaceKey = key;
     terrainBuilds++;
     return surface;
@@ -453,7 +526,7 @@
     lastMapKey = key;
     mapBuilds++;
     ctx.setTransform(viewport.dpr, 0, 0, viewport.dpr, 0, 0);
-    ctx.fillStyle = '#172d29';
+    ctx.fillStyle = '#0b152b';
     ctx.fillRect(0, 0, viewport.w, viewport.h);
     ctx.save();
     ctx.beginPath();
@@ -489,10 +562,10 @@
           ctx.translate((x + 0.5) * s, (y + 0.5) * s);
           ctx.rotate((b.dir - 1) * Math.PI / 2);
           const p = A.canvasPen(ctx, -s / 2, -s / 2, s, s);
-          p.rect(0, 15, 100, 70, '#233f3c');
-          p.rect(0, 24, 100, 52, '#789385');
-          p.rect(0, 19, 100, 5, '#b0bca1');
-          p.rect(0, 76, 100, 5, '#455f52');
+          p.rect(0, 15, 100, 70, '#0e1d34');
+          p.rect(0, 24, 100, 52, '#396282');
+          p.rect(0, 19, 100, 5, '#8ec7de');
+          p.rect(0, 76, 100, 5, '#65a4c1');
           for (let i = 0; i < 4; i++)
             p.line([
               [
@@ -507,8 +580,8 @@
                 i * 29 - 12,
                 71
               ]
-            ], '#425f54', 4);
-          A.arrow(p, 1, '#ccd1ab', 57, 50, 19);
+            ], '#233d5c', 4);
+          A.arrow(p, 1, '#aedbef', 57, 50, 19);
           ctx.restore();
           if (b.item)
             drawSprite(b.item, (x + 0.19) * s, (y + 0.16) * s, s * 0.64, s * 0.64, {});
@@ -533,6 +606,12 @@
       if (m.type === 'hub' || !visible(run, m.x, m.y))
         continue;
       const active = m.status === 'ok', phase = active && !reduced ? Math.floor((m.progress || run.t) / 2) % 3 : 0;
+      if (active && ['smelter','assembler','damper'].includes(m.type)) {
+        ctx.fillStyle=m.type==='smelter'?'#ffac431a':m.type==='damper'?'#60ffd01a':'#70daff15';
+        ctx.beginPath();
+        ctx.ellipse((m.x+m.w/2)*s,(m.y+m.h*.75)*s,m.w*s*.7,m.h*s*.5,0,0,Math.PI*2);
+        ctx.fill();
+      }
       drawSprite(m.type, m.x * s, m.y * s, m.w * s, m.h * s, {
         active,
         phase,
@@ -554,7 +633,7 @@
         const px = dir === 1 ? m.x + m.w - 0.14 : dir === 3 ? m.x + 0.14 : clamp(out.x + 0.5, m.x + 0.5, m.x + m.w - 0.5);
         const py = dir === 2 ? m.y + m.h - 0.14 : dir === 0 ? m.y + 0.14 : clamp(out.y + 0.5, m.y + 0.5, m.y + m.h - 0.5);
         const p = A.canvasPen(ctx, (px - 0.5) * s, (py - 0.5) * s, s, s);
-        A.arrow(p, dir, '#e0c47c', 50, 50, 23);
+        A.arrow(p, dir, '#ffe17e', 50, 50, 23);
       }
       const bad = [
         'nofuel',
@@ -590,8 +669,8 @@
       accent: livery(st.meta)
     });
     if (run.status === 'breachReady') {
-      ctx.strokeStyle = '#ebd18d';
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#7dffe0';
+      ctx.lineWidth = 3;
       ctx.strokeRect(run.hub.x * s - 2, run.hub.y * s - 2, 3 * s + 4, 3 * s + 4);
     }
     const critters = run.critters;
@@ -620,6 +699,7 @@
     const cat = DC.Events.cat(run);
     if (cat && visible(run, cat.x, cat.y))
       drawSprite('cat', cat.x * s, cat.y * s, s, s, {});
+    drawFeedback(run,s);
     ctx.restore();
     // Tutorial target is always on the map; the lesson is on the desk, never
     // an opaque speech balloon over the tile the player needs to click.
@@ -672,7 +752,7 @@
       }
     }
     ctx.restore();
-    ctx.strokeStyle = '#7b8a674d';
+    ctx.strokeStyle = '#6ca4bc66';
     ctx.lineWidth = 1;
     ctx.strokeRect(x0 - 0.5, y0 - 0.5, D.MAP_W * s + 1, D.MAP_H * s + 1);
   }
@@ -700,14 +780,15 @@
   }
   function topbar(st) {
     const run = st.screen === 'run' && st.run, s = run && strata(run.depth);
+    const fullscreen=root.document.fullscreenEnabled ? '<button type="button" data-action="fullscreen" aria-label="'+(root.document.fullscreenElement?'Exit full screen':'Full screen')+'" title="'+(root.document.fullscreenElement?'Exit full screen':'Full screen')+'">'+icon('fullscreen')+'</button>' : '';
     return '<div class="wordmark">' + icon('bit') + '<div>DEEPCORE<small>MINING CONCERN</small></div></div>' + (run ? '<div class="location"><div class="eyebrow">Stratum ' + run.depth + ' / \u2212' + run.depth * D.DEPTH_M + ' m</div><h3>' + esc(title(s.name).replace(/†/g, '')) + '</h3></div>' : '<span class="eyebrow">Bedrock / Graphical edition</span>') + '<div class="top-actions">' + (run ? '<span class="time small amount">' + time(run.totalT / D.TICK_HZ) + '</span>' : '') + '<button data-key="m" aria-label="' + (st.meta.muted ? 'Unmute' : 'Mute') + ' audio">' + icon(st.meta.muted ? 'muted' : 'sound') + '<span class="mute-label">' + (st.meta.muted ? 'Sound off' : 'Sound on') + '</span></button>' + (st.screen === 'run' ? button('Manual', 'h', 'quiet') + button('Pause', ' ', 'quiet') : st.screen === 'title' ? '<button type="button" data-progress>Progress</button>' + button('Manual', 'h', 'quiet') : button('Back', 'Escape', 'quiet', [
       'descend',
       'vignette'
-    ].includes(st.screen))) + '</div>';
+    ].includes(st.screen))) + fullscreen + '</div>';
   }
   function resources(st) {
     const run = st.run, tut = DC.Tutorial.layout(run), focus = tut && tut.panels ? tut.beat === 'feed' ? 'gear' : 'ironOre' : null;
-    return D.ITEM_ORDER.map(id => '<div class="resource ' + (run.inv[id] || 0 ? '' : 'empty') + (focus === id ? ' tutor-focus' : '') + '" title="' + esc(D.ITEMS[id].name) + '">' + icon(id) + '<div><b>' + number(run.inv[id]) + '</b><span class="label">' + esc(title(D.ITEMS[id].name)) + '</span></div></div>').join('');
+    return D.ITEM_ORDER.map(id => '<div class="resource ' + (run.inv[id] || 0 ? '' : 'empty') + (focus === id ? ' tutor-focus' : '') + (gains[id] ? ' gained' : '') + '" style="--resource:'+itemColors[id]+'" title="' + esc(D.ITEMS[id].name) + '">' + icon(id) + '<div><b>' + number(run.inv[id]) + '</b><span class="label">' + esc(title(D.ITEMS[id].name)) + '</span></div></div>').join('');
   }
   function chain(run) {
     if (modelCache.run !== run || modelCache.t !== run.t) {
@@ -725,11 +806,11 @@
     const active = r.stats && r.stats.lastFeedT > 0 && r.totalT - r.stats.lastFeedT < 2 * D.TICK_HZ;
     const ready = r.status === 'breachReady', reserve = DC.Sim.departureReserve();
     const warning = ready ? 'Machines stay on this floor. Take ' + reserve + ' iron plates to build the next base.' : DC.Sim.supplyWarning(r) ? 'No plates. Use Demolish to reclaim a misplaced machine.' : 'Drill gears feed automatically from stock. Belts deliver your production to the rig.';
-    return '<section class="panel"><div class="rig-head">' + icon('rig', {
+    return '<section class="panel rig-panel '+(ready?'ready':r.overdrive?'overdriving':'')+'"><div class="rig-head">' + icon('rig', {
       active: !!active,
       upgrades: st.meta.upgrades,
       accent: livery(st.meta)
-    }) + '<div><div class="eyebrow">Mobile extraction unit</div><h3>' + (ready ? 'Breach ready' : r.overdrive ? 'Overdrive engaged' : 'Rig operations') + '</h3></div></div>' + '<div class="meters"><div><div class="meter-label"><span>Hull</span><strong>' + Math.max(0, Math.ceil(r.integrity)) + '<small> / ' + r.maxIntegrity + '</small></strong></div>' + bar(r.integrity, r.maxIntegrity, r.integrity < 30 ? 'warn' : '') + '</div><div><div class="meter-label"><span>Pressure</span><strong>' + Math.floor(r.instability) + '%</strong></div>' + bar(r.instability, 100, r.instability >= D.QUAKE.startInst ? 'warn' : '') + '</div></div>' + '<div class="drill-meter"><div class="meter-label"><span>Drill gears</span><strong>' + r.gearsFed + ' / ' + req.gear + '</strong></div>' + bar(r.gearsFed, req.gear, 'gold') + '</div>' + (req.charge ? '<div class="drill-meter"><div class="meter-label"><span>Core charges</span><strong>' + r.chargesFed + ' / ' + req.charge + '</strong></div>' + bar(r.chargesFed, req.charge, 'gold') + '</div>' : '') + '<div class="row between small muted"><span>Feed ' + (fr.gearPerSec || 0).toFixed(1) + ' gears/s' + (req.charge ? ' \xB7 ' + (fr.chargePerSec || 0).toFixed(1) + ' charges/s' : '') + '</span><span>' + (ready ? 'Ready' : ch.breachSec != null && isFinite(ch.breachSec) ? '~' + time(ch.breachSec) : 'Awaiting feed') + '</span></div>' + '<div class="drill-actions">' + button(r.overdrive ? 'Overdrive on' : 'Overdrive', 'c', r.overdrive ? 'selected' : '') + button('Descend', 'd', 'primary', !ready) + '</div><p class="supply-note">' + esc(warning) + '</p></section>';
+    }) + '<div><div class="eyebrow">Your digging machine</div><h3>' + (ready ? 'BREACH READY!' : r.overdrive ? 'OVERDRIVE!' : 'FEED THE DRILL') + '</h3></div></div>' + '<div class="meters"><div><div class="meter-label"><span>Hull</span><strong>' + Math.max(0, Math.ceil(r.integrity)) + '<small> / ' + r.maxIntegrity + '</small></strong></div>' + bar(r.integrity, r.maxIntegrity, r.integrity < 30 ? 'warn' : '') + '</div><div><div class="meter-label"><span>Pressure</span><strong>' + Math.floor(r.instability) + '%</strong></div>' + bar(r.instability, 100, r.instability >= D.QUAKE.startInst ? 'warn' : '') + '</div></div>' + '<div class="drill-meter"><div class="meter-label"><span>Drill gears</span><strong>' + r.gearsFed + ' / ' + req.gear + '</strong></div>' + bar(r.gearsFed, req.gear, 'gold') + '</div>' + (req.charge ? '<div class="drill-meter"><div class="meter-label"><span>Core charges</span><strong>' + r.chargesFed + ' / ' + req.charge + '</strong></div>' + bar(r.chargesFed, req.charge, 'gold') + '</div>' : '') + '<div class="row between small muted"><span>Feed ' + (fr.gearPerSec || 0).toFixed(1) + ' gears/s' + (req.charge ? ' \xB7 ' + (fr.chargePerSec || 0).toFixed(1) + ' charges/s' : '') + '</span><span>' + (ready ? 'Ready' : ch.breachSec != null && isFinite(ch.breachSec) ? '~' + time(ch.breachSec) : 'Awaiting feed') + '</span></div>' + '<div class="drill-actions">' + button(r.overdrive ? 'Overdrive on' : 'Overdrive', 'c', r.overdrive ? 'selected' : '') + button('Descend', 'd', 'primary', !ready) + '</div><p class="supply-note">' + esc(warning) + '</p></section>';
   }
   function tutorial(st) {
     const T = DC.Tutorial, r = st.run;
@@ -818,11 +899,12 @@
   }
   function titlePage(st) {
     const m = st.meta, eligible = DC.Tutorial.eligible(m), hist = (m.dailyHistory || []).find(h => h.date === st.today);
-    return '<div class="hero"><div class="hero-copy"><div class="eyebrow">A Deepcore Mining Concern production</div><h1>KEEP<span>DIGGING.</span></h1><p class="intro">Build the line. Feed the drill.<br>There are eight strata between you and the heart of this planet.</p><div class="actions">' + button('Begin descent', 'Enter', 'primary') + button('Daily shaft', 't', 'secondary') + button('The Foundry', 'f', 'secondary') + (!eligible ? button('Replay induction', 'i', 'quiet') : '') + '</div><div class="hero-stats"><div><b>' + number(m.cores) + '</b><span>CORES BANKED</span></div><div><b>' + number(m.bestDepth) + '</b><span>DEEPEST STRATUM</span></div><div><b>' + number(m.wins) + '</b><span>CORE BREACHES</span></div></div><div class="edition-note">' + esc('Daily ' + st.today + ' \xB7 ' + (hist ? 'Stratum ' + hist.depth + ' in ' + time(hist.timeSec) : 'One ranked attempt. Same shaft for everyone.')) + '<br>Bedrock edition \xB7 same game, a different world.<br><a href="index.html">Engraved & Classic editions</a></div></div>' + scene('landscape', {
+    return '<div class="hero"><div class="hero-copy"><div class="title-badge">Eight strata. One very hungry drill.</div><h1 aria-label="Deepcore">DEEP<span>CORE</span></h1><p class="intro">BUILD. FEED. GO DEEPER.</p><div class="actions">' + button('DIG IN!', 'Enter', 'primary') + button('Daily shaft', 't', 'secondary') + button('The Foundry', 'f', 'secondary') + (!eligible ? button('Replay induction', 'i', 'quiet') : '') + '</div><div class="hero-stats"><div>'+icon('crystal')+'<b>' + number(m.cores) + '</b><span>CORES</span></div><div>'+icon('down')+'<b>' + number(m.bestDepth) + '</b><span>BEST DEPTH</span></div><div>'+icon('trophy')+'<b>' + number(m.wins) + '</b><span>BREACHES</span></div></div><div class="edition-note">' + esc('Daily ' + st.today + ' \xB7 ' + (hist ? 'Stratum ' + hist.depth + ' in ' + time(hist.timeSec) : 'Same shaft. One ranked shot.')) + '<br><a href="index.html">Engraved & Classic editions</a></div></div>' + scene('landscape', {
       upgrades: m.upgrades,
       accent: livery(m),
-      cat: !!m.catFound
-    }, 'hero-art') + '<div class="title-number">DMC / EXTRACTION SERIES 08</div></div>';
+      cat: !!m.catFound,
+      title: true
+    }, 'hero-art') + '<div class="title-number">BEDROCK EDITION <span>KEEP ON DIGGING.</span></div></div>';
   }
   function contracts(st) {
     return '<div class="page paperwork">' + header('Personnel division / terms of engagement', 'Sign before you descend.', 'Choose your contract. The Company will retain the original.') + '<div class="cards">' + D.CONTRACTS.map((c, i) => {
@@ -1051,6 +1133,7 @@
     frameCalls++;
     const dt = lastNow == null ? 1000 / 60 : clamp((Number(now) || 0) - lastNow, 0, 250);
     lastNow = Number(now) || 0;
+    if (st.screen === 'run' && st.run) observeFeedback(st.run);
     if (st.screen === 'descend' && st.ui.descendAnim < animLength())
       st.ui.descendAnim += dt * 60 / 1000;
     const changed = screen !== st.screen;
@@ -1063,6 +1146,7 @@
       lastMapKey = '';
       modelCache = {};
     }
+    nodes.game.dataset.paused = st.ui.paused ? 'true' : 'false';
     if (!pointerBusy || changed) {
       put('topbar', topbar(st));
       if (st.screen === 'run' && st.run)
@@ -1103,6 +1187,8 @@
     recapText,
     artMode: () => 'bedrock',
     mapModel,
+    feedbackSnapshot,
+    feedbackEvents,
     clean,
     icon,
     animLength,
@@ -1110,6 +1196,7 @@
       frameCalls,
       terrainBuilds,
       mapBuilds,
+      feedback: sparks.map(e => Object.assign({},e)),
       viewport,
       camera: Object.assign({}, camera),
       transform: Object.assign({}, transform),

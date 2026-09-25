@@ -17,10 +17,11 @@ stay: quakes, rubble, magma. This is not a game about surviving. Get through.
 ## Play
 
 **New: Bedrock, the fully graphical edition.** Open [graphical.html](graphical.html)
-for an illustrated world with square terrain tiles, machine sprites, a clean
-control desk and Company paperwork inspired by Papers, Please. No ASCII art or
-terminal renderer. Same gameplay, lore, progression and controls. Mouse wheel
-zooms the map; right-drag pans. Build it with `node tools/build.js --graphical`
+for a colorful arcade mining world: full-screen cavern title, chunky machinery,
+jewel-colored minerals, tactile tool slots and action-driven impact effects.
+Company contracts retain their Papers, Please flavor. No ASCII art or terminal
+renderer. Same gameplay, lore and progression. Mouse wheel zooms; right-drag
+pans; the corner control toggles fullscreen. Build with `node tools/build.js --graphical`
 to create `dist/deepcore-graphical.html`. See [the edition notes](docs/BEDROCK.md).
 
 Open `index.html` in any modern browser (double-click works — no server, no

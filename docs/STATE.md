@@ -3,9 +3,21 @@
 Living orientation doc. Any new session should be able to read **this file plus
 the specs** and pick the work up cold — no prior conversation required.
 
-Last updated: 2026-09-25, Bedrock graphical edition.
+Last updated: 2026-09-25, Bedrock arcade correction.
 
 ## Current handoff — read this before the historical notes
+
+The director rejected Bedrock's initial institutional website appearance.
+Current visual direction: **a colorful arcade game running in a browser**.
+The title now fills the screen with a cavern diorama and dimensional logo;
+the HUD has raised tool slots, jewel-colored resources and segmented meters.
+All eight biome palettes and the vector art vocabulary are brighter. Actual
+building/digging/feed events drive bounded tick-aged feedback, frozen on pause
+and suppressed under reduced motion. Native fullscreen is available from the
+corner control. Paper styling is reserved for in-world Company contracts.
+Do not revert to a marketing hero or beige dashboard. Gameplay is unchanged.
+Arcade balance evidence: `/tmp/deepcore-arcade-before-balance.txt` and
+`/tmp/deepcore-arcade-after-balance.txt`.
 
 The director requested a separate fully graphical edition, with no ASCII art,
 and specifically emphasized Papers, Please aesthetically. `graphical.html`

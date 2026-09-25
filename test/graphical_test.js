@@ -19,7 +19,7 @@ function recorder(){
   c.fillText=()=>{throw new Error('ASCII fallback forbidden');};return c;
 }
 const serial=(id,o)=>{const c=recorder();A.sprite(c,id,0,0,80,80,o||{});return JSON.stringify(c.calls);};
-const ids=[...D.ITEM_ORDER,...D.BUILD_ORDER,'hub','demolish',...D.META_UPGRADES.map(u=>u.id),...D.SCHEMATICS.map(s=>s.id),...D.LANDMARKS.map(l=>l.id),'grit','cat','worm','toad','sound','muted','pause','rotate','inspect','down','trophy','clock','leaf','helmet'];
+const ids=[...D.ITEM_ORDER,...D.BUILD_ORDER,'hub','demolish',...D.META_UPGRADES.map(u=>u.id),...D.SCHEMATICS.map(s=>s.id),...D.LANDMARKS.map(l=>l.id),'grit','cat','worm','toad','sound','muted','pause','rotate','inspect','down','trophy','clock','leaf','helmet','fullscreen'];
 for(const id of ids){const c=recorder();A.sprite(c,id,0,0,24,24,{});assert(c.calls.length>=4,id+' has real geometry');const svg=A.icon(id);assert(svg.includes('<svg')&&!svg.includes('<text')&&!svg.includes('<image'),id+' is a native vector');assert.strictEqual(svg,A.icon(id),id+' deterministic');}
 assert.strictEqual(new Set(D.BUILD_ORDER.map(id=>serial(id))).size,D.BUILD_ORDER.length,'all ten machine subjects are distinct');
 const noColour=s=>s.replace(/#[0-9a-f]{6}/g,'ink');
@@ -44,6 +44,20 @@ assert.strictEqual(JSON.stringify({run,meta}),before,'redacted view does not mut
 const hidden=run.grid.flat().find(t=>!t.revealed);assert(hidden,'test has fog');
 Object.defineProperty(hidden,'ore',{get(){throw new Error('hidden ore was read');}});Object.defineProperty(hidden,'lm',{get(){throw new Error('hidden landmark was read');}});R.mapModel(run);
 assert(R.mapModel(run).some(t=>t===null),'unknown terrain is represented only as null');
+// Arcade feedback observes real changes, not animation timers or fake output.
+const snap=R.feedbackSnapshot(run);
+assert.strictEqual(R.feedbackEvents(snap,R.feedbackSnapshot(run)).length,0,'idle frame produces no feedback');
+const feedbackBefore=JSON.stringify({run:twin,meta});R.feedbackSnapshot(twin);
+assert.strictEqual(JSON.stringify({run:twin,meta}),feedbackBefore,'feedback snapshot leaves gameplay and profile intact');
+assert.strictEqual(run.rng(),twin.rng(),'feedback does not consume sim RNG');
+const plain={hub:{x:4,y:4}},base={run:plain,depth:1,tick:10,fed:0,inv:{},machines:[],cells:[[{kind:'rock',rubble:false,belt:false},null]]};
+const updated={...base,tick:11,fed:1,machines:[{id:3,x:1,y:1}],cells:[[{kind:'floor',rubble:false,belt:true},{kind:'floor',rubble:false,belt:true}]]};
+const eventBefore=JSON.stringify([base,updated]),events=R.feedbackEvents(base,updated);
+assert.deepStrictEqual(Array.from(events,e=>e.kind),['build','dig','belt','feed'],'real actions produce distinct feedback');
+assert.strictEqual(events.filter(e=>e.x===1.5&&e.y===.5).length,0,'revealing a tile does not fake a build');
+assert.strictEqual(JSON.stringify([base,updated]),eventBefore,'feedback does not mutate its source');
+for(const reset of [{...updated,depth:2},{...updated,run:{}},{...updated,tick:9}])assert.strictEqual(R.feedbackEvents(base,reset).length,0,'new floor/run resets feedback');
+const large={...updated,machines:Array.from({length:100},(_,id)=>({id,x:1,y:1}))};assert(R.feedbackEvents(base,large).length<=48,'event burst is bounded');
 const old=DC.Meta.parseProfile(JSON.stringify({cores:12,upgrades:{m_hull:1},runs:7}));assert.strictEqual(old.cores,12);assert.strictEqual(old.upgrades.m_hull,1);assert.strictEqual(old.v,DC.Meta.SAVE_V);assert.strictEqual(old.runs,7);
 for(const raw of ['{}','[]','null','broken','{"cores":-1,"upgrades":{}}','{"cores":1,"upgrades":{},"v":999}'])assert.throws(()=>DC.Meta.parseProfile(raw),'bad / future import refused');
 const original=JSON.stringify(meta),parsed=DC.Meta.parseProfile(original);assert.strictEqual(JSON.stringify(meta),original,'profile migration is pure');assert.strictEqual(JSON.stringify(parsed),original,'current profile roundtrips');

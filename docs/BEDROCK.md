@@ -2,7 +2,9 @@
 
 The director's September 25 brief: build a genuinely different graphical game
 presentation, with no ASCII obligation, while keeping the existing game. The
-follow-up specifically names **Papers, Please** as an aesthetic influence.
+first pass leaned too far into **Papers, Please**'s institutional palette. The
+director's correction is authoritative: **a colorful arcade game executed in a
+browser, not a website**. The Company is fictional flavor, not the UI template.
 
 ## Play
 
@@ -18,12 +20,17 @@ to the graphical edition. The `ascii-native` branch remains untouched.
 
 ## Visual direction
 
-An illustrated mining operation, with a Company-issued control desk. The
-palette is mineral green, warm paper, charcoal, dull brass and stamped red.
-Papers, Please informs the forms, authorizations, restrained palette and
-bureaucratic voice; Factorio informs the readable production line; the graphical
-Dwarf Fortress release informs the separation of a recognizable world from its
-unchanged simulation. Artwork is original, not copied assets from those games.
+An illustrated mining arcade: deep-blue cabinet hardware, turquoise steel,
+gold controls, orange furnaces and violet crystals. The title is a full-screen
+cavern diorama with a dimensional DEEPCORE logo and a compact game menu, not a
+split marketing hero. Raised tool slots, colored inventory counters, segmented
+meters and loot-like schematic picks continue that vocabulary through play.
+
+Papers, Please still informs contract props and the bureaucratic voice;
+Factorio informs the readable production line; Balatro informs concrete,
+colorful upgrade picks. The graphical Dwarf Fortress release informs the
+separation of an illustrated world from its unchanged simulation. Artwork is
+original, not copied assets from those games.
 
 Visual hierarchy is deliberate: the stratum is the largest surface; the rig's
 condition and breach progress remain primary; a persistent stock strip answers
@@ -56,6 +63,8 @@ CRT overlay, or glyph-rendered terrain is used by this edition.
 - `Engine.command(key)`: graphical buttons enter the same route as keyboard
   commands. The existing simulation, gates, tutorial, awards and input actions
   remain authoritative. Canvas hits map back to the unchanged logical tiles.
+- The corner fullscreen control enters/exits browser fullscreen through a real
+  user gesture. It is only offered where the host exposes the capability.
 - Mouse wheel zooms; right/middle drag pans; Fit restores the full stratum.
   Keyboard movement brings the cursor into view when zoomed. Original gameplay
   keys remain valid. Native buttons retain focus and keyboard activation.
@@ -85,11 +94,18 @@ ending's GRIT lines (selected through an isolated seed-derived proxy).
 - Production poses follow machine status/progress and drill feed. Pausing
   freezes these states. Reduced-motion preference disables shake and cycling
   poses. There are no quake countdowns or vein-depletion counters.
+- Build/belt placement, cleared rock/rubble and drill-feed changes produce
+  short view-local impact rings/debris; inventory increases light their HUD
+  counters. No idle frame invents activity. Snapshots never read hidden terrain;
+  effects are capped at 48, expire after six simulation ticks, freeze on pause,
+  reset on a new run/floor, and particles are suppressed by reduced motion.
 - State views do not mutate the simulation or the profile. Only the existing
   view-owned `ui.descendAnim` advances during the descent interstitial.
 - Stable frames reuse terrain and sprite surfaces. The terrain and sprite cache
   have independent 12-million-pixel budgets, sprites are capped at 180 entries,
   and DPR is capped at 2 (lowered further for oversized surfaces).
+- Terrain is composed at an integer source tile pitch and scaled as one image,
+  avoiding the hairline grid seams introduced by fractional tile coordinates.
 - The three offline bundles do not load one another's renderer. The vendored
   terminal-font audit follows `index.html`; Bedrock's proportional text does not
   accidentally expand Classic's glyph inventory.
@@ -112,7 +128,7 @@ Coverage includes vector-only artwork, all machine/resource subjects, twenty
 distinct encounter scenes, eight biome palettes, all nine rig upgrades, state
 and RNG purity, fog redaction, save migration, all game screens, real building
 and belt dragging, breach through the Core into the Mantle, camera controls,
-profile import/backup, offline bundles,
+native fullscreen, tick-driven effects and reduced motion, profile import/backup, offline bundles,
 small screens and oversized-display cache budgets. Compare the canonical
 14-seed/two-policy balance outcome rows against the pre-change baseline.
 
@@ -120,3 +136,7 @@ Verified September 25: all original suites, Engraved, attribution, graphical
 unit tests and browser acceptance pass. All 28 canonical balance outcome rows
 are byte-identical to the pre-change baseline. The three offline editions build
 independently; the graphical bundle also passes a real `file://` browser load.
+The arcade revision repeats this gate, including fresh-profile induction,
+real fullscreen entry/exit, placement feedback, tick-based expiration, pause
+freeze and reduced-motion suppression. Screens were visually reviewed at
+desktop, smaller-window and phone sizes.

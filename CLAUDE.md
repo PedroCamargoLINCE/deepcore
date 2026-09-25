@@ -8,6 +8,13 @@ workers, verifies, merges) or **THE LABORER** (one brief, one branch). Know whic
 
 ## Current visual direction — director override, 2026-09-09
 
+**Arcade correction, 2026-09-25:** the director rejected Bedrock's institutional
+website appearance. Think of a game executable hosted by a browser: full-screen
+cavern title, chunky colorful HUD, bright minerals, tactile controls and honest
+action feedback. Papers, Please informs the contract props and Company voice,
+not every screen's layout or palette. No marketing-page design. The revised
+direction and visual/feedback invariants are in `docs/BEDROCK.md`.
+
 **New edition, 2026-09-25:** the director requested a completely non-ASCII
 graphical version, specifically naming Papers, Please aesthetically. Read
 `docs/BEDROCK.md`. `graphical.html` uses `js/atelier.js` (pure vector art) and

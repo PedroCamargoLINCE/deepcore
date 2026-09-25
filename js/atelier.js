@@ -6,21 +6,21 @@
   const root = typeof window !== 'undefined' ? window : globalThis;
   const DC = root.DC = root.DC || {};
   const P = {
-    ink: '#203436',
-    deep: '#122927',
-    steel: '#90aaa4',
-    light: '#d3d9c7',
-    gold: '#ce9e52',
-    goldHi: '#eed18d',
-    rust: '#b96b48',
-    red: '#b74934',
-    blue: '#608b94',
-    green: '#688b63',
-    cream: '#eee6ce',
-    coal: '#283638',
-    violet: '#a88bc3',
-    rose: '#cf8b89',
-    white: '#f7f0da'
+    ink: '#101d35',
+    deep: '#0a1023',
+    steel: '#70c7e0',
+    light: '#bceeff',
+    gold: '#ffbd46',
+    goldHi: '#fff29c',
+    rust: '#f47b45',
+    red: '#ff596b',
+    blue: '#4aa9ff',
+    green: '#54dfb0',
+    cream: '#fff0c4',
+    coal: '#26334c',
+    violet: '#c481ff',
+    rose: '#ff9cbb',
+    white: '#f0fbff'
   };
   function mix(a, b, t) {
     const n = s => [1,3,5].map(i => parseInt(s.slice(i, i + 2), 16));
@@ -161,7 +161,7 @@
     case 'ironOre':
       p.poly([[10,59],[27,24],[70,17],[91,46],[75,79],[29,86]], P.ink);
       p.poly([[15,56],[29,27],[67,23],[83,46],[64,65],[28,72]], metal);
-      p.poly([[28,72],[64,65],[83,46],[76,75],[31,81]], '#5c7778');
+      p.poly([[28,72],[64,65],[83,46],[76,75],[31,81]], '#3985ad');
       p.line([[27,51],[65,35],[75,44]], P.light, 5);
       p.line([[22,63],[58,50]], P.light, 4);
       break;
@@ -174,21 +174,21 @@
       p.line([[58,59],[64,70],[56,79]], '#566967', 2);
       break;
     case 'copperOre':
-      p.poly([[10,49],[32,20],[51,31],[56,60],[31,80],[12,68]], '#b96d45', P.ink, 2);
-      p.poly([[54,29],[78,21],[92,51],[78,75],[55,65]], '#e1a064', P.ink, 2);
-      p.poly([[13,49],[32,25],[43,37],[30,53]], '#f2be82');
+      p.poly([[10,49],[32,20],[51,31],[56,60],[31,80],[12,68]], '#e96b3c', P.ink, 3);
+      p.poly([[54,29],[78,21],[92,51],[78,75],[55,65]], '#ffab58', P.ink, 3);
+      p.poly([[13,49],[32,25],[43,37],[30,53]], '#ffe2a0');
       p.line([[59,40],[78,33],[84,48]], '#f6c796', 4);
       break;
     case 'crystal':
-      p.poly([[19,61],[22,33],[35,23],[45,60],[38,81]], '#716b9d', P.ink, 2);
+      p.poly([[19,61],[22,33],[35,23],[45,60],[38,81]], '#815be2', P.ink, 3);
       p.poly([[37,72],[40,22],[57,7],[73,26],[68,70],[52,94]], P.violet, P.ink, 2);
-      p.poly([[40,22],[57,7],[55,70],[52,94],[37,72]], '#c7b8dc');
-      p.poly([[64,70],[70,45],[84,34],[95,60],[85,85]], '#9181b2', P.ink, 2);
+      p.poly([[40,22],[57,7],[55,70],[52,94],[37,72]], '#ecc0ff');
+      p.poly([[64,70],[70,45],[84,34],[95,60],[85,85]], '#a064ef', P.ink, 3);
       p.line([[57,18],[62,28],[59,58]], '#f1e7fc', 3);
       break;
     case 'ironPlate':
     case 'copperPlate': {
-        const c = id === 'ironPlate' ? metal : '#c4865e';
+        const c = id === 'ironPlate' ? metal : '#ff9861';
         p.poly([[10,62],[67,39],[92,54],[35,79]], mix(c, P.ink, 0.2), P.ink, 2);
         p.poly([[10,48],[67,25],[92,40],[35,65]], c, P.ink, 2);
         p.poly([[35,65],[92,40],[92,49],[35,74]], mix(c, P.ink, 0.32));
@@ -493,30 +493,34 @@
       p.oval(50, 58, 28, 12, P.deep);
       break;
     case 'pause':
-      p.rect(20, 18, 22, 64, P.ink);
-      p.rect(58, 18, 22, 64, P.ink);
+      p.rect(20, 18, 22, 64, P.light);
+      p.rect(58, 18, 22, 64, P.light);
+      break;
+    case 'fullscreen':
+      for (const [x,y,dx,dy] of [[16,16,1,1],[84,16,-1,1],[16,84,1,-1],[84,84,-1,-1]])
+        p.line([[x+dx*21,y],[x,y],[x,y+dy*21]],P.light,7);
       break;
     case 'sound':
     case 'muted':
-      p.poly([[12,39],[30,39],[50,20],[50,80],[30,61],[12,61]], P.ink);
+      p.poly([[12,39],[30,39],[50,20],[50,80],[30,61],[12,61]], P.light);
       if (id === 'sound') {
-        p.line([[65,32],[75,50],[65,68]], P.ink, 5);
-        p.line([[78,20],[92,50],[78,80]], P.ink, 4);
+        p.line([[65,32],[75,50],[65,68]], P.light, 5);
+        p.line([[78,20],[92,50],[78,80]], P.light, 4);
       } else {
         p.line([[65,36],[87,64]], P.rust, 6);
         p.line([[87,36],[65,64]], P.rust, 6);
       }
       break;
     case 'rotate':
-      p.line([[20,52],[20,26],[50,13],[80,30],[82,60],[59,80],[38,75]], P.ink, 7);
-      arrow(p, 0, P.ink, 20, 50, 22);
+      p.line([[20,52],[20,26],[50,13],[80,30],[82,60],[59,80],[38,75]], P.light, 7);
+      arrow(p, 0, P.light, 20, 50, 22);
       break;
     case 'inspect':
-      p.oval(42, 42, 25, 25, null, P.ink, 7);
+      p.oval(42, 42, 25, 25, null, P.light, 7);
       p.line([[60,60],[86,86]], P.rust, 10);
       break;
     case 'down':
-      arrow(p, 2, P.ink, 50, 50, 50);
+      arrow(p, 2, P.green, 50, 50, 50);
       break;
     case 'trophy':
       p.poly([[28,15],[72,15],[68,55],[50,70],[32,55]], gold, P.ink, 3);
@@ -600,9 +604,9 @@
     p.rect(10, 71, 80, 1.3, P.goldHi);
     p.poly([[12,52],[35,52],[39,56],[39,70],[12,70]], g, P.ink, 0.7);
     p.rect(15, 55, 19, 10, '#243c3c');
-    p.rect(16, 56, 7, 8, '#729c9a');
-    p.rect(25, 56, 8, 8, '#729c9a');
-    p.poly([[16,56],[22,56],[16,62]], '#b5c8b6');
+    p.rect(16, 56, 7, 8, '#4297c0');
+    p.rect(25, 56, 8, 8, '#53bad1');
+    p.poly([[16,56],[22,56],[16,62]], '#b2f3ed');
     p.rect(15, 66, 19, 0.8, P.ink);
     p.rect(28, 66, 3, 1.1, P.cream);
     p.line([[11,51],[36,51],[40,55]], P.ink, 1.2);
@@ -703,96 +707,73 @@
   // Material palettes are authored independently from the terminal colours.
   const BIOMES = [
     {
-      ground: '#4c5b48',
-      floor: '#64705a',
-      wall: '#929476',
-      edge: '#b0ac83',
-      dark: '#3b4b3c'
+      ground: '#173641', floor: '#285565', wall: '#337d82',
+      edge: '#69c4a9', dark: '#102536'
     },
     {
-      ground: '#715c48',
-      floor: '#887259',
-      wall: '#b0956c',
-      edge: '#d2b78b',
-      dark: '#564839'
+      ground: '#392c42', floor: '#654058', wall: '#b36a51',
+      edge: '#ffb778', dark: '#292037'
     },
     {
-      ground: '#375751',
-      floor: '#52786b',
-      wall: '#779a85',
-      edge: '#a0b6a0',
-      dark: '#25443f'
+      ground: '#153c3a', floor: '#246353', wall: '#349975',
+      edge: '#9cde83', dark: '#122c31'
     },
     {
-      ground: '#485b62',
-      floor: '#64777b',
-      wall: '#8e9a95',
-      edge: '#b5bcb0',
-      dark: '#344a52'
+      ground: '#1a314c', floor: '#29577a', wall: '#4085a8',
+      edge: '#86d7ec', dark: '#13243d'
     },
     {
-      ground: '#494455',
-      floor: '#6b6174',
-      wall: '#918297',
-      edge: '#b6a4b9',
-      dark: '#393449'
+      ground: '#302b50', floor: '#49406b', wall: '#765b9f',
+      edge: '#c397ed', dark: '#211e3a'
     },
     {
-      ground: '#644b3e',
-      floor: '#7b6250',
-      wall: '#987b5b',
-      edge: '#ba9a70',
-      dark: '#4b362f'
+      ground: '#422c37', floor: '#6f3a40', wall: '#a5564e',
+      edge: '#f39263', dark: '#2d2333'
     },
     {
-      ground: '#343f4c',
-      floor: '#4d5a64',
-      wall: '#687a83',
-      edge: '#9caeac',
-      dark: '#26303e'
+      ground: '#20263f', floor: '#353c62', wall: '#4e598a',
+      edge: '#889ed7', dark: '#151b30'
     },
     {
-      ground: '#685b40',
-      floor: '#84754f',
-      wall: '#ab9466',
-      edge: '#d3ba7a',
-      dark: '#4b422e'
+      ground: '#433344', floor: '#695052', wall: '#b08156',
+      edge: '#ffdb80', dark: '#2b2539'
     }
   ];
   function tile(c, v, x, y, s) {
     const b = BIOMES[(v.biome || 0) % BIOMES.length], p = canvasPen(c, x, y, s, s), k = v.kind, n = v.variant || 0;
     p.rect(0, 0, 100, 100, b.ground);
     if (k === 'rock' || k === 'obsidian') {
-      const wall = k === 'obsidian' ? '#596a73' : b.wall, edge = k === 'obsidian' ? '#94a3a4' : b.edge;
-      p.poly([[0,8],[27,3+n*2],[68,9],[100,4],[100,100],[0,100]], b.dark);
+      const wall = k === 'obsidian' ? '#454769' : b.wall, edge = k === 'obsidian' ? '#a193d4' : b.edge;
       p.rect(0, 0, 100, 100, wall);
-      if (v.edges & 1)
-        p.line([[0,9],[29,3],[66,10],[100,5]], edge, 3);
+      // Broad facets and a deep front face: rock, not a tiled spreadsheet.
+      p.poly([[0,12+n*2],[34,5],[81,12],[100,31],[79,54],[20,49]], mix(wall, edge, 0.15));
+      p.poly([[20,49],[79,54],[100,31],[100,88],[57,94],[9,80]], mix(wall, b.dark, 0.12));
       if (n % 3 === 0)
-        p.line([[15,27],[30,40],[70,36],[83,48]], mix(wall, b.dark, 0.23), 2);
-      if (n % 3 === 1)
-        p.poly([[8,27],[53,16],[89,30],[64,37]], mix(wall, edge, 0.2));
-      if (n % 3 === 2)
-        p.line([[75,4],[65,29],[78,40],[70,75]], mix(wall, b.dark, 0.35), 2);
+        p.line([[12,71],[34,59],[51,65]], mix(wall, b.dark, 0.45), 3);
+      if (v.edges & 1) {
+        p.poly([[0,0],[100,0],[100,9],[63,15],[26,8],[0,16]], b.dark);
+        p.line([[0,17],[26,9],[63,16],[100,10]], edge, 5);
+      }
       if (v.edges & 4) {
-        p.poly([[0,76],[27,70],[70,78],[100,70],[100,100],[0,100]], b.dark);
-        p.line([[0,76],[27,70],[70,78],[100,70]], edge, 2);
+        p.poly([[0,67],[27,72],[70,64],[100,69],[100,100],[0,100]], b.dark);
+        p.poly([[0,67],[27,72],[70,64],[100,69],[100,83],[61,80],[21,87],[0,81]], mix(wall,b.dark,0.5));
+        p.line([[0,66],[27,71],[70,63],[100,68]], edge, 4);
       }
       if (v.edges & 2)
         p.rect(0, 5, 7, 80, b.dark);
       if (v.edges & 8)
         p.rect(93, 5, 7, 80, b.dark);
     } else if (k === 'chasm') {
-      p.rect(0, 0, 100, 100, '#14282c');
+      p.rect(0, 0, 100, 100, '#080f25');
       p.rect(0, 0, 100, 12, b.dark);
       p.line([[13,20],[26,17],[40,20]], '#30434a', 2);
     } else if (k === 'magma') {
-      p.rect(0, 0, 100, 100, '#ad4e32');
-      p.poly([[0,25],[30,9],[64,28],[100,18],[100,66],[64,83],[20,61],[0,79]], '#d3773d');
-      p.line([[0,34],[33,21],[64,40],[100,32]], '#f0b85f', 5);
-      p.line([[20,80],[45,68],[70,77]], '#ed9c4c', 3);
+      p.rect(0, 0, 100, 100, '#b63654');
+      p.poly([[0,25],[30,9],[64,28],[100,18],[100,66],[64,83],[20,61],[0,79]], '#f87246');
+      p.line([[0,34],[33,21],[64,40],[100,32]], '#ffdd73', 7);
+      p.line([[20,80],[45,68],[70,77]], '#ffb650', 4);
     } else {
-      p.rect(0, 0, 100, 100, mix(b.ground, b.floor, n % 4 * 0.055));
+      p.rect(0, 0, 100, 100, mix(b.ground, b.floor, n % 4 * 0.025));
       if (n % 3 === 0) {
         p.oval(27, 64, 5, 3, mix(b.floor, b.edge, 0.13));
         p.oval(71, 27, 3, 2, b.floor);
@@ -800,7 +781,7 @@
       if (n === 4)
         p.line([[12,84],[19,73],[23,80]], b.floor, 3);
       if (v.biome === 0 && n === 5) {
-        p.line([[78,81],[70,60],[78,70],[86,59]], '#7c9560', 3);
+        p.line([[78,81],[70,60],[78,70],[86,59]], '#54af92', 3);
       }
     }
     if (v.ore && !v.rubble) {
@@ -815,20 +796,33 @@
   function landscape(c, w, h, o) {
     o = o || {};
     const p = canvasPen(c, 0, 0, w, h), gold = o.accent || P.gold;
-    p.rect(0, 0, 100, 100, '#ddd9c5');
-    p.oval(70, 20, 10, 10, '#efe8ce');
-    p.poly([[0,40],[15,20],[30,35],[47,14],[64,30],[80,11],[100,24],[100,100],[0,100]], '#b3b9a1');
-    p.poly([[0,48],[12,37],[30,48],[50,30],[72,45],[91,20],[100,34],[100,100],[0,100]], '#7e9684');
-    p.poly([[0,60],[18,47],[40,59],[64,45],[80,57],[100,41],[100,100],[0,100]], '#4e7060');
-    p.poly([[0,78],[23,60],[43,71],[68,60],[86,73],[100,60],[100,100],[0,100]], '#294b42');
-    p.poly([[0,83],[26,74],[44,83],[67,78],[100,87],[100,100],[0,100]], '#203c35');
-    // Cross-section of the drilling shelf: a physical object, not a UI card.
-    p.poly([[9,70],[41,60],[91,70],[66,81]], '#879476');
-    p.poly([[9,70],[66,81],[66,96],[9,85]], '#574f3c');
-    p.poly([[66,81],[91,70],[91,85],[66,96]], '#393c30');
-    p.line([[10,76],[40,81],[65,87]], '#897653', 1);
-    p.line([[68,89],[88,81]], '#776444', 1);
-    const size = Math.min(w * 0.83, h * 0.71), rx = w * 0.12, ry = h * 0.15;
+    p.rect(0, 0, 100, 100, '#101a36');
+    // A cavern diorama. The title uses a wide composition; the Foundry keeps
+    // the rig centered. Nothing in this illustration pretends to be live sim.
+    const wide = !!o.title && w > h * 1.1, center = wide ? 70 : 51;
+    p.oval(center, 44, 36, 43, '#17264a');
+    p.oval(center, 44, 27, 35, '#1c3553');
+    p.oval(center, 45, 17, 27, '#204b5d');
+    p.poly([[0,0],[100,0],[100,24],[88,12],[83,27],[73,9],[61,18],[48,7],[36,29],[24,12],[13,35],[0,21]], '#162d47');
+    p.poly([[0,0],[100,0],[100,9],[82,5],[72,14],[55,3],[35,13],[17,7],[0,16]], '#0b142d');
+    p.poly([[0,55],[12,40],[22,62],[35,50],[46,67],[64,51],[80,62],[92,37],[100,53],[100,100],[0,100]], '#244563');
+    p.poly([[0,69],[17,56],[30,74],[43,62],[60,78],[76,63],[91,73],[100,57],[100,100],[0,100]], '#18324d');
+    p.poly([[0,86],[18,74],[37,84],[55,75],[72,88],[91,76],[100,85],[100,100],[0,100]], '#0b1932');
+    // Luminous mineral seams and faceted hanging rocks frame the play space.
+    for (let i = 0; i < 12; i++) {
+      const xx = (i * 23 + 7) % 99, yy = 24 + (i * 13) % 45;
+      p.poly([[xx,yy-0.6],[xx+0.35,yy],[xx,yy+0.6],[xx-0.35,yy]], i % 2 ? '#71e0d3' : '#d2a4fc');
+    }
+    const size = Math.min(w * (wide ? 0.48 : 0.9), h * 0.88);
+    const rx = w * center / 100 - size * 0.5, ry = h * 0.77 - size * 0.88;
+    const shelf = canvasPen(c, rx - size * 0.08, ry, size * 1.16, size);
+    shelf.poly([[0,83],[22,72],[75,73],[100,82],[74,94],[22,96]], '#367c86', P.ink, 1);
+    shelf.poly([[0,83],[22,96],[74,94],[74,111],[27,115],[0,99]], '#254e70', P.ink, 1);
+    shelf.poly([[74,94],[100,82],[100,101],[74,111]], '#173a5b', P.ink, 1);
+    shelf.line([[4,90],[28,104],[68,101]], '#4587a3', 2);
+    shelf.line([[79,100],[96,91]], '#53c5c4', 2);
+    sprite(c,'crystal',rx+size*0.84,ry+size*0.64,size*0.25,size*0.25);
+    sprite(c,'copperOre',rx-size*0.03,ry+size*0.82,size*0.2,size*0.15);
     if (o.wreck) {
       c.save();
       c.translate(rx + size * 0.5, ry + size * 0.8);
@@ -839,12 +833,11 @@
       portraitRig(c, rx, ry, size, size, o);
     if (o.cat)
       sprite(c, 'cat', rx + size * 0.11, ry + size * 0.36, size * 0.095, size * 0.095);
-    // Riveted service gantry and distant conifers; deliberately static.
-    for (let i = 0; i < 5; i++) {
-      const x = 75 + i * 4, y = 50 + i % 2 * 5;
-      p.line([[x,y],[x,y+12]], '#345448', 1);
-      p.poly([[x,y-4],[x-2,y+6],[x+2,y+6]], '#345448');
-    }
+    sprite(c,'crystal',w*0.9,h*0.79,w*0.11,h*0.24);
+    p.poly([[0,88],[6,80],[12,90],[17,89],[22,100],[0,100]], '#081127');
+    // A warning stripe ties the illustrated world to the arcade cabinet.
+    for (let i = 0; i < 4; i++)
+      shelf.poly([[16+i*9,90],[19+i*9,92],[23+i*9,88],[20+i*9,87]], gold);
   }
   function scene(c, id, w, h, o) {
     o = o || {};
