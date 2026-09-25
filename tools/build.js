@@ -7,7 +7,11 @@ const path = require('path');
 const root = path.join(__dirname, '..');
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
 
-let html = read('index.html');
+const graphical = process.argv.includes('--graphical');
+const classic = process.argv.includes('--classic');
+if (graphical && classic) throw new Error('Choose --graphical or --classic, not both.');
+const entry = graphical ? 'graphical.html' : 'index.html';
+let html = read(entry);
 
 // Inline every stylesheet the page links, in order — style.css and the
 // vendored @font-face (M-HIRES Phase 2.5), whose WOFF2 is already a data URI.
@@ -44,23 +48,28 @@ if (files.length === 0) {
 // and anything after it stays in the single-file build.
 const onDisk = fs.readdirSync(path.join(root, 'js'))
   .filter((f) => f.endsWith('.js')).map((f) => 'js/' + f).sort();
-const missing = onDisk.filter((f) => files.indexOf(f) < 0);
+const registered = new Set(Array.from((read('index.html') + read('graphical.html'))
+  .matchAll(/<script src="(js\/[a-z]+\.js)"><\/script>/g), m => m[1]));
+const missing = onDisk.filter((f) => !registered.has(f));
 if (missing.length) {
-  console.error('build: ' + missing.join(', ') + ' not referenced by index.html');
+  console.error('build: ' + missing.join(', ') + ' not referenced by either edition entry');
   process.exit(1);
 }
 // The frozen ascii-native branch is the historical port. This second artifact
 // also lets a player use current game fixes without loading the fine-art layer.
-const classic = process.argv.includes('--classic');
 const activeFiles = classic ? files.filter(f => !['js/engraving.js','js/strata.js'].includes(f)) : files;
 const bundle = activeFiles
   .map((f) => '/* ==== ' + f + ' ==== */\n' + read(f))
   .join('\n');
 html = html.replace(scriptTag, '');
 html = html.replace('</body>', '<script>\n' + bundle + '\n</script>\n</body>');
+// Edition navigation stays local in the standalone artifacts too.
+html = html.replace(/href="index.html"/g, 'href="deepcore.html"')
+  .replace(/href="graphical.html"/g, 'href="deepcore-graphical.html"')
+  .replace(/link\.href\s*=\s*'graphical.html'/g, "link.href='deepcore-graphical.html'");
 
 fs.mkdirSync(path.join(root, 'dist'), { recursive: true });
-const out = path.join(root, 'dist', classic ? 'deepcore-classic.html' : 'deepcore.html');
+const out = path.join(root, 'dist', graphical ? 'deepcore-graphical.html' : classic ? 'deepcore-classic.html' : 'deepcore.html');
 fs.writeFileSync(out, html);
 console.log('build: wrote ' + out + ' (' + (html.length / 1024).toFixed(0) + ' KiB, ' +
   activeFiles.length + ' scripts inlined)');

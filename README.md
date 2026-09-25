@@ -16,6 +16,13 @@ stay: quakes, rubble, magma. This is not a game about surviving. Get through.
 
 ## Play
 
+**New: Bedrock, the fully graphical edition.** Open [graphical.html](graphical.html)
+for an illustrated world with square terrain tiles, machine sprites, a clean
+control desk and Company paperwork inspired by Papers, Please. No ASCII art or
+terminal renderer. Same gameplay, lore, progression and controls. Mouse wheel
+zooms the map; right-drag pans. Build it with `node tools/build.js --graphical`
+to create `dist/deepcore-graphical.html`. See [the edition notes](docs/BEDROCK.md).
+
 Open `index.html` in any modern browser (double-click works — no server, no
 build step). Or the single-file build: `dist/deepcore.html`.
 
@@ -27,6 +34,12 @@ to switch between Engraved and Classic; gameplay and your save are unchanged.
 `?art=classic` opens the classic view directly. Build a standalone classic port
 with `node tools/build.js --classic` (`dist/deepcore-classic.html`). The original
 1.2 presentation is also preserved on the `ascii-native` branch.
+
+Use **Progress / backup** on the title screen to export/import permanent
+progress between offline files. Web-hosted editions on the same origin share
+their save; browsers may keep separately opened local HTML files isolated.
+Imports require confirmation and retain a recoverable copy of the old profile.
+Active runs are not saved in the profile file.
 
 - A run to the Core takes roughly 15–25 minutes. Death is permanent; progress
   isn't — cores banked from every run buy permanent Foundry upgrades.

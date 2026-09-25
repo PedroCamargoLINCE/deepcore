@@ -1,5 +1,14 @@
 # DEEPCORE 1.4 — Engraved
 
+## Separate graphical edition — Bedrock
+
+The director subsequently requested a fully graphical edition with **no ASCII**
+commitment, and emphasized Papers, Please as an aesthetic reference. This now
+lives in `graphical.html`, independently of the two editions documented below.
+Read `docs/BEDROCK.md` for its art direction, architecture, controls, save
+transfer and verification. Engraved and Classic remain available and unchanged
+as visual editions; the frozen `ascii-native` branch is not rewritten.
+
 ## Readability follow-up — coal versus iron
 
 Human feedback caught a real weakness: coal reused the metallic ore silhouette,

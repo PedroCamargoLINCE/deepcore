@@ -1,0 +1,129 @@
+/* Real Chromium acceptance test. Launch a disposable profile with
+   --remote-debugging-port=9344, then node test/graphical_browser.js.
+   Node 22's WebSocket or the system's ws module. Screenshots go to /tmp. */
+'use strict';
+const fs=require('fs'),path=require('path'),assert=require('assert');
+const WebSocket=globalThis.WebSocket||require('ws');
+const base='file://'+path.resolve(__dirname,'..')+'/',port=process.env.DC_BROWSER_PORT||9344;
+const delay=ms=>new Promise(r=>setTimeout(r,ms));
+async function main(){
+  const pages=await(await fetch('http://127.0.0.1:'+port+'/json')).json();
+  const page=pages.find(p=>p.type==='page');assert(page,'test browser has a page');
+  const ws=new WebSocket(page.webSocketDebuggerUrl),pending=new Map(),errors=[];let serial=0;
+  const send=(method,params={})=>new Promise((resolve,reject)=>{const id=++serial;pending.set(id,{resolve,reject});ws.send(JSON.stringify({id,method,params}));});
+  ws.addEventListener('message',e=>{const m=JSON.parse(e.data);if(m.method==='Runtime.exceptionThrown')errors.push(m.params.exceptionDetails.exception?.description||m.params.exceptionDetails.text);if(pending.has(m.id)){const p=pending.get(m.id);pending.delete(m.id);m.error?p.reject(m.error):p.resolve(m.result);}});
+  await new Promise((resolve,reject)=>{ws.addEventListener('open',resolve,{once:true});ws.addEventListener('error',reject,{once:true});});
+  const evaluate=async expression=>{const r=await send('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});assert(!r.exceptionDetails,r.exceptionDetails?.exception?.description||'browser evaluation failed');return r.result.value;};
+  const key=async k=>{await send('Input.dispatchKeyEvent',{type:'keyDown',key:k});await send('Input.dispatchKeyEvent',{type:'keyUp',key:k});await delay(40);};
+  const click=async selector=>{const p=await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)return null;const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);assert(p,'click target '+selector);await send('Input.dispatchMouseEvent',{type:'mouseMoved',...p});await send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,...p});await send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,...p});await delay(60);};
+  const shot=async name=>{await delay(60);const r=await send('Page.captureScreenshot',{format:'png'});fs.writeFileSync('/tmp/deepcore-bedrock-'+name+'.png',Buffer.from(r.data,'base64'));};
+  const size=async(w,h,dpr=1)=>{await send('Emulation.setDeviceMetricsOverride',{width:w,height:h,deviceScaleFactor:dpr,mobile:false});await delay(160);await evaluate('DC.Render.resize()');};
+  try{
+    await send('Runtime.enable');await send('Page.enable');
+    await send('Page.navigate',{url:base+'graphical.html'});await delay(650);
+    await size(1440,960);
+    assert.strictEqual(await evaluate('DC.state.screen'),'title');await shot('title');
+    // Begin via an actual native button, not a direct sim call.
+    await click('#pages button[data-key="Enter"]');
+    let screen=await evaluate('DC.state.screen');
+    if(screen==='contract')await click('#pages button[data-key="1"]');
+    assert.strictEqual(await evaluate('DC.state.screen'),'run');await shot('induction');
+    await key('Tab');
+    // Isolated fixture, never the user's profile. Stop simulation for stable
+    // screenshots, but keep the real frame/input loop and Engine handlers.
+    await evaluate(`(()=>{
+      DC.Sim.tick=()=>{};const s=DC.state,D=DC.DATA;
+      s.meta=DC.Meta.newProfile();s.meta.cores=30;s.meta.tutorialSeen=true;
+      s.meta.trophies=D.TROPHIES.filter((_,i)=>i%3!==1).map(t=>t.id);s.meta.logbook=[0,3,5,6,13,19];
+      s.run=DC.Sim.newRun(DC.Meta.effects(s.meta),1337);s.run.depth=5;DC.Sim.startStratum(s.run);
+      s.run.grid.flat().forEach(t=>t.revealed=true);D.ITEM_ORDER.forEach(id=>s.run.inv[id]=40);
+      // A readable illustrative factory with real machine placement.
+      for(let y=5;y<20;y++)for(let x=8;x<37;x++){const t=s.run.grid[y][x];if(t.machine!==0&&!t.lm)Object.assign(t,{t:'floor',ore:null,rubble:false});}
+      for(const [x,id] of [[10,'ironOre'],[14,'coal'],[18,'copperOre']]){s.run.grid[9][x].ore=id;s.run.grid[9][x].oreAmt=90;DC.Sim.place(s.run,'extractor',x,9,2);for(let y=10;y<14;y++)DC.Sim.place(s.run,'belt',x,y,2);}
+      DC.Sim.place(s.run,'smelter',10,14,1);DC.Sim.place(s.run,'smelter',14,14,1);DC.Sim.place(s.run,'assembler',18,14,1);
+      DC.Sim.place(s.run,'damper',30,14,1);DC.Sim.place(s.run,'splitter',30,10,1);DC.Sim.place(s.run,'crusher',33,13,1);
+      for(const m of Object.values(s.run.machines)){m.status='ok';m.progress=3;}
+      s.run.grid[11][10].belt.item='ironOre';s.run.grid[11][14].belt.item='coal';s.run.grid[11][18].belt.item='copperOre';
+      s.run.gearsFed=19;s.run.instability=38;s.run.integrity=82;s.ui.tool=null;s.ui.hover=null;s.ui.cursor={x:18,y:14};s.screen='run';DC.Render.frame(s,performance.now());
+    })()`);
+    await shot('factory');
+    const clickTile=async(x,y,type='mousePressed',button='left')=>{
+      const p=await evaluate(`(()=>{const t=DC.Render.debug().transform,r=document.querySelector('#screen').getBoundingClientRect();return {x:r.x+t.x+(${x}+.5)*t.tile,y:r.y+t.y+(${y}+.5)*t.tile}})()`);
+      await send('Input.dispatchMouseEvent',{type,button,clickCount:1,...p});return p;
+    };
+    // Build through actual toolbar + canvas hit testing at the new square
+    // tile pitch, then drag a corner. No test-only input implementation.
+    await evaluate('DC.state.run.inv.ironPlate=300;DC.state.run.inv.copperPlate=300;DC.state.run.t++;DC.Render.frame(DC.state,performance.now())');
+    await click('#toolbelt button[data-key="3"]');assert.strictEqual(await evaluate('DC.state.ui.tool'),'smelter');
+    assert(await evaluate('document.activeElement===document.querySelector("#screen")'),'tool click returns focus for keyboard map play');
+    const target=await evaluate(`(()=>{const r=DC.state.run;for(let y=7;y<18;y++)for(let x=21;x<30;x++)if(DC.Sim.canPlace(r,'smelter',x,y,DC.state.ui.facing).ok)return {x,y,n:Object.keys(r.machines).length};return null})()`);
+    assert(target,'machine fixture placement exists');
+    await clickTile(target.x,target.y);await clickTile(target.x,target.y,'mouseReleased');await delay(80);
+    assert.strictEqual(await evaluate('Object.keys(DC.state.run.machines).length'),target.n+1,'map click places the selected machine');
+    await click('#toolbelt button[data-key="r"]');assert.strictEqual(await evaluate('DC.state.ui.facing'),2,'rotate uses real engine command');
+    await click('#toolbelt button[data-key="1"]');
+    const pathCells=[[26,17],[27,17],[28,17],[28,18]];
+    await clickTile(...pathCells[0]);
+    for(const q of pathCells.slice(1)){await clickTile(...q,'mouseMoved');await delay(20);}
+    await clickTile(...pathCells[3],'mouseReleased');
+    const beltDirs=await evaluate('[[26,17],[27,17],[28,17],[28,18]].map(([x,y])=>DC.state.run.grid[y][x].belt?.dir)');
+    assert.deepStrictEqual(beltDirs,[1,1,2,2],'dragged corner is continuous and correctly directed');
+    await click('#map-controls button[data-action="zoom-in"]');
+    const zoomed=await evaluate('DC.Render.debug().camera.zoom');assert(zoomed>1,'map zoom changes the camera');
+    const panStock=await evaluate('DC.state.run.inv.ironPlate');
+    await clickTile(28,17,'mousePressed','right');await clickTile(29,17,'mouseMoved','right');await clickTile(29,17,'mouseReleased','right');
+    assert.strictEqual(await evaluate('DC.state.run.inv.ironPlate'),panStock,'right-drag pans without placing a belt');
+    await click('#map-controls button[data-action="fit"]');
+    // Direct frame calls cannot touch a run's RNG, even on victory/recap.
+    const purity=await evaluate(`(()=>{const s=DC.state,fn=s.run.rng,original=s.screen;s.run.rng=()=>{throw new Error('render spent sim RNG')};const before=JSON.stringify([s.run,s.meta]);try{for(const name of ['run','foundry','contract','help','trophies','ledger','logbook','victory','gameover','recap']){s.screen=name;DC.Render.frame(s,performance.now())}return before===JSON.stringify([s.run,s.meta])}finally{s.run.rng=fn;s.screen=original;DC.Render.frame(s,performance.now())}})()`);
+    assert(purity,'real renderer leaves gameplay and progression byte-identical');
+    // Every screen must render with real DOM controls and no terminal layer.
+    for(const name of ['contract','foundry','trophies','ledger','logbook','help','vignette','descend','victory','gameover','recap']){
+      await evaluate(`(()=>{const s=DC.state;s.screen=${JSON.stringify(name)};s.ui.helpPage=0;s.ui.descendAnim=999;s.run.pendingOffers=DC.DATA.SCHEMATICS.slice(0,3).map(x=>x.id);DC.Events.state(s.run).vignette=DC.Events.VIGNETTES[0];s.run.result={depth:5,breaches:4,timeSec:734,cores:4,won:false,paid:4};DC.Render.frame(s,performance.now())})()`);
+      assert(await evaluate('document.querySelector("#pages").innerText.length>30'),name+' content');await shot(name);
+    }
+    for(const p of [1,2]){await evaluate('DC.state.screen="help";DC.state.ui.helpPage='+p+';DC.Render.frame(DC.state,performance.now())');await shot('manual-'+p);}
+    for(let i=0;i<20;i++){
+      await evaluate('DC.state.screen="vignette";DC.Events.state(DC.state.run).vignette=DC.Events.VIGNETTES['+i+'];DC.Render.frame(DC.state,performance.now())');
+      assert(await evaluate('document.querySelector("#pages").innerText.includes(DC.Events.VIGNETTES['+i+'].choices[0].label)'), 'encounter choice preserved');
+    }
+    await evaluate('DC.state.screen="run";DC.state.ui.paused=false;DC.Render.frame(DC.state,performance.now())');
+    await click('#topbar button[data-key=" "]');assert(await evaluate('DC.state.ui.paused'));await shot('pause');
+    await click('#modal button[data-key=" "]');assert.strictEqual(await evaluate('DC.state.ui.paused'),false);
+    // Breach -> timed interstitial -> real schematic choice -> next floor.
+    await evaluate(`(()=>{const s=DC.state;s.run=DC.Sim.newRun(DC.Meta.effects(s.meta),2718);s.run.status='breachReady';s.run.gearsFed=s.run.breachReq.gear;s.run.chargesFed=s.run.breachReq.charge;s.ui.tool=null;s.ui.descendAnim=0;DC.Render.frame(s,performance.now())})()`);
+    await click('#operations button[data-key="d"]');assert.strictEqual(await evaluate('DC.state.screen'),'descend');
+    await key('1');assert.strictEqual(await evaluate('DC.state.run.depth'),1,'schematic cannot skip transit');
+    const transit=await evaluate('DC.Render.animLength()/60*1000');await delay(transit+250);
+    await click('#pages button[data-key="1"]');
+    if(await evaluate('DC.state.screen')==='vignette')await click('#pages button[data-key="1"]');
+    assert.strictEqual(await evaluate('DC.state.run.depth'),2);assert.strictEqual(await evaluate('DC.state.screen'),'run');
+    // The Core still ends the base game; the same C command enters the Mantle.
+    await evaluate(`(()=>{const s=DC.state;s.run.depth=8;DC.Sim.startStratum(s.run);s.run.status='breachReady';s.run.gearsFed=s.run.breachReq.gear;s.run.chargesFed=s.run.breachReq.charge;DC.Render.frame(s,performance.now())})()`);
+    await click('#operations button[data-key="d"]');assert.strictEqual(await evaluate('DC.state.screen'),'victory');
+    await click('#pages button[data-key="c"]');assert.strictEqual(await evaluate('DC.state.screen'),'descend');await delay(transit+250);
+    await click('#pages button[data-key="1"]');if(await evaluate('DC.state.screen')==='vignette')await click('#pages button[data-key="1"]');
+    assert(await evaluate('DC.state.run.mantle&&DC.state.run.depth===9&&DC.state.screen==="run"'),'graphical journey continues into the real Mantle');
+    await size(960,700,2);await shot('factory-small');
+    const overflow=await evaluate('({w:innerWidth,doc:document.documentElement.scrollWidth,body:document.body.scrollWidth})');assert(overflow.doc<=overflow.w&&overflow.body<=overflow.w,'no page horizontal overflow');
+    await size(390,844,2);await shot('factory-mobile');
+    await evaluate('DC.state.screen="title";DC.Render.frame(DC.state,performance.now())');await shot('title-mobile');
+    assert(await evaluate('document.documentElement.scrollWidth<=innerWidth'),'title mobile fits');
+    await size(1440,960);await click('#topbar [data-progress]');
+    assert(await evaluate('document.querySelector(".profile-dialog").open'),'native profile dialog opens');
+    await evaluate(`(()=>{const p=JSON.parse(JSON.stringify(DC.state.meta));p.cores=17;window.profileBeforeImport=JSON.stringify(DC.state.meta);const dt=new DataTransfer();dt.items.add(new File([JSON.stringify(p)],'progress.json',{type:'application/json'}));const input=document.querySelector('[data-import]');input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));})()`);await delay(80);
+    await click('.profile-dialog [data-confirm]');assert.strictEqual(await evaluate('DC.state.meta.cores'),17,'reviewed profile imported');
+    assert(await evaluate('localStorage.getItem("deepcore_profile_backup_v1")===window.profileBeforeImport'),'replaced profile retained as backup');await shot('profile');await click('.profile-dialog [data-close]');
+    // Explicit desktop-scale ceiling: backing stores stay bounded on an
+    // oversized display, and repeated stable frames reuse the terrain.
+    await evaluate('DC.state.screen="run";DC.state.ui.tool=null;DC.Render.frame(DC.state,performance.now())');
+    await size(8000,4500,2);
+    const caches=await evaluate(`(()=>{const s=DC.state,a=DC.Render.debug();for(let i=0;i<30;i++)DC.Render.frame(s,performance.now());const b=DC.Render.debug();return {same:a.terrainBuilds===b.terrainBuilds,pixels:b.terrainPixels,sprites:b.spritePixels,screen:document.querySelector('#screen').width*document.querySelector('#screen').height}})()`);
+    assert(caches.same&&caches.pixels<=12000000&&caches.sprites<=12000000&&caches.screen<=12010000,'stable caches and bounded canvas allocation');
+    await size(960,700);
+    await send('Page.navigate',{url:base+'dist/deepcore-graphical.html'});await delay(500);assert.strictEqual(await evaluate('DC.Render.artMode()'),'bedrock');await shot('bundle');
+    assert.deepStrictEqual(errors,[],'no browser exceptions');
+    console.log('PASS graphical browser | all screens + 20 encounters | real building / belt corners / rotate / pause | breach -> timed pick -> Core -> Mantle | zoom and pan | renderer state/RNG purity | profile import + recoverable backup | responsive 1440 / 960 / 390 | 8K cache bounds | standalone file:// | screenshots /tmp/deepcore-bedrock-*.png');
+  }finally{ws.close();}
+}
+main().catch(e=>{console.error(e);process.exitCode=1;});

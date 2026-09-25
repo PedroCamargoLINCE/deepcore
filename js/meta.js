@@ -687,6 +687,20 @@
 
   DC.Meta = {
     load, save, newProfile, award, canBuy, buy, effects,
+    // Explicit file transfer between browser origins / offline editions.
+    // Pure validation and the same migration path used by ordinary loading.
+    parseProfile: function (raw) {
+      const p = JSON.parse(raw);
+      if (!p || typeof p !== 'object' || Array.isArray(p) ||
+          !Object.prototype.hasOwnProperty.call(p, 'cores') ||
+          !Object.prototype.hasOwnProperty.call(p, 'upgrades') ||
+          typeof p.cores !== 'number' || !isFinite(p.cores) || p.cores < 0 ||
+          !p.upgrades || typeof p.upgrades !== 'object' || Array.isArray(p.upgrades) ||
+          (typeof p.v === 'number' && p.v > SAVE_V)) {
+        throw new Error('Not a Deepcore profile');
+      }
+      return sanitize(p);
+    },
     // M-RECAP
     SAVE_V, DAILY_HISTORY_MAX,
     dailyKey, dailySeed, dailyEntry, dailyHistory, recordDaily,

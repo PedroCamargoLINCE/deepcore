@@ -8,6 +8,14 @@ workers, verifies, merges) or **THE LABORER** (one brief, one branch). Know whic
 
 ## Current visual direction — director override, 2026-09-09
 
+**New edition, 2026-09-25:** the director requested a completely non-ASCII
+graphical version, specifically naming Papers, Please aesthetically. Read
+`docs/BEDROCK.md`. `graphical.html` uses `js/atelier.js` (pure vector art) and
+`js/graphical.js` (independent world renderer and document UI). This is a third
+edition, not a replacement for Engraved or Classic. Add
+`node test/graphical_test.js` and the isolated Chromium browser acceptance test
+to verification. Never change simulation values to accommodate graphics.
+
 The director requested a COMPLETE aesthetic overhaul, inspired by dense ASCII
 portraiture and phosphor-terminal illustrations, not large Dwarf Fortress-like
 symbols alone. Gameplay and lore are preserved; the old visual layout is not

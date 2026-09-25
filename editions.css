@@ -1,0 +1,99 @@
+/* Shared, text-only edition and profile controls; no map renderer dependency. */
+.edition-tray {
+  position: fixed;
+  top: 8px;
+  left: 10px;
+  z-index: 20;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font: 11px/1.4 Arial,sans-serif;
+}
+.edition-tray[hidden] {
+  display: none;
+}
+.edition-tray a,.edition-tray button {
+  color: #d8d2be;
+  background: #1b2722;
+  border: 1px solid #536357;
+  padding: 6px 9px;
+  border-radius: 3px;
+  text-decoration: none;
+  font: inherit;
+  cursor: pointer;
+}
+.profile-dialog {
+  width: min(520px,calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  border: 1px solid #99a491;
+  border-radius: 5px;
+  padding: 25px;
+  color: #203436;
+  background: #eee9db;
+  font: 14px/1.6 Arial,sans-serif;
+  box-sizing: border-box;
+  box-shadow: 0 20px 80px #0c1c1780;
+}
+.profile-dialog::backdrop {
+  background: #0d211dd9;
+}
+.profile-dialog .profile-heading {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+.profile-dialog h2 {
+  font-size: 23px;
+  margin: 0;
+}
+.profile-dialog p {
+  margin: 17px 0;
+}
+.profile-dialog button {
+  font: 12px/1.4 Arial,sans-serif;
+  border: 1px solid #adb4a0;
+  color: #203436;
+  background: #f8f4e9;
+  padding: 9px 12px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.profile-dialog button:disabled {
+  opacity: .5;
+  cursor: default;
+}
+.profile-dialog .profile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.profile-dialog .profile-import {
+  display: block;
+  border: 1px solid #a6ae9b;
+  padding: 13px;
+  margin: 19px 0;
+  font-weight: bold;
+}
+.profile-dialog input {
+  display: block;
+  margin-top: 10px;
+  font: 12px Arial,sans-serif;
+  max-width: 100%;
+}
+.profile-dialog [data-confirm] {
+  color: #fff4df;
+  background: #914b35;
+  border-color: #914b35;
+  width: 100%;
+}
+.profile-dialog [data-transfer-status] {
+  font-size: 12px;
+  padding: 12px;
+  background: #e1ddcc;
+}
+.profile-dialog button:focus-visible,.profile-dialog input:focus-visible,.edition-tray a:focus-visible,.edition-tray button:focus-visible {
+  outline: 3px solid #cf7d46;
+  outline-offset: 3px;
+}

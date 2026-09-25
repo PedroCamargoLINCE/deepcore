@@ -3,9 +3,32 @@
 Living orientation doc. Any new session should be able to read **this file plus
 the specs** and pick the work up cold — no prior conversation required.
 
-Last updated: 2026-09-25, 1.4 Engraved extension and hybrid strata.
+Last updated: 2026-09-25, Bedrock graphical edition.
 
 ## Current handoff — read this before the historical notes
+
+The director requested a separate fully graphical edition, with no ASCII art,
+and specifically emphasized Papers, Please aesthetically. `graphical.html`
+now runs **Bedrock**: original vector terrain, machines, resource icons,
+illustrated rig/encounters, paper contracts, and a responsive control desk.
+It shares the existing simulation, engine command route, lore and save format.
+`js/atelier.js` and `js/graphical.js` are independent of the old render pipeline.
+Read `docs/BEDROCK.md` before changing it. Build with
+`node tools/build.js --graphical`; Classic and Engraved remain separate builds.
+The title-screen Progress panel explicitly transfers permanent profiles between
+offline file origins, validating imports and retaining the prior profile as a
+recoverable backup. No active-run save or gameplay tuning is added.
+
+Verification now includes `test/graphical_test.js` and
+`test/graphical_browser.js` (isolated Chromium on port 9344 only), alongside
+the original gauntlet and Engraved suite. Browser snapshots cover every screen,
+real map building/belt dragging, breach through the Core into the Mantle,
+zoom/pan, responsive layouts, state/RNG purity, save transfer/backup, and bounded
+caches. All suites pass; all 28 canonical balance outcome rows are byte-identical
+before/after. The evidence for this pass is
+`/tmp/deepcore-graphical-before-balance.txt` and
+`/tmp/deepcore-graphical-after-balance.txt`. All three offline editions build;
+the graphical bundle passes a real `file://` browser load.
 
 Engraved now extends through the contract desk, Foundry tooling, trophy shelf,
 ledger, logbook, all three manual pages, recap and pause screen. The director

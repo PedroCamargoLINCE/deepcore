@@ -136,6 +136,7 @@
     // loop is not throttled, so without it every frame-measured animation
     // would run 2.4x too fast on a 144 Hz display (M-HIRES Phase 0).
     DC.Render.frame(st, now);
+    if (DC.Editions) DC.Editions.frame(st);
   }
 
   // M-GRITPLUS: the smoke break. The sim is frozen while paused, so this is
@@ -1335,5 +1336,15 @@
     return (i >= 0 && i < offers.length) ? i : -1;
   }
 
-  DC.Engine = { start };
+  // Graphical controls use the SAME command route as the keyboard. Keep
+  // tutorial gates, awards, pause semantics and audio in one place.
+  function command(key, options) {
+    options = options || {};
+    let handled = false;
+    onKey({ key: String(key), shiftKey: !!options.shiftKey,
+      ctrlKey: false, metaKey: false, altKey: false, repeat: false,
+      preventDefault: function () { handled = true; } });
+    return handled;
+  }
+  DC.Engine = { start, command };
 })();
