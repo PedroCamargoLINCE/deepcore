@@ -8,6 +8,15 @@ workers, verifies, merges) or **THE LABORER** (one brief, one branch). Know whic
 
 ## Current visual direction — director override, 2026-09-09
 
+**Cockpit correction, 2026-09-25:** the director approved the pixel art but
+rejected the tiny stratum and scrolling drill sidebar. Bedrock now has a
+close working camera, a fixed bottom cockpit with every drill meter/action,
+and on-demand production details. `bedrock-hud.css` owns this run-only layout.
+Do not put Hull, Pressure, feed progress, Overdrive or Descend behind scrolling.
+Keep tutorial targets visible and Dig/Rotate reachable on narrow tool strips.
+Read `docs/BEDROCK.md`; map dimensions, simulation, saves and other editions
+remain unchanged. Browser checks cover notebook HUD bounds and all lessons.
+
 **Pixel-art correction, 2026-09-25:** the director rejected shaded/bevelled
 buttons, generic fonts and primitive vector illustrations. Bedrock now uses
 generated pixel-style drill/GRIT bitmaps, authored palette-grid sprites,

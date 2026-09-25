@@ -58,8 +58,8 @@
   function costText(cost) {
     return Object.keys(cost || {}).map(k => cost[k] + ' ' + D.ITEMS[k].name + (cost[k] !== 1 && /plate$/.test(D.ITEMS[k].name) ? 's' : '')).join(', ');
   }
-  function costShort(cost) {
-    return Object.keys(cost || {}).map(k => cost[k] + ' ' + (k === 'ironPlate' ? 'iron' : k === 'copperPlate' ? 'copper' : D.ITEMS[k].name)).join(' / ');
+  function costIcons(cost) {
+    return Object.keys(cost || {}).map(k => '<span class="price-item">'+cost[k]+icon(k)+'</span>').join('');
   }
   function clean(s) {
     return String(s || '').replace(/[╔╗╚╝═║┌┐└┘─│▓▒░█▌▐▣▪▸»«]/g, '').replace(/◈/g, ' cores ').replace(/¤/g, ' gears ').replace(/‡/g, ' charges ').replace(/≡/g, 'iron').replace(/♠/g, 'coal').replace(/¢/g, 'copper').replace(/♦/g, 'crystal').replace(/\s+/g, ' ').trim();
@@ -100,6 +100,7 @@
   let htmlCache = {}, pointerBusy = false, pan = null, modelCache = {}, pauseOpen = false, pauseFocus = null;
   let reduced = false, frameCalls = 0, terrainBuilds = 0, mapBuilds = 0, lastRun = null, lastDepth = 0, lastCursor = '';
   let portraitImage=null,portraitReady=false,lastTool=null;
+  let detailOpen=false, cameraMode='work', fieldWidth=0, lastLesson='';
   let observed = null, sparks = [], gains = {};
   // View-local event snapshots. Never inspect unrevealed terrain, spend RNG,
   // or invent activity for an idle machine. Tick ages freeze with the sim.
@@ -175,9 +176,12 @@
       trophy: focused.getAttribute('data-trophy')
     } : null;
     const scroll = nodes[id].scrollTop;
+    const belt = id === 'toolbelt' && nodes[id].querySelector('.build-tools');
+    const beltScroll = belt ? belt.scrollLeft : 0;
     nodes[id].innerHTML = html;
     for(const img of nodes[id].querySelectorAll('img[data-grit]'))img.src=gritPortrait;
     nodes[id].scrollTop = scroll;
+    if (belt) nodes[id].querySelector('.build-tools').scrollLeft = beltScroll;
     htmlCache[id] = html;
     if (focus)
       for (const [k, v] of Object.entries(focus))
@@ -212,6 +216,11 @@
       return;
     }
     const a = b.dataset.action;
+    if (a === 'details' || a === 'close-details') {
+      detailOpen = a === 'details' && !detailOpen;
+      if (!detailOpen) nodes['map-controls'].querySelector('[data-action="details"]').focus({preventScroll:true});
+      return;
+    }
     if (a === 'fullscreen') {
       const doc=root.document;
       const task=doc.fullscreenElement ? doc.exitFullscreen() : doc.documentElement.requestFullscreen();
@@ -235,10 +244,15 @@
     if (a === 'zoom-out')
       zoom(1 / 1.3);
     if (a === 'fit') {
+      cameraMode = 'overview';
       camera.zoom = 1;
       camera.x = D.MAP_W / 2;
       camera.y = D.MAP_H / 2;
       lastMapKey = '';
+    }
+    if (a === 'rig-camera' && lastState && lastState.run) {
+      cameraMode = 'work';
+      workCamera(lastState.run);
     }
     if (a === 'context') {
       command('Enter');
@@ -246,6 +260,7 @@
     }
   }
   function zoom(mult) {
+    cameraMode = 'manual';
     camera.zoom = clamp(camera.zoom * mult, 1, 4);
     lastMapKey = '';
   }
@@ -262,6 +277,7 @@
         'workspace',
         'world',
         'operations',
+        'field-notes',
         'toolbelt',
         'statusbar',
         'pages',
@@ -289,6 +305,13 @@
     // Real buttons must keep native Tab/Space/Enter accessibility, without the
     // same key also activating a game-screen shortcut on the window handler.
     nodes.game.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && detailOpen && lastState && lastState.screen === 'run' && !lastState.ui.paused) {
+        detailOpen=false;
+        nodes['map-controls'].querySelector('[data-action="details"]').focus({preventScroll:true});
+        e.stopPropagation();
+        e.preventDefault();
+        return;
+      }
       if (e.target.closest('button,a') && [
           'Tab',
           'Enter',
@@ -313,6 +336,7 @@
       if (e.button !== 0) {
         e.preventDefault();
         e.stopImmediatePropagation();
+        cameraMode = 'manual';
         pan = {
           x: e.clientX,
           y: e.clientY,
@@ -351,7 +375,7 @@
           lastMapKey = '';
         });
     }
-    put('map-controls', action('\u2212', 'zoom-out') + action('Fit', 'fit') + action('+', 'zoom-in'));
+    put('map-controls', action('Rig', 'rig-camera') + action('\u2212', 'zoom-out') + action('Overview', 'fit') + action('+', 'zoom-in') + action('Production', 'details'));
     resize();
   }
   function resize() {
@@ -372,16 +396,44 @@
       spriteCache.clear();
     }
     computeTransform();
+    if (cameraMode === 'work' && lastState && lastState.screen === 'run')
+      workCamera(lastState.run);
     drawScenes();
   }
+  function cameraArea() {
+    // The guide has its own lane: neither it nor the map controls may hide
+    // the machinery or induction targets. Overview uses this same safe area.
+    return { w: Math.max(160, viewport.w - fieldWidth), h: Math.max(100, viewport.h - 66) };
+  }
+  function basePitch() {
+    const a = cameraArea();
+    return Math.max(1, Math.min((a.w - 24) / D.MAP_W, (a.h - 24) / D.MAP_H));
+  }
+  function workCamera(run) {
+    if (!run) return;
+    const a = cameraArea(), lesson = DC.Tutorial.layout(run);
+    const points = [{x:run.hub.x,y:run.hub.y},{x:run.hub.x+3,y:run.hub.y+3}];
+    if (lesson) for (const q of [lesson.target,lesson.from])
+      if (q && visible(run,q.x,q.y)) points.push(q);
+    const xs=points.map(q=>q.x),ys=points.map(q=>q.y);
+    const left=Math.min(...xs),right=Math.max(...xs),top=Math.min(...ys),bottom=Math.max(...ys);
+    // Large working tiles, with enough room around the current lesson.
+    // This is a camera choice, never a change to map dimensions or scanning.
+    const pitch=Math.min(48,Math.max(32,a.h/14),a.w/(right-left+7),a.h/(bottom-top+6));
+    camera.zoom=clamp(pitch/basePitch(),1,4);
+    camera.x=(left+right)/2;
+    camera.y=(top+bottom)/2;
+    lastMapKey='';
+    computeTransform();
+  }
   function computeTransform() {
-    const base = Math.max(1, Math.min((viewport.w - 32) / D.MAP_W, (viewport.h - 64) / D.MAP_H));
+    const area = cameraArea(), base = basePitch();
     const tile = base * camera.zoom, w = D.MAP_W * tile, h = D.MAP_H * tile;
     camera.x = clamp(camera.x, 0, D.MAP_W);
     camera.y = clamp(camera.y, 0, D.MAP_H);
-    let x = viewport.w / 2 - camera.x * tile, y = viewport.h / 2 - camera.y * tile + 7;
-    x = w < viewport.w ? (viewport.w - w) / 2 : clamp(x, viewport.w - w - 10, 10);
-    y = h < viewport.h ? (viewport.h - h) / 2 + 7 : clamp(y, viewport.h - h - 10, 10);
+    let x = area.w / 2 - camera.x * tile, y = area.h / 2 - camera.y * tile + 32;
+    x = w < area.w ? (area.w - w) / 2 : clamp(x, area.w - w - 10, 10);
+    y = h < area.h ? (area.h - h) / 2 + 32 : clamp(y, area.h - h + 22, 32);
     transform = {
       x,
       y,
@@ -500,13 +552,21 @@
       lastDepth = run.depth;
       camera.x = run.hub.x + 1.5;
       camera.y = run.hub.y + 1.5;
+      cameraMode = 'work';
+      lastCursor = '';
+      workCamera(run);
       surfaceKey = '';
       lastMapKey = '';
     }
-    const cp = ui.hover || ui.cursor, cpKey = cp ? cp.x + ',' + cp.y : '';
-    if (camera.zoom > 1 && cp && cpKey !== lastCursor && !ui.hover && !pan) {
-      camera.x = cp.x + 0.5;
-      camera.y = cp.y + 0.5;
+    const cp = ui.hover || ui.cursor, cpKey = ui.cursor ? ui.cursor.x + ',' + ui.cursor.y : '';
+    // A dead zone keeps ordinary keyboard movement steady. Pan only as the
+    // cursor approaches an edge; never recenter because the mouse left a UI.
+    if (camera.zoom > 1 && cp && cpKey !== lastCursor && lastCursor && !ui.hover && !pan) {
+      const a=cameraArea(), px=transform.x+(cp.x+.5)*transform.tile, py=transform.y+(cp.y+.5)*transform.tile;
+      if(px<48)camera.x-=(48-px)/transform.tile;
+      if(px>a.w-48)camera.x+=(px-a.w+48)/transform.tile;
+      if(py<66)camera.y-=(66-py)/transform.tile;
+      if(py>a.h-16)camera.y+=(py-a.h+16)/transform.tile;
     }
     lastCursor = cpKey;
     computeTransform();
@@ -524,6 +584,7 @@
       ui.shakeUntil,
       camera,
       viewport,
+      fieldWidth,
       run.nextId,
       run.gearsFed,
       run.inv.ironPlate
@@ -817,19 +878,24 @@
     const r = st.run, req = r.breachReq, ch = chain(r), fr = modelCache.rate || {};
     const active = r.stats && r.stats.lastFeedT > 0 && r.totalT - r.stats.lastFeedT < 2 * D.TICK_HZ;
     const ready = r.status === 'breachReady', reserve = DC.Sim.departureReserve();
-    const warning = ready ? 'Machines stay on this floor. Take ' + reserve + ' iron plates to build the next base.' : DC.Sim.supplyWarning(r) ? 'No plates. Use Demolish to reclaim a misplaced machine.' : 'Drill gears feed automatically from stock. Belts deliver your production to the rig.';
-    return '<section class="panel rig-panel '+(ready?'ready':r.overdrive?'overdriving':'')+'"><div class="rig-head">' + icon('rig', {
+    const warning = ready ? 'Machines stay here. Pack ' + reserve + ' iron plates for the next floor.' : DC.Sim.supplyWarning(r) ? 'No plates? Reclaim a misplaced machine with X.' : r.overdrive ? D.OVERDRIVE.drillMult + '\u00d7 feed. Pressure rises faster. Keep an eye on the hull.' : 'Gears auto-feed from stock. Deliver production to the rig by belt.';
+    const meter = (label,value,max,cls) => '<div class="cockpit-meter"><div class="meter-label"><span>'+label+'</span><strong>'+value+(label==='Pressure'?'%':'<small> / '+max+'</small>')+'</strong></div>'+bar(value,max,cls).replace('role="meter"','role="meter" aria-label="'+label+'"')+'</div>';
+    return '<section class="rig-panel '+(ready?'ready':r.overdrive?'overdriving':'')+'"><div class="rig-head">' + icon('rig', {
       active: !!active,
       upgrades: st.meta.upgrades,
       accent: livery(st.meta)
-    }) + '<div><div class="eyebrow">Your digging machine</div><h3>' + (ready ? 'BREACH READY!' : r.overdrive ? 'OVERDRIVE!' : 'FEED THE DRILL') + '</h3></div></div>' + '<div class="meters"><div><div class="meter-label"><span>Hull</span><strong>' + Math.max(0, Math.ceil(r.integrity)) + '<small> / ' + r.maxIntegrity + '</small></strong></div>' + bar(r.integrity, r.maxIntegrity, r.integrity < 30 ? 'warn' : '') + '</div><div><div class="meter-label"><span>Pressure</span><strong>' + Math.floor(r.instability) + '%</strong></div>' + bar(r.instability, 100, r.instability >= D.QUAKE.startInst ? 'warn' : '') + '</div></div>' + '<div class="drill-meter"><div class="meter-label"><span>Drill gears</span><strong>' + r.gearsFed + ' / ' + req.gear + '</strong></div>' + bar(r.gearsFed, req.gear, 'gold') + '</div>' + (req.charge ? '<div class="drill-meter"><div class="meter-label"><span>Core charges</span><strong>' + r.chargesFed + ' / ' + req.charge + '</strong></div>' + bar(r.chargesFed, req.charge, 'gold') + '</div>' : '') + '<div class="row between small muted"><span>Feed ' + (fr.gearPerSec || 0).toFixed(1) + ' gears/s' + (req.charge ? ' \xB7 ' + (fr.chargePerSec || 0).toFixed(1) + ' charges/s' : '') + '</span><span>' + (ready ? 'Ready' : ch.breachSec != null && isFinite(ch.breachSec) ? '~' + time(ch.breachSec) : 'Awaiting feed') + '</span></div>' + '<div class="drill-actions">' + button(r.overdrive ? 'Overdrive on' : 'Overdrive', 'c', r.overdrive ? 'selected' : '') + button('Descend', 'd', 'primary', !ready) + '</div><p class="supply-note">' + esc(warning) + '</p></section>';
+    }) + '<div><div class="eyebrow">Drill control</div><h3>' + (ready ? 'BREACH READY!' : r.overdrive ? 'OVERDRIVE!' : 'FEED THE DRILL') + '</h3></div></div>' +
+      '<div class="rig-health">'+meter('Hull',Math.max(0,Math.ceil(r.integrity)),r.maxIntegrity,r.integrity<30?'warn':'')+meter('Pressure',Math.floor(r.instability),100,r.instability>=D.QUAKE.startInst?'warn':'pressure')+'</div>'+
+      '<div class="rig-feed">'+meter('Drill gears',r.gearsFed,req.gear,'gold')+(req.charge?meter('Core charges',r.chargesFed,req.charge,'charge'):'')+'</div>'+
+      '<div class="drill-actions">'+button(r.overdrive?'Overdrive ON':'Overdrive','c',r.overdrive?'selected':'')+button('Descend','d','primary',!ready)+'</div>'+
+      '<div class="rig-readout"><span class="feed-rate">'+(ready?'READY TO BREACH':(fr.gearPerSec||0).toFixed(1)+' gears/s'+(req.charge?' · '+(fr.chargePerSec||0).toFixed(1)+' charges/s':'')+(ch.breachSec!=null&&isFinite(ch.breachSec)?' · ~'+time(ch.breachSec):''))+'</span><span>'+esc(warning)+'</span></div></section>';
   }
   function tutorial(st) {
     const T = DC.Tutorial, r = st.run;
     if (!T.active(r) || !T.layout(r))
       return '';
     const spans = list => (list || []).map(s => s[0] === 'cap' ? '<kbd>' + esc(clean(s[1])) + '</kbd>' : esc(clean(s[1])) + ' ').join('');
-    return '<section class="panel tutor"><div class="row">' + icon('grit', { talking: true }) + '<div><div class="eyebrow">Operator induction</div><h3>' + esc(clean(T.title(r))) + '</h3></div></div><p>' + esc(T.line(r)) + '</p><div class="tutor-action">' + spans(T.action(r)) + '</div><div class="tutor-warning">' + spans(T.warn(r)) + '</div><div class="small muted">' + spans(T.foot(r)) + '</div>' + '<div class="lesson">' + T.stamps(r).map(s => '<i class="' + (s.done ? 'done' : s.cur ? 'current' : '') + '"></i>').join('') + '</div><div style="margin-top:10px">' + button('Skip induction', D.TUTORIAL.skipKey, 'quiet') + '</div></section>';
+    return '<section class="panel tutor"><div class="row">' + icon('grit', { talking: true }) + '<div><div class="eyebrow">Grit / field radio</div><h3>' + esc(clean(T.title(r))) + '</h3></div></div><p>' + esc(T.line(r)) + '</p><div class="tutor-action">' + spans(T.action(r)) + '</div><div class="tutor-warning">' + spans(T.warn(r)) + '</div><div class="small muted">' + spans(T.foot(r)) + '</div>' + '<div class="lesson">' + T.stamps(r).map(s => '<i class="' + (s.done ? 'done' : s.cur ? 'current' : '') + '"></i>').join('') + '</div><div class="lesson-footer">' + button('Skip induction', D.TUTORIAL.skipKey, 'quiet') + '</div></section>';
   }
   function chainPanel(st) {
     const r = st.run, c = chain(r), tabs = [
@@ -893,16 +959,31 @@
   }
   function toolbelt(st) {
     const r = st.run, u = st.ui;
-    return D.BUILD_ORDER.filter(id => DC.Sim.unlocked(r, id)).map(id => {
+    return '<div class="build-tools">'+D.BUILD_ORDER.filter(id => DC.Sim.unlocked(r, id)).map(id => {
       const b = D.BUILDINGS[id], free = id === 'belt' && r.mods.beltFree, afford = free || Object.keys(b.cost).every(k => (r.inv[k] || 0) >= b.cost[k]);
-      return '<button class="tool ' + (u.tool === id ? 'selected ' : '') + (!afford ? 'unaffordable' : '') + '" data-key="' + b.key + '" aria-pressed="' + (u.tool === id) + '" title="' + esc(b.desc + ' Cost: ' + (free ? 'free' : costText(b.cost))) + '">' + icon(id) + '<span class="tool-name">' + esc(b.name) + '</span><span class="cost">' + (free ? 'Free' : esc(costShort(b.cost))) + '</span><kbd>' + b.key + '</kbd></button>';
-    }).join('') + '<div class="tool-group">' + action(icon('inspect') + 'Inspect', 'inspect', u.tool ? '' : 'selected') + '<button data-key="x" class="' + (u.tool === 'demolish' ? 'selected' : '') + '">' + icon('demolish') + 'Dig / reclaim <kbd>X</kbd></button><button data-key="r" title="Rotate output direction">' + icon('rotate') + directions[u.facing] + ' <kbd>R</kbd></button></div>';
+      return '<button class="tool ' + (u.tool === id ? 'selected ' : '') + (!afford ? 'unaffordable' : '') + '" data-key="' + b.key + '" aria-pressed="' + (u.tool === id) + '" title="' + esc(b.desc + ' Cost: ' + (free ? 'free' : costText(b.cost))) + '">' + icon(id) + '<span class="tool-name">' + esc(b.name) + '</span><span class="cost" aria-label="Cost: '+esc(free?'free':costText(b.cost))+'">' + (free ? 'Free' : costIcons(b.cost)) + '</span><kbd>' + b.key + '</kbd></button>';
+    }).join('') + '</div><div class="tool-group">' + action(icon('inspect') + 'Inspect', 'inspect', u.tool ? '' : 'selected') + '<button data-key="x" class="' + (u.tool === 'demolish' ? 'selected' : '') + '">' + icon('demolish') + 'Dig / reclaim <kbd>X</kbd></button><button data-key="r" title="Rotate output direction">' + icon('rotate') + directions[u.facing] + ' <kbd>R</kbd></button></div>';
   }
   function runUI(st) {
     const r = st.run, s = strata(r.depth), mut = DC.Sim.mutatorOf(r);
-    const inspecting = !!st.ui.tool;
+    if (lastRun!==r || lastDepth!==r.depth) { detailOpen=false; lastLesson=''; }
+    const lesson=tutorial(st);
     put('resources', resources(st));
-    put('operations', rigPanel(st) + tutorial(st) + (inspecting ? inspector(st) : '') + chainPanel(st) + (!inspecting ? inspector(st) : '') + foreman(st));
+    put('operations', rigPanel(st));
+    const detail=detailOpen?'<div class="detail-heading"><span class="eyebrow">Shift information</span>'+action('Close','close-details')+'</div>'+chainPanel(st):'';
+    put('field-notes', detail || lesson || inspector(st) + foreman(st));
+    const field=nodes['field-notes'];
+    field.classList.toggle('show-detail',detailOpen);
+    field.classList.toggle('teaching',!!lesson&&!detailOpen);
+    const priorWidth=fieldWidth;
+    const fieldRect=field.getBoundingClientRect();
+    fieldWidth=fieldRect.width?fieldRect.width+24:0;
+    const lessonKey=lesson?DC.Tutorial.title(r):'';
+    if(cameraMode==='work'&&(priorWidth!==fieldWidth||lessonKey!==lastLesson))workCamera(r);
+    lastLesson=lessonKey;
+    const detailsButton=nodes['map-controls'].querySelector('[data-action="details"]');
+    detailsButton.setAttribute('aria-expanded',String(detailOpen));
+    detailsButton.setAttribute('aria-controls','field-notes');
     put('toolbelt', toolbelt(st));
     // A scrollable belt keeps names and prices readable on a small display.
     // Reveal a keyboard-selected tool once; do not fight manual scrolling.

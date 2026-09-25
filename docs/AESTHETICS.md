@@ -9,7 +9,9 @@ Subsequent feedback rejected an institutional/website look: Bedrock now uses
 a colorful pixel-art game and full-screen cavern presentation. Bedrock's later
 pixel-art correction replaces shaded controls and primitive vector icons with
 flat controls, Pixelify Sans, palette-grid sprites and generated drill/GRIT
-illustrations. Paper is an
+illustrations. The cockpit revision enlarges the working camera and moves all
+drill essentials into a fixed bottom HUD, with production details on demand.
+Paper is an
 in-world prop, not the overall interface. The browser is the game's host.
 Read `docs/BEDROCK.md` for its art direction, architecture, controls, save
 transfer and verification. Engraved and Classic remain available and unchanged

@@ -3,9 +3,31 @@
 Living orientation doc. Any new session should be able to read **this file plus
 the specs** and pick the work up cold — no prior conversation required.
 
-Last updated: 2026-09-25, Bedrock pixel-art correction.
+Last updated: 2026-09-25, Bedrock cockpit and working camera.
 
 ## Current handoff — read this before the historical notes
+
+The director loves the new art but wanted a larger stratum and a game HUD
+without scrolling to reach drill controls. That revision is implemented:
+
+- `bedrock-hud.css` owns the run-only viewport layout; menus remain unchanged.
+- A fixed bottom cockpit keeps Hull, Pressure, gears/charges, feed rate,
+  Overdrive, Descend and supply/departure advice visible together.
+- The camera starts close to the rig and includes induction targets. Rig
+  restores working scale, Overview fits the full floor, wheel/right-drag keep
+  manual control. Keyboard panning has a dead zone. Actual map size is unchanged.
+- Field radio/inspection gets a reserved camera lane. Production opens
+  Chain/Loadout/Journal; Escape closes that detail without leaving the run.
+- Sprite prices keep build buttons compact. Inspect, Dig and Rotate stay
+  pinned; the tool strip alone scrolls and retains its position on updates.
+
+All nine suites pass, including new browser layout/lesson/camera checks.
+Notebook, desktop and narrow-window screenshots were reviewed. All 28 canonical
+balance rows are unchanged (`/tmp/deepcore-hud-before-balance.txt` and
+`/tmp/deepcore-hud-after-balance.txt`). Three standalone editions build. No
+simulation, progression, save, Classic or Engraved changes were required.
+
+### Pixel-art direction (still current)
 
 The director approved authored-looking pixel art and prefers actual generated
 illustration assets to primitive vector drawings. The current Bedrock pass

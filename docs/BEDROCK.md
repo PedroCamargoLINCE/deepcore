@@ -41,11 +41,15 @@ colorful upgrade picks. The graphical Dwarf Fortress release informs the
 separation of an illustrated world from its unchanged simulation. Artwork is
 original, not copied assets from those games.
 
-Visual hierarchy is deliberate: the stratum is the largest surface; the rig's
-condition and breach progress remain primary; a persistent stock strip answers
-what you own; the toolbelt answers what you can build. Detail is grouped into
-Chain, Loadout and Journal tabs. The tutorial lives on the desk and highlights
-its actual map targets without covering them.
+Visual hierarchy is deliberate: the stratum is the largest surface, viewed
+through a close working camera instead of fitting the entire floor by default.
+A fixed bottom cockpit shows Hull, Pressure, gears, charges, feed rate,
+Overdrive and Descend together, without scrolling. The stock strip and tool
+rail are compact; prices use the actual mineral sprites. Inspect, Dig/reclaim
+and Rotate remain pinned while the build-tool strip can scroll horizontally.
+Chain, Loadout and Journal open through **Production**; Close or Escape returns
+to the field guide. GRIT's induction radio and contextual inspection occupy a
+reserved camera lane. The camera keeps the rig and lesson targets clear of it.
 
 Terrain uses square tiles, connected wall edges, distinct materials for eight
 biomes, physical ore silhouettes, rail-like belts, and machine sprites with
@@ -76,19 +80,24 @@ CRT overlay, or glyph-rendered terrain is used by this edition.
   its standalone build embeds them. `art.js` remains loaded for shared tutorial/manual
   metadata and the engine's existing descent-duration contract; its ASCII
   illustrations are never rendered.
+- `bedrock-hud.css`: the viewport-sized in-game cockpit, loaded after the
+  existing menu styles. Its run-only overrides leave title, contracts, Foundry
+  and the other editions alone. It is embedded by the ordinary offline build.
 - `Engine.command(key)`: graphical buttons enter the same route as keyboard
   commands. The existing simulation, gates, tutorial, awards and input actions
   remain authoritative. Canvas hits map back to the unchanged logical tiles.
 - The corner fullscreen control enters/exits browser fullscreen through a real
   user gesture. It is only offered where the host exposes the capability.
-- Mouse wheel zooms; right/middle drag pans; Fit restores the full stratum.
-  Keyboard movement brings the cursor into view when zoomed. Original gameplay
-  keys remain valid. Native buttons retain focus and keyboard activation.
-- The interface adapts to narrower windows; the map can be magnified instead of
-  shrinking important controls. Short/narrow displays scroll the operations
-  desk and toolbelt. Selecting an offscreen tool by keyboard brings it into
-  view. Long prices wrap inside their controls. This remains a desktop-first
-  factory game.
+- Mouse wheel zooms; right/middle drag pans; **Overview** fits the full stratum;
+  **Rig** restores the close working view. New floors start at working scale.
+  Induction framing includes both endpoints of a lesson, using revealed
+  positions only. Manual zoom/pan is respected. Keyboard movement uses a
+  camera dead zone instead of snapping to the cursor on every step.
+- The interface adapts to narrower windows without scrolling the drill
+  cockpit. Selecting an offscreen tool by keyboard reveals it; affordability
+  updates preserve that scroll position. Supplemental journal/loadout content
+  may scroll, but drill controls and readouts do not. Native buttons retain
+  focus and keyboard activation. This remains a desktop-first factory game.
 
 ## Save safety
 
@@ -173,3 +182,12 @@ contract wrapping and keyboard-selected tools on narrow displays. All 28
 canonical outcome rows match the pre-pixel baseline. Evidence:
 `/tmp/deepcore-pixel-before-balance.txt` and
 `/tmp/deepcore-pixel-after-balance.txt`.
+
+The cockpit revision repeats the complete gate. Browser acceptance checks
+non-scrolling primary HUD bounds at 1920×1080, 1366×768, 1280×720, 960×700,
+800×600 and 390×844; all nine induction states fit with unobscured targets at
+the three notebook sizes. It also tests working/overview camera controls,
+production tabs and Escape, pinned utility tools, and strip scroll retention.
+Desktop, notebook and narrow-window screenshots were visually reviewed.
+All 28 balance outcomes match `/tmp/deepcore-hud-before-balance.txt` versus
+`/tmp/deepcore-hud-after-balance.txt`. No simulation, map-size or save changes.

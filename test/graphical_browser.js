@@ -19,6 +19,20 @@ async function main(){
   const click=async selector=>{const p=await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)return null;const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);assert(p,'click target '+selector);await send('Input.dispatchMouseEvent',{type:'mouseMoved',...p});await send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,...p});await send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,...p});await delay(60);};
   const shot=async name=>{await delay(60);const r=await send('Page.captureScreenshot',{format:'png'});fs.writeFileSync('/tmp/deepcore-bedrock-'+name+'.png',Buffer.from(r.data,'base64'));};
   const size=async(w,h,dpr=1)=>{await send('Emulation.setDeviceMetricsOverride',{width:w,height:h,deviceScaleFactor:dpr,mobile:false});await delay(160);await evaluate('DC.Render.resize()');};
+  const cockpit=async label=>{
+    const result=await evaluate(`(()=>{
+      const op=document.querySelector('#operations'),box=op.getBoundingClientRect();
+      const visible=e=>{const r=e.getBoundingClientRect();return r.width>0&&r.left>=0&&r.right<=innerWidth+1&&r.top>=box.top&&r.bottom<=box.bottom+1};
+      return {scroll:op.scrollHeight>op.clientHeight+1,overflow:document.documentElement.scrollHeight>innerHeight+1,
+        meters:[...op.querySelectorAll('[role="meter"]')].every(visible),
+        controls:[...op.querySelectorAll('button')].every(visible),
+        readout:visible(op.querySelector('.rig-readout')),
+        tools:[...document.querySelectorAll('.tool-group button')].every(e=>{const r=e.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth+1&&r.bottom<=innerHeight}),
+        tile:DC.Render.debug().transform.tile};
+    })()`);
+    assert(!result.scroll&&!result.overflow&&result.meters&&result.controls&&result.readout&&result.tools,label+' cockpit needs no scrolling: '+JSON.stringify(result));
+    return result;
+  };
   try{
     await send('Runtime.enable');await send('Page.enable');
     await send('Page.navigate',{url:base+'graphical.html'});await delay(650);
@@ -44,6 +58,25 @@ async function main(){
     assert.strictEqual(await evaluate('DC.state.screen'),'run');await shot('induction');
     assert(await evaluate('DC.Tutorial.active(DC.state.run)&&!!document.querySelector(".tutor")'),'fresh profile sees the actual induction lesson');
     await waitFor('[...document.querySelectorAll(".grit-portrait img")].every(i=>i.complete&&i.naturalWidth>0)','GRIT bitmap decoded');
+    for(const [w,h] of [[1366,768],[1280,720],[960,700]]){
+      await size(w,h);const hud=await cockpit(w+'x'+h);
+      assert(hud.tile>=23,'default camera shows readable machinery at '+w+'x'+h);
+      const failures=await evaluate(`(()=>{
+        const s=DC.state,original=s.run.tutorial.i,fail=[];
+        for(let i=0;i<9;i++){
+          s.run.tutorial.i=i;DC.Render.frame(s,performance.now());
+          const p=document.querySelector('#field-notes');
+          if(p.scrollHeight>p.clientHeight+1)fail.push('lesson '+i+' scrolls');
+          const l=DC.Tutorial.layout(s.run),t=DC.Render.debug().transform,c=document.querySelector('#screen').getBoundingClientRect(),f=p.getBoundingClientRect();
+          for(const q of [l&&l.target,l&&l.from])if(q){const x=c.x+t.x+(q.x+.5)*t.tile,y=c.y+t.y+(q.y+.5)*t.tile;
+            if(x<c.left||x>f.left-6||y<c.top+30||y>c.bottom-40)fail.push('lesson '+i+' obscures target');}
+        }
+        s.run.tutorial.i=original;DC.Render.frame(s,performance.now());return fail;
+      })()`);
+      assert.deepStrictEqual(failures,[],'all induction lessons fit at '+w+'x'+h);
+      if(w===1280)await shot('induction-laptop');
+    }
+    await size(1440,960);
     await key('Tab');
     // Isolated fixture, never the user's profile. Stop simulation for stable
     // screenshots, but keep the real frame/input loop and Engine handlers.
@@ -99,6 +132,16 @@ async function main(){
     await clickTile(28,17,'mousePressed','right');await clickTile(29,17,'mouseMoved','right');await clickTile(29,17,'mouseReleased','right');
     assert.strictEqual(await evaluate('DC.state.run.inv.ironPlate'),panStock,'right-drag pans without placing a belt');
     await click('#map-controls button[data-action="fit"]');
+    const fitTile=await evaluate('DC.Render.debug().transform.tile');
+    await click('#map-controls button[data-action="rig-camera"]');
+    assert(await evaluate('DC.Render.debug().transform.tile')>fitTile*1.3,'Rig restores the close working camera');
+    const detailPurity=await evaluate('JSON.stringify([DC.state.run,DC.state.meta])');
+    await click('#map-controls button[data-action="details"]');
+    assert(await evaluate('document.querySelector("#field-notes .tabs")&&document.querySelector("[data-action=details]").getAttribute("aria-expanded")==="true"'),'production opens on demand');
+    for(const tab of ['loadout','journal','chain'])await click('#field-notes [data-action="tab:'+tab+'"]');
+    await shot('production');await key('Escape');
+    assert.strictEqual(await evaluate('document.querySelector("[data-action=details]").getAttribute("aria-expanded")'),'false','Escape closes details, not the run');
+    assert.strictEqual(await evaluate('JSON.stringify([DC.state.run,DC.state.meta])'),detailPurity,'camera/details leave simulation and profile unchanged');
     // Direct frame calls cannot touch a run's RNG, even on victory/recap.
     const purity=await evaluate(`(()=>{const s=DC.state,fn=s.run.rng,original=s.screen;s.run.rng=()=>{throw new Error('render spent sim RNG')};const before=JSON.stringify([s.run,s.meta]);try{for(const name of ['run','foundry','contract','help','trophies','ledger','logbook','victory','gameover','recap']){s.screen=name;DC.Render.frame(s,performance.now())}return before===JSON.stringify([s.run,s.meta])}finally{s.run.rng=fn;s.screen=original;DC.Render.frame(s,performance.now())}})()`);
     assert(purity,'real renderer leaves gameplay and progression byte-identical');
@@ -134,17 +177,25 @@ async function main(){
     await click('#pages button[data-key="c"]');assert.strictEqual(await evaluate('DC.state.screen'),'descend');await delay(transit+250);
     await click('#pages button[data-key="1"]');if(await evaluate('DC.state.screen')==='vignette')await click('#pages button[data-key="1"]');
     assert(await evaluate('DC.state.run.mantle&&DC.state.run.depth===9&&DC.state.screen==="run"'),'graphical journey continues into the real Mantle');
+    for(const [w,h] of [[1920,1080],[1366,768],[1280,720],[800,600]]){
+      await size(w,h);await cockpit('late-game '+w+'x'+h);
+      assert.strictEqual(await evaluate('document.querySelectorAll("#operations [role=meter]").length'),4,'late-game charges remain on the cockpit');
+      if(w===1280)await shot('cockpit-laptop');
+    }
     await size(960,700,2);await shot('factory-small');
     assert(await evaluate('[...document.querySelectorAll(".tool .cost")].every(e=>e.getBoundingClientRect().bottom<=e.closest(".tool").getBoundingClientRect().bottom)'),'long tool prices fit inside their controls');
     await key('0');
     assert(await evaluate('(()=>{const t=document.querySelector(".tool.selected").getBoundingClientRect(),b=document.querySelector("#toolbelt").getBoundingClientRect();return t.left>=b.left&&t.right<=b.right})()'),'keyboard selection reveals an offscreen tool');
+    const beltScroll=await evaluate('document.querySelector(".build-tools").scrollLeft');
+    await evaluate('DC.state.run.inv.ironPlate=0;DC.Render.frame(DC.state,performance.now())');
+    assert.strictEqual(await evaluate('document.querySelector(".build-tools").scrollLeft'),beltScroll,'inventory/affordability updates preserve tool strip position');
     await send('Emulation.setEmulatedMedia',{media:'screen',features:[{name:'prefers-reduced-motion',value:'reduce'}]});
     await waitFor('matchMedia("(prefers-reduced-motion: reduce)").matches&&DC.Render.debug().reduced','reduced motion preference applied');
     await evaluate('DC.state.run.t+=7;DC.Render.frame(DC.state,performance.now());DC.state.run.gearsFed++;DC.state.run.t++;DC.Render.frame(DC.state,performance.now())');
     assert.strictEqual(await evaluate('DC.Render.debug().feedback.length'),0,'reduced motion suppresses new particles');
     await send('Emulation.setEmulatedMedia',{features:[]});
     const overflow=await evaluate('({w:innerWidth,doc:document.documentElement.scrollWidth,body:document.body.scrollWidth})');assert(overflow.doc<=overflow.w&&overflow.body<=overflow.w,'no page horizontal overflow');
-    await size(390,844,2);await shot('factory-mobile');
+    await size(390,844,2);await cockpit('narrow 390x844');await shot('factory-mobile');
     await evaluate('DC.state.screen="contract";DC.Render.frame(DC.state,performance.now())');await shot('contract-mobile');
     assert(await evaluate('[...document.querySelectorAll(".permit")].every(e=>e.getBoundingClientRect().right<=innerWidth)'),'all permits fit on mobile');
     await evaluate('DC.state.screen="title";DC.Render.frame(DC.state,performance.now())');await shot('title-mobile');

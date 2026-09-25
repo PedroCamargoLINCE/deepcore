@@ -1,0 +1,142 @@
+/* Bedrock's in-game cockpit. Menus retain graphical.css; the playfield gets
+   its own compact, viewport-sized layout instead of the old scrolling desk. */
+#game[data-screen="run"] {
+  min-height: 0;
+  height: 100dvh;
+  grid-template-rows: 46px 48px minmax(0,1fr) 108px 86px 24px;
+  overflow: hidden;
+}
+#game:not([data-screen="run"]) > #operations { display: none; }
+#game[data-screen="run"] #topbar { padding: 0 14px; gap: 18px; border-bottom: 2px solid #10181e; }
+#game[data-screen="run"] .wordmark { font-size: 18px; }
+#game[data-screen="run"] .wordmark small { display: none; }
+#game[data-screen="run"] .location { display: flex; align-items: baseline; gap: 12px; padding-left: 18px; }
+#game[data-screen="run"] .location .eyebrow { letter-spacing: 1px; }
+#game[data-screen="run"] .top-actions button { padding: 4px 8px; min-height: 30px; }
+#game[data-screen="run"] #resources { padding: 4px 14px; gap: 0; background: #202831; border-bottom: 2px solid #10181e; }
+#game[data-screen="run"] .resource { flex-direction: row; padding: 0 12px; gap: 8px; border: 0; border-right: 1px solid #465057; background: transparent; }
+#game[data-screen="run"] .resource:last-child { border-right: 0; }
+#game[data-screen="run"] .resource > div { display: flex; flex-direction: row-reverse; align-items: center; justify-content: space-between; gap: 8px; flex: 1; }
+#game[data-screen="run"] .resource b { font-size: 22px; }
+#game[data-screen="run"] .resource .icon { width: 30px; height: 30px; }
+#game[data-screen="run"] .resource .label { white-space: normal; line-height: 1.05; margin: 0; max-width: 55px; }
+#game[data-screen="run"] .resource.gained { background: #3c4b39; }
+#game[data-screen="run"] #workspace { display: block; padding: 0; min-width: 0; }
+#game[data-screen="run"] #world { width: 100%; height: 100%; border: 0; border-bottom: 3px solid #69878a; }
+#game[data-screen="run"] #map-caption { top: 8px; left: 14px; padding: 4px 8px; font-size: 12px; line-height: 1.25; background: #0b152b; }
+#game[data-screen="run"] #map-caption b { display: inline; margin-right: 10px; color: #9bbcc5; }
+#game[data-screen="run"] #map-controls { left: 14px; right: auto; bottom: 10px; gap: 4px; }
+#game[data-screen="run"] #map-controls button { padding: 5px 10px; min-height: 32px; border-color: #496170; background: #26353f; }
+#game[data-screen="run"] #map-controls button[aria-expanded="true"] { color: #17232a; background: var(--gold); border-color: var(--gold); }
+#field-notes { position: absolute; right: 12px; top: 12px; width: 264px; max-height: calc(100% - 24px); overflow: auto; scrollbar-width: thin; }
+#field-notes .panel { background: #25323b; border: 0; border-top: 3px solid #66858b; padding: 12px 14px; }
+#field-notes h3 { font-size: 17px; line-height: 1.15; margin: 0; }
+#field-notes .eyebrow { font-size: 12px; letter-spacing: 1px; margin: 0 0 4px; }
+#field-notes p { font-size: 14px; line-height: 1.35; }
+#field-notes .inspection p { margin-top: 6px; color: #c5d2cf; }
+#field-notes .inspection .row { gap: 10px; padding-bottom: 8px; border-bottom: 1px solid #506268; }
+#field-notes .inspection .icon { width: 40px; height: 40px; }
+#field-notes .inspection button { padding: 5px 10px; font-size: 13px; }
+#field-notes .tutor { border-color: var(--gold); border-left: 0; }
+#field-notes .tutor .row { gap: 12px; margin-bottom: 10px; }
+#field-notes .tutor .icon { width: 50px; height: 58px; }
+#field-notes .tutor-action { font-size: 15px; line-height: 1.45; margin: 10px 0; padding: 8px; background: #35494b; border-left: 2px solid var(--gold); }
+#field-notes .tutor-warning { font-size: 13px; line-height: 1.35; margin: 6px 0; }
+#field-notes .lesson { margin-top: 10px; }
+#field-notes .lesson-footer { margin-top: 10px; }
+#field-notes .lesson-footer button { font-size: 12px; padding: 4px 8px; }
+#field-notes .foreman { display: grid; margin-top: 8px; padding: 10px; background: #1d2a32; border: 0; border-left: 3px solid #769c91; grid-template-columns: 38px 1fr; gap: 10px; }
+#field-notes .foreman .icon { width: 38px; height: 46px; }
+#field-notes .foreman p { font-size: 13px; }
+#field-notes .detail-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; background: #354950; }
+#field-notes .detail-heading button { font-size: 12px; padding: 4px 8px; }
+#field-notes .detail-heading .eyebrow { margin: 0; }
+#field-notes .tabs { gap: 4px; }
+#field-notes .tabs button { padding: 5px 3px; }
+#field-notes .tabs button.active { background: #405858; }
+#field-notes .loadout .row { align-items: start; margin: 12px 0; }
+#game[data-screen="run"] #operations { overflow: visible; display: block; padding: 0; min-width: 0; background: #28343b; border-bottom: 1px solid #526269; }
+#game[data-screen="run"] .rig-panel { height: 100%; padding: 10px 14px 0; display: grid; grid-template-columns: 198px minmax(160px,1fr) minmax(180px,1.4fr) 262px; grid-template-rows: 58px 29px; gap: 0 24px; border: 0; background: transparent; }
+#game[data-screen="run"] .rig-head { gap: 10px; }
+#game[data-screen="run"] .rig-head .icon { width: 46px; height: 46px; }
+#game[data-screen="run"] .rig-head h3 { font-size: 17px; margin: 0; color: var(--gold); line-height: 1.15; }
+#game[data-screen="run"] .rig-head .eyebrow { margin: 0 0 4px; font-size: 12px; letter-spacing: 1px; }
+.rig-health,.rig-feed { display: grid; gap: 5px; align-content: center; }
+.cockpit-meter { min-width: 0; }
+#game[data-screen="run"] .meter-label { font-size: 13px; line-height: 1.1; margin-bottom: 3px; gap: 8px; }
+#game[data-screen="run"] .meter-label strong { font-size: 14px; white-space: nowrap; }
+#game[data-screen="run"] .meter-label small { font-size: 12px; color: #a3b6b6; }
+#game[data-screen="run"] .progress { height: 6px; border: 0; background: #14232c; }
+#game[data-screen="run"] .rig-feed:has(> :only-child) .progress { height: 12px; }
+#game[data-screen="run"] .progress.pressure i { background: #d29669; }
+#game[data-screen="run"] .progress.charge i { background: #c7a0e7; }
+#game[data-screen="run"] .drill-actions { margin: 0; align-items: center; gap: 8px; }
+#game[data-screen="run"] .drill-actions button { min-height: 42px; padding: 6px 10px; font-size: 14px; }
+#game[data-screen="run"] .rig-readout { grid-column: 1/-1; display: flex; gap: 20px; align-items: center; border-top: 1px solid #455961; font-size: 13px; line-height: 1.15; color: #b8cbca; }
+.rig-readout .feed-rate { color: #f4cf83; white-space: nowrap; }
+#game[data-screen="run"] .rig-panel.ready { border-top: 3px solid #9ac4ae; padding-top: 7px; }
+#game[data-screen="run"] .rig-panel.ready .rig-head h3 { color: #afeac6; }
+#game[data-screen="run"] .rig-panel.overdriving { border-top: 3px solid #e99678; padding-top: 7px; }
+#game[data-screen="run"] #toolbelt { gap: 6px; padding: 6px 14px; overflow: hidden; background: #1e292f; }
+.build-tools { display: flex; flex: 1; gap: 5px; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
+#game[data-screen="run"] .tool { min-width: 91px; max-width: 126px; flex: 1 0 91px; grid-template-columns: 1fr; grid-template-rows: 25px 14px 1fr; justify-items: center; text-align: center; gap: 0; padding: 3px 5px; border-width: 1px; background: #2b3b43; }
+#game[data-screen="run"] .tool .icon { grid-row: 1; width: 25px; height: 25px; }
+#game[data-screen="run"] .tool .tool-name { align-self: center; font-size: 12px; line-height: 1.05; white-space: nowrap; }
+#game[data-screen="run"] .tool .cost { grid-column: 1/-1; width: 100%; font-size: 12px; line-height: 1.05; white-space: normal; align-self: center; color: #a9bdc1; }
+#game[data-screen="run"] .tool .cost { display: flex; justify-content: center; gap: 8px; }
+.price-item { display: inline-flex; gap: 3px; align-items: center; }
+#game[data-screen="run"] .tool .cost .icon { width: 16px; height: 14px; }
+#game[data-screen="run"] .tool kbd { top: 2px; left: 2px; font-size: 12px; border: 0; background: #15242c; }
+#game[data-screen="run"] .tool.selected { border-color: #f4c96b; background: #4b554a; outline: 1px solid #f4c96b; outline-offset: -2px; }
+#game[data-screen="run"] .tool.unaffordable .cost { color: #e99678; }
+#game[data-screen="run"] .tool-group { padding-left: 6px; gap: 5px; flex: none; }
+#game[data-screen="run"] .tool-group button { min-width: 58px; padding: 4px 6px; font-size: 12px; line-height: 1; gap: 3px; }
+#game[data-screen="run"] .tool-group .icon { width: 20px; height: 20px; }
+#game[data-screen="run"] .tool-group kbd { padding: 0 3px; }
+#game[data-screen="run"] #statusbar { padding: 0 14px; background: #15222a; border: 0; font-size: 12px; }
+@media(max-width:1100px) {
+  #game[data-screen="run"] .rig-panel { grid-template-columns: 48px minmax(155px,1fr) minmax(170px,1.4fr) 248px; column-gap: 18px; }
+  #game[data-screen="run"] .rig-head > div { display: none; }
+  #game[data-screen="run"] .resource { padding: 0 8px; }
+  #game[data-screen="run"] .resource .label { display: none; }
+  #game[data-screen="run"] .resource > div { flex-direction: row; }
+  #game[data-screen="run"] .location h3 { display: none; }
+  #field-notes { width: 240px; }
+}
+@media(max-width:700px) {
+  #game[data-screen="run"] { grid-template-rows: 42px 42px minmax(0,1fr) 154px 86px 22px; }
+  #game[data-screen="run"] #topbar { padding: 0 8px; gap: 8px; }
+  #game[data-screen="run"] .location,#game[data-screen="run"] .time,#game[data-screen="run"] .mute-label { display: none; }
+  #game[data-screen="run"] .wordmark { font-size: 15px; gap: 4px; }
+  #game[data-screen="run"] .wordmark .icon { width: 20px; height: 20px; }
+  #game[data-screen="run"] .top-actions { gap: 4px; }
+  #game[data-screen="run"] .top-actions button { padding: 4px; font-size: 12px; }
+  #game[data-screen="run"] .top-actions kbd { display: none; }
+  #game[data-screen="run"] #resources { padding: 4px; }
+  #game[data-screen="run"] .resource { padding: 0 3px; gap: 2px; }
+  #game[data-screen="run"] .resource .icon { width: 21px; height: 24px; }
+  #game[data-screen="run"] .resource b { font-size: 16px; }
+  #game[data-screen="run"] .resource { flex-direction: column; }
+  #game[data-screen="run"] .resource .icon { height: 17px; }
+  #game[data-screen="run"] .resource > div { display: block; }
+  #game[data-screen="run"] .rig-panel { padding: 8px 10px 0; grid-template-columns: 1fr 1fr; grid-template-rows: 53px 45px 40px; gap: 0 14px; }
+  #game[data-screen="run"] .rig-head { display: none; }
+  #game[data-screen="run"] .drill-actions { grid-column: 1/-1; }
+  #game[data-screen="run"] .drill-actions button { min-height: 34px; padding: 4px 8px; }
+  #game[data-screen="run"] .rig-readout { font-size: 12px; gap: 8px; }
+  #game[data-screen="run"] .rig-readout .feed-rate { white-space: normal; min-width: 68px; }
+  #game[data-screen="run"] #map-caption { left: 6px; max-width: calc(100% - 12px); font-size: 12px; }
+  #game[data-screen="run"] #map-caption b { display: none; }
+  #game[data-screen="run"] #map-controls { left: 6px; bottom: 6px; gap: 3px; }
+  #game[data-screen="run"] #map-controls button { padding: 5px 7px; }
+  #field-notes { width: 210px; right: 6px; top: 40px; max-height: calc(100% - 88px); }
+  #field-notes:not(.teaching):not(.show-detail) { display: none; }
+  #field-notes .panel { padding: 8px; }
+  #field-notes .tutor .icon { width: 34px; height: 38px; }
+  #field-notes h3 { font-size: 15px; }
+  #field-notes p,#field-notes .tutor-action { font-size: 13px; }
+  #game[data-screen="run"] #toolbelt { padding: 7px 8px; }
+  #game[data-screen="run"] .tool-group button { min-width: 45px; max-width: 62px; padding: 3px; }
+  #game[data-screen="run"] #statusbar { padding: 0 8px; }
+  #game[data-screen="run"] #statusbar > span:last-child { display: none; }
+}
