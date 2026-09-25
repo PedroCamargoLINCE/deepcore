@@ -3,9 +3,32 @@
 Living orientation doc. Any new session should be able to read **this file plus
 the specs** and pick the work up cold — no prior conversation required.
 
-Last updated: 2026-09-25, Bedrock arcade correction.
+Last updated: 2026-09-25, Bedrock pixel-art correction.
 
 ## Current handoff — read this before the historical notes
+
+The director approved authored-looking pixel art and prefers actual generated
+illustration assets to primitive vector drawings. The current Bedrock pass
+replaces the large drill and GRIT with generated RGBA sprites, adds thirty
+original small palette-grid subjects in `js/pixels.js`, vendors Pixelify Sans,
+and removes gradients/bevels/rounded app controls. Contracts are stamped work
+permits with readable numbered terms, a pay stub and a signature line. The
+Foundry, title, manual, schematic picks, stock and toolbelt share the new art.
+Remaining rare subjects retain the old compositions sampled into pixels;
+do not claim every encounter has a newly generated bitmap. Artwork provenance
+and final prompts are in `assets/bedrock/README.md`.
+
+The image/font assets are local and are embedded by `tools/build.js --graphical`.
+No cloud handoff was started; the director explicitly chose to continue locally.
+Classic and Engraved remain independent and their gameplay files are unchanged.
+The browser suite now checks decoded artwork/font, flat controls, readable long
+prices and keyboard auto-reveal on the scrollable narrow-window toolbelt.
+Reduced-motion changes immediately clear existing particles; browser emulation
+waits for the actual media-query state rather than assuming an 80ms delay.
+Pixel-art balance evidence: `/tmp/deepcore-pixel-before-balance.txt` and
+`/tmp/deepcore-pixel-after-balance.txt` (all 28 outcome rows byte-identical).
+
+### Prior Bedrock direction (superseded where it conflicts with the above)
 
 The director rejected Bedrock's initial institutional website appearance.
 Current visual direction: **a colorful arcade game running in a browser**.

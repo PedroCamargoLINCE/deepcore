@@ -20,11 +20,20 @@ to the graphical edition. The `ascii-native` branch remains untouched.
 
 ## Visual direction
 
-An illustrated mining arcade: deep-blue cabinet hardware, turquoise steel,
-gold controls, orange furnaces and violet crystals. The title is a full-screen
-cavern diorama with a dimensional DEEPCORE logo and a compact game menu, not a
-split marketing hero. Raised tool slots, colored inventory counters, segmented
-meters and loot-like schematic picks continue that vocabulary through play.
+An illustrated pixel-art mining game: charcoal hardware, dusty teal steel,
+amber controls, rust-red furnaces and violet crystals. The director's next
+correction rejected bevelled buttons, bland fonts and primitive vector icons.
+The title now pairs a Pixelify Sans wordmark with a generated drilling crawler;
+GRIT has a separate expressive pixel-style portrait. Flat square controls,
+high-contrast meters and clear selected states replace gradients and bevels.
+All labels stay native text, not words baked into an image.
+
+Thirty original palette-grid sprites cover the eight resources, all ten build
+tools, the map rig, GRIT fallback, three permit emblems and seven equipment
+objects. These are authored pixel clusters, not ASCII displayed on screen.
+Rare icons retain their original geometry, sampled by a discrete pixel pen;
+the twenty encounter compositions remain distinct, now on low-resolution
+scene surfaces. Not every illustration is a newly generated bitmap.
 
 Papers, Please still informs contract props and the bureaucratic voice;
 Factorio informs the readable production line; Balatro informs concrete,
@@ -45,19 +54,26 @@ copper separate angular nuggets, and crystal a tall translucent cluster.
 Items on belts use the same visual vocabulary as stock and recipes.
 
 Menus are also graphical: a detailed rig on the title and Foundry screens,
-paper contracts on a green desk, illustrated schematic cards, twenty individual
+stamped work permits on a green desk, illustrated schematic cards, twenty individual
 encounter tableaux, trophy objects, a typeset ledger, recovered documents,
 illustrated manuals, and graphical end-of-run reports. No character-grid art,
 CRT overlay, or glyph-rendered terrain is used by this edition.
 
 ## Architecture and controls
 
-- `js/atelier.js`: pure vector drawing commands, shared between Canvas sprites
-  and SVG interface icons. The large rig is separately authored, not a scaled
-  toolbar icon. All nine Foundry upgrades alter both rig drawings.
+- `js/pixels.js`: pure palette-grid sprite definitions and a discrete pen for
+  remaining geometric subjects. Machine poses read production state.
+- `js/atelier.js`: pure composition, shared between Canvas and crisp-edge SVG
+  pixel icons. The large rig receives a decoded bitmap as an explicit input;
+  a separately authored map sprite is also the loading fallback. All nine
+  Foundry upgrades alter both rigs; livery changes the large rig's trim.
+- `assets/bedrock/`: generated RGBA drill and GRIT illustrations, with final
+  prompts and provenance in its README. Generated with the built-in image
+  tool, not manually painted pixel-by-pixel. The small sprites are code-authored.
 - `js/graphical.js`: independent Canvas world renderer plus semantic HTML UI.
   It never invokes the Classic/Engraved rendering pipeline. No dependency or
-  network asset is required. `art.js` remains loaded for shared tutorial/manual
+  network service is required. The source page loads local PNG/font assets;
+  its standalone build embeds them. `art.js` remains loaded for shared tutorial/manual
   metadata and the engine's existing descent-duration contract; its ASCII
   illustrations are never rendered.
 - `Engine.command(key)`: graphical buttons enter the same route as keyboard
@@ -70,7 +86,9 @@ CRT overlay, or glyph-rendered terrain is used by this edition.
   keys remain valid. Native buttons retain focus and keyboard activation.
 - The interface adapts to narrower windows; the map can be magnified instead of
   shrinking important controls. Short/narrow displays scroll the operations
-  desk and toolbelt. This remains a desktop-first factory game.
+  desk and toolbelt. Selecting an offscreen tool by keyboard brings it into
+  view. Long prices wrap inside their controls. This remains a desktop-first
+  factory game.
 
 ## Save safety
 
@@ -106,6 +124,13 @@ ending's GRIT lines (selected through an isolated seed-derived proxy).
   and DPR is capped at 2 (lowered further for oversized surfaces).
 - Terrain is composed at an integer source tile pitch and scaled as one image,
   avoiding the hairline grid seams introduced by fractional tile coordinates.
+- Sprites cache at their native pixel pitch, independent of display size.
+  Scene surfaces are capped at 480 pixels wide and scale with nearest-neighbour
+  sampling. Image decoding and UI markup never spend simulation RNG. GRIT's
+  embedded PNG is bound only when the DOM changes, not copied into each
+  per-frame HTML comparison.
+- Pixelify Sans is a local, OFL-licensed variable font. The bundle includes its
+  complete license; no installed system font or CDN is required.
 - The three offline bundles do not load one another's renderer. The vendored
   terminal-font audit follows `index.html`; Bedrock's proportional text does not
   accidentally expand Classic's glyph inventory.
@@ -124,7 +149,8 @@ on port 9344 (`DC_BROWSER_PORT` overrides it). It modifies only that disposable
 profile, exercises real inputs, and writes review screenshots to
 `/tmp/deepcore-bedrock-*.png`. Never point it at a personal browser session.
 
-Coverage includes vector-only artwork, all machine/resource subjects, twenty
+Coverage includes original sprite palettes, RGBA portrait sources, embedded
+font/image assets, flat button styles, all machine/resource subjects, twenty
 distinct encounter scenes, eight biome palettes, all nine rig upgrades, state
 and RNG purity, fog redaction, save migration, all game screens, real building
 and belt dragging, breach through the Core into the Mantle, camera controls,
@@ -140,3 +166,10 @@ The arcade revision repeats this gate, including fresh-profile induction,
 real fullscreen entry/exit, placement feedback, tick-based expiration, pause
 freeze and reduced-motion suppression. Screens were visually reviewed at
 desktop, smaller-window and phone sizes.
+
+The pixel-art revision repeats this gate, including both bitmap and sprite
+upgrade variants, decoded local/embedded portraits, loaded Pixelify Sans,
+contract wrapping and keyboard-selected tools on narrow displays. All 28
+canonical outcome rows match the pre-pixel baseline. Evidence:
+`/tmp/deepcore-pixel-before-balance.txt` and
+`/tmp/deepcore-pixel-after-balance.txt`.

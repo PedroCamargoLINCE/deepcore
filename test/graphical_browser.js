@@ -14,6 +14,7 @@ async function main(){
   ws.addEventListener('message',e=>{const m=JSON.parse(e.data);if(m.method==='Runtime.exceptionThrown')errors.push(m.params.exceptionDetails.exception?.description||m.params.exceptionDetails.text);if(pending.has(m.id)){const p=pending.get(m.id);pending.delete(m.id);m.error?p.reject(m.error):p.resolve(m.result);}});
   await new Promise((resolve,reject)=>{ws.addEventListener('open',resolve,{once:true});ws.addEventListener('error',reject,{once:true});});
   const evaluate=async expression=>{const r=await send('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});assert(!r.exceptionDetails,r.exceptionDetails?.exception?.description||'browser evaluation failed');return r.result.value;};
+  const waitFor=async(expression,message)=>{for(let i=0;i<100;i++){if(await evaluate(expression))return;await delay(50);}assert.fail(message);};
   const key=async k=>{await send('Input.dispatchKeyEvent',{type:'keyDown',key:k});await send('Input.dispatchKeyEvent',{type:'keyUp',key:k});await delay(40);};
   const click=async selector=>{const p=await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)return null;const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);assert(p,'click target '+selector);await send('Input.dispatchMouseEvent',{type:'mouseMoved',...p});await send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,...p});await send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,...p});await delay(60);};
   const shot=async name=>{await delay(60);const r=await send('Page.captureScreenshot',{format:'png'});fs.writeFileSync('/tmp/deepcore-bedrock-'+name+'.png',Buffer.from(r.data,'base64'));};
@@ -21,9 +22,14 @@ async function main(){
   try{
     await send('Runtime.enable');await send('Page.enable');
     await send('Page.navigate',{url:base+'graphical.html'});await delay(650);
+    await evaluate('document.fonts.ready.then(()=>true)');
+    await waitFor('DC.Render.debug().portraitReady','rig portrait decoded');
     await size(1440,960);
     await evaluate('DC.state.meta=DC.Meta.newProfile();DC.Render.frame(DC.state,performance.now())');
     assert.strictEqual(await evaluate('DC.state.screen'),'title');await shot('title');
+    assert(await evaluate('document.fonts.check(\'16px "Pixelify Sans"\')'),'vendored pixel font loaded');
+    assert(await evaluate('getComputedStyle(document.querySelector(".hero h1")).fontFamily.includes("Pixelify Sans")'),'title uses the new font');
+    assert(await evaluate('[...document.querySelectorAll("button")].filter(b=>b.getClientRects().length).every(b=>{const s=getComputedStyle(b);return s.backgroundImage==="none"&&s.boxShadow==="none"&&s.borderRadius==="0px"})'),'flat buttons: no gradients, bevels or rounded app chrome');
     if(await evaluate('document.fullscreenEnabled')) {
       await click('#topbar [data-action="fullscreen"]');
       assert(await evaluate('!!document.fullscreenElement'),'native fullscreen enters from a real gesture');
@@ -37,6 +43,7 @@ async function main(){
     if(screen==='contract')await click('#pages button[data-key="1"]');
     assert.strictEqual(await evaluate('DC.state.screen'),'run');await shot('induction');
     assert(await evaluate('DC.Tutorial.active(DC.state.run)&&!!document.querySelector(".tutor")'),'fresh profile sees the actual induction lesson');
+    await waitFor('[...document.querySelectorAll(".grit-portrait img")].every(i=>i.complete&&i.naturalWidth>0)','GRIT bitmap decoded');
     await key('Tab');
     // Isolated fixture, never the user's profile. Stop simulation for stable
     // screenshots, but keep the real frame/input loop and Engine handlers.
@@ -99,6 +106,11 @@ async function main(){
     for(const name of ['contract','foundry','trophies','ledger','logbook','help','vignette','descend','victory','gameover','recap']){
       await evaluate(`(()=>{const s=DC.state;s.screen=${JSON.stringify(name)};s.ui.helpPage=0;s.ui.descendAnim=999;s.run.pendingOffers=DC.DATA.SCHEMATICS.slice(0,3).map(x=>x.id);DC.Events.state(s.run).vignette=DC.Events.VIGNETTES[0];s.run.result={depth:5,breaches:4,timeSec:734,cores:4,won:false,paid:4};DC.Render.frame(s,performance.now())})()`);
       assert(await evaluate('document.querySelector("#pages").innerText.length>30'),name+' content');await shot(name);
+      if(name==='foundry'){
+        await evaluate('window.upgradeFixture=JSON.stringify(DC.state.meta.upgrades);DC.DATA.META_UPGRADES.forEach(u=>DC.state.meta.upgrades[u.id]=1);DC.Render.frame(DC.state,performance.now())');
+        await shot('foundry-upgraded');
+        await evaluate('DC.state.meta.upgrades=JSON.parse(window.upgradeFixture);DC.Render.frame(DC.state,performance.now())');
+      }
     }
     for(const p of [1,2]){await evaluate('DC.state.screen="help";DC.state.ui.helpPage='+p+';DC.Render.frame(DC.state,performance.now())');await shot('manual-'+p);}
     for(let i=0;i<20;i++){
@@ -123,12 +135,18 @@ async function main(){
     await click('#pages button[data-key="1"]');if(await evaluate('DC.state.screen')==='vignette')await click('#pages button[data-key="1"]');
     assert(await evaluate('DC.state.run.mantle&&DC.state.run.depth===9&&DC.state.screen==="run"'),'graphical journey continues into the real Mantle');
     await size(960,700,2);await shot('factory-small');
-    await send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});await delay(80);
+    assert(await evaluate('[...document.querySelectorAll(".tool .cost")].every(e=>e.getBoundingClientRect().bottom<=e.closest(".tool").getBoundingClientRect().bottom)'),'long tool prices fit inside their controls');
+    await key('0');
+    assert(await evaluate('(()=>{const t=document.querySelector(".tool.selected").getBoundingClientRect(),b=document.querySelector("#toolbelt").getBoundingClientRect();return t.left>=b.left&&t.right<=b.right})()'),'keyboard selection reveals an offscreen tool');
+    await send('Emulation.setEmulatedMedia',{media:'screen',features:[{name:'prefers-reduced-motion',value:'reduce'}]});
+    await waitFor('matchMedia("(prefers-reduced-motion: reduce)").matches&&DC.Render.debug().reduced','reduced motion preference applied');
     await evaluate('DC.state.run.t+=7;DC.Render.frame(DC.state,performance.now());DC.state.run.gearsFed++;DC.state.run.t++;DC.Render.frame(DC.state,performance.now())');
     assert.strictEqual(await evaluate('DC.Render.debug().feedback.length'),0,'reduced motion suppresses new particles');
     await send('Emulation.setEmulatedMedia',{features:[]});
     const overflow=await evaluate('({w:innerWidth,doc:document.documentElement.scrollWidth,body:document.body.scrollWidth})');assert(overflow.doc<=overflow.w&&overflow.body<=overflow.w,'no page horizontal overflow');
     await size(390,844,2);await shot('factory-mobile');
+    await evaluate('DC.state.screen="contract";DC.Render.frame(DC.state,performance.now())');await shot('contract-mobile');
+    assert(await evaluate('[...document.querySelectorAll(".permit")].every(e=>e.getBoundingClientRect().right<=innerWidth)'),'all permits fit on mobile');
     await evaluate('DC.state.screen="title";DC.Render.frame(DC.state,performance.now())');await shot('title-mobile');
     assert(await evaluate('document.documentElement.scrollWidth<=innerWidth'),'title mobile fits');
     await size(1440,960);await click('#topbar [data-progress]');
@@ -144,6 +162,11 @@ async function main(){
     assert(caches.same&&caches.pixels<=12000000&&caches.sprites<=12000000&&caches.screen<=12010000,'stable caches and bounded canvas allocation');
     await size(960,700);
     await send('Page.navigate',{url:base+'dist/deepcore-graphical.html'});await delay(500);assert.strictEqual(await evaluate('DC.Render.artMode()'),'bedrock');await shot('bundle');
+    await evaluate('document.fonts.ready.then(()=>true)');
+    await waitFor('DC.Render.debug().portraitReady','standalone rig bitmap decoded');
+    assert(await evaluate('document.fonts.check(\'16px "Pixelify Sans"\')'),'standalone font decoded');
+    await key('i');
+    await waitFor('!!document.querySelector("img[data-grit]")&&[...document.querySelectorAll("img[data-grit]")].every(i=>i.complete&&i.naturalWidth>0&&i.src.startsWith("data:image/png;base64,"))','standalone GRIT decoded from embedded source');
     assert.deepStrictEqual(errors,[],'no browser exceptions');
     console.log('PASS graphical browser | all screens + 20 encounters | fresh induction | native fullscreen | real building / belt corners / rotate / pause | tick-driven feedback + reduced motion | breach -> timed pick -> Core -> Mantle | zoom and pan | renderer state/RNG purity | profile import + recoverable backup | responsive 1440 / 960 / 390 | 8K cache bounds | standalone file:// | screenshots /tmp/deepcore-bedrock-*.png');
   }finally{ws.close();}

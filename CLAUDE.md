@@ -8,6 +8,15 @@ workers, verifies, merges) or **THE LABORER** (one brief, one branch). Know whic
 
 ## Current visual direction — director override, 2026-09-09
 
+**Pixel-art correction, 2026-09-25:** the director rejected shaded/bevelled
+buttons, generic fonts and primitive vector illustrations. Bedrock now uses
+generated pixel-style drill/GRIT bitmaps, authored palette-grid sprites,
+Pixelify Sans, flat square controls and stamped contract permits. Read
+`docs/BEDROCK.md` and `assets/bedrock/README.md` (asset provenance/prompts).
+`js/pixels.js` owns the small sprites; `js/atelier.js` composes them and accepts
+decoded portrait images. Do not bring back glossy gradients or rounded app
+cards. Engraved, Classic, gameplay, lore and saves are unaffected.
+
 **Arcade correction, 2026-09-25:** the director rejected Bedrock's institutional
 website appearance. Think of a game executable hosted by a browser: full-screen
 cavern title, chunky colorful HUD, bright minerals, tactile controls and honest
@@ -17,7 +26,7 @@ direction and visual/feedback invariants are in `docs/BEDROCK.md`.
 
 **New edition, 2026-09-25:** the director requested a completely non-ASCII
 graphical version, specifically naming Papers, Please aesthetically. Read
-`docs/BEDROCK.md`. `graphical.html` uses `js/atelier.js` (pure vector art) and
+`docs/BEDROCK.md`. `graphical.html` uses `js/atelier.js` (pure art composition) and
 `js/graphical.js` (independent world renderer and document UI). This is a third
 edition, not a replacement for Engraved or Classic. Add
 `node test/graphical_test.js` and the isolated Chromium browser acceptance test

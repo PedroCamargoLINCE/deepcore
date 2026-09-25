@@ -1,6 +1,6 @@
-/* DEEPCORE / Bedrock — a vector atelier, not a character rasterizer.
-   Pure geometry. Canvas and SVG share the same authored objects. No DOM,
-   clocks, game objects, random stream, fonts, or external assets live here. */
+/* DEEPCORE / Bedrock — pure art composition, not a character rasterizer.
+   Canvas and SVG share palette sprites; scenes accept decoded portrait images
+   as explicit inputs. No DOM, clocks, game objects, RNG or asset loading. */
 (function () {
   'use strict';
   const root = typeof window !== 'undefined' ? window : globalThis;
@@ -154,6 +154,7 @@
   function draw(id, p, o) {
     o = o || {};
     id = SUBJECTS[id] || id;
+    if (DC.Pixels && DC.Pixels.paint(id,p,o)) return;
     const active = !!o.active, phase = active ? o.phase || 0 : 0;
     const gold = o.accent || P.gold, metal = P.steel;
     // Every resource has a distinct silhouette, not just a material tint.
@@ -589,120 +590,57 @@
   // Large illustrations have their own fine members and service equipment;
   // they are not enlarged toolbar icons.
   function portraitRig(c, x, y, w, h, o) {
-    const p = canvasPen(c, x, y, w, h), g = o.accent || P.gold, u = o.upgrades || {};
-    p.oval(50, 89, 46, 5, '#132c28');
-    p.rect(9, 74, 82, 12, P.ink);
-    p.rect(11, 75, 78, 8, '#5d7770');
-    for (let i = 0; i < 12; i++) {
-      const a = 14 + i * 6.5;
-      p.oval(a, 80, 3.5, 3.7, P.ink);
-      p.oval(a, 80, 1.8, 1.9, P.steel);
-      p.rect(a - 2, 73, 4, 2, P.light);
-      p.rect(a - 2, 85, 4, 2, '#6b8276');
+    o=o||{};
+    // The illustration has its own pixel-art source. The small rig is a
+    // separately authored sprite, also usable while the bitmap loads.
+    if (o.portrait) {
+      c.imageSmoothingEnabled=false;
+      c.drawImage(o.portrait,x,y,w,h);
+      const p=canvasPen(c,x,y,w,h),u=o.upgrades||{},px=DC.Pixels.PAL;
+      // Visible bolt-on parts correspond to the same nine real upgrades.
+      const block=(a,b,d,e,color)=>p.rect(a,b,d,e,color);
+      const part=(id,a,b,d,e)=>sprite(c,id,x+a*w/100,y+b*h/100,d*w/100,e*h/100);
+      block(38,73,9,2,o.accent||P.gold);
+      block(85,72,8,2,o.accent||P.gold);
+      if(u.m_stock)part('crate',82,65,13,13);
+      if(u.m_hull){
+        block(43,68,22,6,px.x);block(44,68,20,4,px.s);block(44,68,20,1,px.k);
+        block(46,69,1,1,px.h);block(61,69,1,1,px.h);block(53,70,4,1,px.d);
+      }
+      if(u.m_damp){
+        for(const a of [31,89]){
+          block(a-1,81,4,15,px.x);block(a,82,2,13,px.s);block(a,87,1,7,px.k);
+          block(a-3,95,8,2,px.x);block(a-2,95,6,1,px.k);
+        }
+      }
+      if(u.m_torque){
+        for(const b of [31,36]){block(13,b,14,3,px.x);block(14,b,12,2,px.g);block(15,b,2,1,px.h);}
+      }
+      if(u.m_fix){
+        block(66,60,7,7,px.x);block(67,61,5,5,px.h);block(69,61,1,5,px.r);block(67,63,5,1,px.r);
+      }
+      if(u.m_scan)part('radar',55,20,21,21);
+      if(u.m_salv){block(92,66,1,7,px.k);part('claw',87,71,12,12);}
+      if(u.m_deep){part('charge',78,46,7,10);part('charge',82,46,7,10);}
+      if(u.m_schem)part('book',48,60,7,8);
+      return;
     }
-    p.poly([[8,71],[90,71],[94,75],[8,75]], g);
-    p.rect(10, 71, 80, 1.3, P.goldHi);
-    p.poly([[12,52],[35,52],[39,56],[39,70],[12,70]], g, P.ink, 0.7);
-    p.rect(15, 55, 19, 10, '#243c3c');
-    p.rect(16, 56, 7, 8, '#4297c0');
-    p.rect(25, 56, 8, 8, '#53bad1');
-    p.poly([[16,56],[22,56],[16,62]], '#b2f3ed');
-    p.rect(15, 66, 19, 0.8, P.ink);
-    p.rect(28, 66, 3, 1.1, P.cream);
-    p.line([[11,51],[36,51],[40,55]], P.ink, 1.2);
-    p.rect(12, 69, 27, 1.2, '#846238');
-    p.rect(17, 71, 1, 6, P.steel);
-    p.rect(30, 71, 1, 6, P.steel);
-    p.line([[17,77],[31,77]], P.steel, 1);
-    p.poly([[42,71],[48,12],[60,12],[69,71]], P.ink);
-    p.poly([[45,70],[50,16],[58,16],[65,70]], '#517167');
-    p.line([[43,71],[49,12],[59,12],[68,71]], g, 2.4);
-    for (let i = 0; i < 6; i++) {
-      const yy = 22 + i * 8, left = 48 - i * 0.65, right = 61 + i * 0.7;
-      p.line([[left,yy],[right,yy+7],[left-0.6,yy+8]], g, 1.1);
-    }
-    p.rect(52, 16, 1.5, 57, P.light);
-    p.rect(57, 15, 0.6, 57, P.cream);
-    p.oval(54, 14, 5.4, 5.4, P.ink);
-    p.oval(54, 14, 4.2, 4.2, P.steel);
-    p.oval(54, 14, 2.8, 2.8, '#49655d');
-    p.oval(54, 14, 1, 1, P.cream);
-    p.rect(50, 44, 10, 12, P.ink);
-    p.rect(51, 45, 8, 10, P.rust);
-    p.rect(53, 46, 4, 8, P.goldHi);
-    p.rect(52, 56, 5, 23, P.steel);
-    p.rect(51, 73, 7, 5, P.cream);
-    p.poly([[47,78],[62,78],[59,84],[54,91],[49,84]], P.steel, P.ink, 0.7);
-    p.line([[48,79],[60,81],[50,84],[57,86]], P.ink, 1.3);
-    p.line([[63,24],[72,70]], P.steel, 1);
-    p.line([[66,24],[75,70]], P.steel, 1);
-    for (let i = 0; i < 10; i++)
-      p.line([[63+i*0.95,25+i*4.5],[66+i*0.95,25+i*4.5]], P.light, 0.7);
-    p.rect(74, 56, 13, 14, P.rust);
-    p.poly([[74,56],[78,53],[90,53],[87,56]], '#d68f5d');
-    p.poly([[87,56],[90,53],[90,68],[87,70]], '#84553d');
-    for (let i = 0; i < 5; i++)
-      p.rect(77, 59 + i * 1.5, 7, 0.65, '#5b4d39');
-    p.rect(81, 45, 3, 11, P.ink);
-    p.rect(80, 45, 5, 1.6, P.steel);
-    p.line([[75,68],[70,65],[60,65],[60,70]], P.ink, 2);
-    p.line([[73,60],[71,49],[65,48]], '#b2afa0', 1);
-    p.line([[9,62],[9,71]], P.light, 0.7);
-    p.line([[38,62],[38,71]], P.light, 0.7);
-    p.line([[9,62],[38,62]], P.light, 0.8);
-    p.rect(39, 67, 28, 5, P.rust);
-    p.rect(41, 68, 24, 0.8, '#d99565');
-    for (const [a, b] of [[14,53],[33,53],[14,69],[35,69],[41,70],[64,70],[76,57],[85,68]])
-      p.oval(a, b, 0.65, 0.65, P.cream);
-    p.rect(17, 48, 3, 3, P.ink);
-    p.oval(18.5, 48, 1.4, 0.6, P.goldHi);
-    if (u.m_stock) {
-      p.rect(2, 63, 9, 8, g);
-      p.line([[4,63],[4,71],[9,71],[9,63]], P.ink, 0.8);
-    }
-    if (u.m_hull) {
-      p.rect(11, 69, 77, 2, P.light);
-      p.line([[13,70],[87,70]], P.ink, 0.4);
-    }
-    if (u.m_damp) {
-      p.rect(8, 79, 2, 13, P.green);
-      p.rect(91, 79, 2, 13, P.green);
-      p.rect(5, 91, 8, 2, P.light);
-      p.rect(88, 91, 8, 2, P.light);
-    }
-    if (u.m_torque) {
-      p.rect(49, 34, 12, 5, P.goldHi);
-      p.rect(49, 41, 12, 3, P.goldHi);
-    }
-    if (u.m_fix) {
-      p.rect(34, 60, 5, 6, P.cream);
-      p.rect(36, 61, 1, 4, P.red);
-      p.rect(35, 62.5, 3, 1, P.red);
-    }
-    if (u.m_scan) {
-      p.line([[28,51],[28,41]], P.light, 1);
-      p.poly([[21,39],[35,39],[28,45]], P.blue);
-      p.line([[28,42],[33,35]], P.light, 0.8);
-    }
-    if (u.m_salv)
-      p.line([[89,64],[98,68],[97,79],[94,80]], P.light, 2);
-    if (u.m_deep) {
-      p.rect(6, 58, 2, 5, P.violet);
-      p.rect(9, 58, 2, 5, P.violet);
-    }
-    if (u.m_schem) {
-      p.rect(34, 46, 5, 6, P.blue);
-      p.line([[35,48],[38,48]], P.cream, 0.5);
-    }
+    DC.Pixels.paint('rig',canvasPen(c,x,y,w,h),o);
   }
   function icon(id, o) {
-    const out = ['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" aria-hidden="true" focusable="false">'];
-    draw(id, svgPen(out), o);
+    const out = ['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" shape-rendering="crispEdges" aria-hidden="true" focusable="false">'];
+    const name=SUBJECTS[id]||id;
+    if(DC.Pixels && !DC.Pixels.ART[name] && name!=='hub'){
+      const pen=DC.Pixels.rasterPen(24);draw(id,pen,o);pen.flush(svgPen(out));
+    } else draw(id, svgPen(out), o);
     out.push('</svg>');
     return out.join('');
   }
   function sprite(c, id, x, y, w, h, o) {
-    draw(id, canvasPen(c, x, y, w, h), o);
+    const name=SUBJECTS[id]||id;
+    if(DC.Pixels && !DC.Pixels.ART[name] && name!=='hub'){
+      const pen=DC.Pixels.rasterPen(24);draw(id,pen,o);pen.flush(canvasPen(c,x,y,w,h));
+    } else draw(id, canvasPen(c, x, y, w, h), o);
   }
   // Material palettes are authored independently from the terminal colours.
   const BIOMES = [
@@ -796,31 +734,29 @@
   function landscape(c, w, h, o) {
     o = o || {};
     const p = canvasPen(c, 0, 0, w, h), gold = o.accent || P.gold;
-    p.rect(0, 0, 100, 100, '#101a36');
+    p.rect(0, 0, 100, 100, '#1b2028');
     // A cavern diorama. The title uses a wide composition; the Foundry keeps
     // the rig centered. Nothing in this illustration pretends to be live sim.
     const wide = !!o.title && w > h * 1.1, center = wide ? 70 : 51;
-    p.oval(center, 44, 36, 43, '#17264a');
-    p.oval(center, 44, 27, 35, '#1c3553');
-    p.oval(center, 45, 17, 27, '#204b5d');
-    p.poly([[0,0],[100,0],[100,24],[88,12],[83,27],[73,9],[61,18],[48,7],[36,29],[24,12],[13,35],[0,21]], '#162d47');
-    p.poly([[0,0],[100,0],[100,9],[82,5],[72,14],[55,3],[35,13],[17,7],[0,16]], '#0b142d');
-    p.poly([[0,55],[12,40],[22,62],[35,50],[46,67],[64,51],[80,62],[92,37],[100,53],[100,100],[0,100]], '#244563');
-    p.poly([[0,69],[17,56],[30,74],[43,62],[60,78],[76,63],[91,73],[100,57],[100,100],[0,100]], '#18324d');
-    p.poly([[0,86],[18,74],[37,84],[55,75],[72,88],[91,76],[100,85],[100,100],[0,100]], '#0b1932');
+    p.poly([[0,0],[100,0],[100,17],[96,17],[96,25],[89,25],[89,11],[84,11],[84,19],[76,19],[76,8],[62,8],[62,14],[54,14],[54,7],[39,7],[39,21],[27,21],[27,12],[17,12],[17,26],[7,26],[7,33],[0,33]], '#263037');
+    p.poly([[0,0],[100,0],[100,6],[87,6],[87,11],[79,11],[79,5],[57,5],[57,8],[33,8],[33,15],[22,15],[22,7],[8,7],[8,21],[0,21]], '#131a22');
+    p.poly([[0,77],[9,77],[9,69],[18,69],[18,73],[29,73],[29,66],[45,66],[45,72],[58,72],[58,65],[72,65],[72,71],[86,71],[86,62],[95,62],[95,68],[100,68],[100,100],[0,100]], '#2b3a3f');
+    p.poly([[0,86],[19,86],[19,80],[28,80],[28,86],[43,86],[43,81],[61,81],[61,84],[79,84],[79,77],[91,77],[91,83],[100,83],[100,100],[0,100]], '#202d35');
+    // Sparse chisel marks and hanging mineral clusters, kept out of the menu.
+    for(let i=0;i<18;i++){
+      const xx=52+(i*13)%46,yy=8+(i*19)%66;
+      p.rect(xx,yy,2+(i%3),.35,i%3?'#3c4b4e':'#677360');
+    }
     // Luminous mineral seams and faceted hanging rocks frame the play space.
     for (let i = 0; i < 12; i++) {
       const xx = (i * 23 + 7) % 99, yy = 24 + (i * 13) % 45;
       p.poly([[xx,yy-0.6],[xx+0.35,yy],[xx,yy+0.6],[xx-0.35,yy]], i % 2 ? '#71e0d3' : '#d2a4fc');
     }
-    const size = Math.min(w * (wide ? 0.48 : 0.9), h * 0.88);
+    const size = Math.min(w * (wide ? 0.46 : 0.89), h * 0.81);
     const rx = w * center / 100 - size * 0.5, ry = h * 0.77 - size * 0.88;
     const shelf = canvasPen(c, rx - size * 0.08, ry, size * 1.16, size);
-    shelf.poly([[0,83],[22,72],[75,73],[100,82],[74,94],[22,96]], '#367c86', P.ink, 1);
-    shelf.poly([[0,83],[22,96],[74,94],[74,111],[27,115],[0,99]], '#254e70', P.ink, 1);
-    shelf.poly([[74,94],[100,82],[100,101],[74,111]], '#173a5b', P.ink, 1);
-    shelf.line([[4,90],[28,104],[68,101]], '#4587a3', 2);
-    shelf.line([[79,100],[96,91]], '#53c5c4', 2);
+    shelf.poly([[0,98],[15,94],[23,98],[80,98],[87,94],[100,98],[100,111],[0,111]], '#3c4748', P.ink, 1);
+    shelf.line([[4,101],[20,101],[20,103],[68,103]], '#6c7665', 1);
     sprite(c,'crystal',rx+size*0.84,ry+size*0.64,size*0.25,size*0.25);
     sprite(c,'copperOre',rx-size*0.03,ry+size*0.82,size*0.2,size*0.15);
     if (o.wreck) {
@@ -834,10 +770,10 @@
     if (o.cat)
       sprite(c, 'cat', rx + size * 0.11, ry + size * 0.36, size * 0.095, size * 0.095);
     sprite(c,'crystal',w*0.9,h*0.79,w*0.11,h*0.24);
-    p.poly([[0,88],[6,80],[12,90],[17,89],[22,100],[0,100]], '#081127');
-    // A warning stripe ties the illustrated world to the arcade cabinet.
+    p.poly([[0,92],[6,92],[6,88],[11,88],[11,96],[17,96],[17,100],[0,100]], '#141c25');
+    // Chipped warning paint belongs on the platform, below the machine.
     for (let i = 0; i < 4; i++)
-      shelf.poly([[16+i*9,90],[19+i*9,92],[23+i*9,88],[20+i*9,87]], gold);
+      shelf.rect(10+i*7,105,4,2,gold);
   }
   function scene(c, id, w, h, o) {
     o = o || {};

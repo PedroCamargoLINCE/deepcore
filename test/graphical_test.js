@@ -1,4 +1,4 @@
-/* Bedrock contract: vector-only art, deterministic views, complete asset
+/* Bedrock contract: pixel art, deterministic views, complete asset
    coverage, redacted fog, safe profiles and independent offline editions. */
 'use strict';
 const assert=require('assert'),fs=require('fs'),path=require('path'),vm=require('vm');
@@ -7,6 +7,20 @@ const html=read('graphical.html'),files=Array.from(html.matchAll(/<script src="(
 const env={console,URLSearchParams};vm.createContext(env);
 for(const f of files)if(f!=='js/main.js')vm.runInContext(read(f),env,{filename:f});
 const DC=env.DC,D=DC.DATA,A=DC.Atelier,R=DC.Render;
+const PX=DC.Pixels;
+assert(PX,'authored pixel module loaded by the real entry');
+assert(!/Math\.random|Date\.now|\.rng\(|fillText|strokeText/.test(read('js/pixels.js')),'pixel art is independent of clocks, fonts and RNG');
+for(const [id,rows] of Object.entries(PX.ART)){
+  assert(rows.length>=16&&rows.length<=32,id+' has an intentional native pitch');
+  for(const row of rows)for(const ch of row)assert(ch==='.'||PX.PAL[ch],id+' has a known palette index: '+JSON.stringify(ch));
+}
+for(const id of [...D.ITEM_ORDER,...D.BUILD_ORDER,'rig','grit','seal','shield','skull'])assert(PX.ART[id],id+' has original authored clusters');
+for(const name of ['rig','grit']){
+  const png=fs.readFileSync(path.join(root,'assets/bedrock/'+name+'-pixel.png'));
+  assert.strictEqual(png.subarray(1,4).toString(),'PNG');
+  assert.strictEqual(png[25],6,name+' preserves RGBA transparency');
+  assert(png.readUInt32BE(16)>=256&&png.readUInt32BE(20)>=256,name+' source retained at high resolution');
+}
 assert.strictEqual(R.artMode(),'bedrock');
 for(const f of ['js/render.js','js/engraving.js','js/strata.js','js/fx.js'])assert(!files.includes(f),'graphical entry excludes '+f);
 assert(!/fillText|strokeText|Math\.random|Date\.now|\.rng\(/.test(read('js/atelier.js')),'art engine cannot draw characters or roll a random stream');
@@ -31,6 +45,11 @@ for(const id of ['extractor','smelter','assembler','damper','hub']){
 for(const u of D.META_UPGRADES){
   assert.notStrictEqual(serial('rig',{}),serial('rig',{upgrades:{[u.id]:1}}),u.id+' changes the map rig');
   const before=recorder(),after=recorder();A.portraitRig(before,0,0,700,700,{});A.portraitRig(after,0,0,700,700,{upgrades:{[u.id]:1}});assert.notDeepStrictEqual(after.calls,before.calls,u.id+' changes the large rig');
+  const image={decodedBitmap:true},imageBefore=recorder(),imageAfter=recorder();
+  A.portraitRig(imageBefore,0,0,400,400,{portrait:image});
+  A.portraitRig(imageAfter,0,0,400,400,{portrait:image,upgrades:{[u.id]:1}});
+  assert(imageBefore.calls.some(c=>c[0]==='drawImage'&&c[1]===image),'decoded bitmap is composed');
+  assert.notDeepStrictEqual(imageBefore.calls,imageAfter.calls,u.id+' also changes the bitmap rig');
 }
 const scenes=[];
 for(const e of DC.Events.VIGNETTES){const c=recorder();A.scene(c,e.id,500,400,{});scenes.push(JSON.stringify(c.calls));}
@@ -66,7 +85,14 @@ for(const edition of ['deepcore','deepcore-classic','deepcore-graphical']){
   const built=read(f),scripts=Array.from(built.matchAll(/<script>([\s\S]*?)<\/script>/g));assert(scripts.length,'inline script exists');for(const s of scripts)new vm.Script(s[1]);
   assert(!/<script src=|<link rel="stylesheet"/.test(built),'standalone has no script/style fetches');
   assert(!/link\.href\s*=\s*'graphical.html'/.test(built),'standalone edition link points to the built file');
-  if(edition==='deepcore-graphical'){assert(!built.includes('/* ==== js/render.js ==== */'));assert(built.includes('/* ==== js/atelier.js ==== */'));}
+  if(edition==='deepcore-graphical'){
+    assert(!built.includes('/* ==== js/render.js ==== */'));assert(built.includes('/* ==== js/atelier.js ==== */'));
+    assert(built.includes('/* ==== js/pixels.js ==== */'),'pixel module bundled');
+    assert(!/['"]assets\/bedrock\//.test(built),'no external bitmap paths');
+    assert.strictEqual((built.match(/data:image\/png;base64,/g)||[]).length,2,'both illustrations embedded');
+    assert(built.includes('data:font/ttf;base64,'),'pixel font embedded');
+    assert(built.includes('SIL OPEN FONT LICENSE'),'font license travels with the build');
+  }
   else assert(!built.includes('/* ==== js/graphical.js ==== */'),'legacy edition excludes new renderer');
 }
-console.log('PASS graphical | '+ids.length+' vector subjects | 20 unique encounters | 8 biomes | all 9 rig upgrades | no text-drawing path | no RNG/state mutations | fog redaction | safe profile migration | three offline builds');
+console.log('PASS graphical | '+Object.keys(PX.ART).length+' authored pixel subjects | '+ids.length+' total icon subjects | 2 RGBA portraits + pixel font embedded | 20 unique encounters | 8 biomes | all 9 upgrades on sprite AND bitmap rigs | no text-drawing path | no RNG/state mutations | fog redaction | safe profile migration | three offline builds');

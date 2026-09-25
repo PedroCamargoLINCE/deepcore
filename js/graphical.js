@@ -28,7 +28,11 @@
     'West'
   ];
   const iconCache = new Map();
+  const gritPortrait='assets/bedrock/grit-pixel.png';
   function icon(id, options) {
+    // Keep the embedded PNG out of per-frame HTML comparisons. put() binds
+    // the image only when this part of the interface actually changes.
+    if(id==='grit')return '<span class="icon grit-portrait'+(options&&options.talking?' talking':'')+'"><img data-grit alt="" width="64" height="64"></span>';
     const key = JSON.stringify([
       id,
       options || {}
@@ -95,6 +99,7 @@
     }, lastMapKey = '', surface = null, surfaceKey = '', spriteCache = new Map();
   let htmlCache = {}, pointerBusy = false, pan = null, modelCache = {}, pauseOpen = false, pauseFocus = null;
   let reduced = false, frameCalls = 0, terrainBuilds = 0, mapBuilds = 0, lastRun = null, lastDepth = 0, lastCursor = '';
+  let portraitImage=null,portraitReady=false,lastTool=null;
   let observed = null, sparks = [], gains = {};
   // View-local event snapshots. Never inspect unrevealed terrain, spend RNG,
   // or invent activity for an idle machine. Tick ages freeze with the sim.
@@ -130,7 +135,7 @@
       for (const id of D.ITEM_ORDER)
         if (next.inv[id]>observed.inv[id]) gains[id]={born:run.t,amount:next.inv[id]-observed.inv[id]};
     }
-    sparks=sparks.filter(e=>run.t-e.born<6).slice(-48);
+    sparks=reduced?[]:sparks.filter(e=>run.t-e.born<6).slice(-48);
     for (const id of Object.keys(gains)) if (run.t-gains[id].born>=6) delete gains[id];
     observed=next;
   }
@@ -171,6 +176,7 @@
     } : null;
     const scroll = nodes[id].scrollTop;
     nodes[id].innerHTML = html;
+    for(const img of nodes[id].querySelectorAll('img[data-grit]'))img.src=gritPortrait;
     nodes[id].scrollTop = scroll;
     htmlCache[id] = html;
     if (focus)
@@ -246,6 +252,9 @@
   function init(cv) {
     canvas = cv;
     ctx = cv.getContext('2d');
+    portraitImage=new root.Image();
+    portraitImage.onload=()=>{portraitReady=true;drawScenes();};
+    portraitImage.src='assets/bedrock/rig-pixel.png';
     for (const id of [
         'game',
         'topbar',
@@ -338,6 +347,7 @@
       if (mq.addEventListener)
         mq.addEventListener('change', e => {
           reduced = e.matches;
+          if(reduced)sparks=[];
           lastMapKey = '';
         });
     }
@@ -435,17 +445,14 @@
     return tiles;
   }
   function cachedSprite(id, w, h, o) {
-    const dp = viewport.dpr, key = JSON.stringify([
-        id,
-        Math.round(w * dp),
-        Math.round(h * dp),
-        o
-      ]);
+    const key=JSON.stringify([id,o]);
     let cv = spriteCache.get(key);
     if (!cv) {
       cv = root.document.createElement('canvas');
-      cv.width = Math.max(1, Math.ceil(w * dp));
-      cv.height = Math.max(1, Math.ceil(h * dp));
+      const name=A.SUBJECTS[id] || (id==='hub'?'rig':id),rows=DC.Pixels.ART[name];
+      const pitch=rows?Math.max(rows.length,...rows.map(row=>row.length)):24;
+      cv.width=pitch;
+      cv.height=pitch;
       const c = cv.getContext('2d');
       A.sprite(c, id, 0, 0, cv.width, cv.height, o);
       const pixels = () => Array.from(spriteCache.values()).reduce((n, v) => n + v.width * v.height, 0);
@@ -526,6 +533,7 @@
     lastMapKey = key;
     mapBuilds++;
     ctx.setTransform(viewport.dpr, 0, 0, viewport.dpr, 0, 0);
+    ctx.imageSmoothingEnabled=false;
     ctx.fillStyle = '#0b152b';
     ctx.fillRect(0, 0, viewport.w, viewport.h);
     ctx.save();
@@ -763,18 +771,22 @@
       const r = cv.getBoundingClientRect();
       if (!r.width || !r.height)
         continue;
-      const dp = Math.min(root.devicePixelRatio || 1, 2, Math.sqrt(11900000 / (r.width * r.height))), w = Math.ceil(r.width * dp), h = Math.ceil(r.height * dp);
+      // Fixed low-resolution art surfaces, nearest-neighbour scaled by CSS.
+      // The document text remains native and sharp at every zoom level.
+      const w=Math.max(96,Math.min(480,Math.round(r.width/3))),h=Math.max(1,Math.round(w*r.height/r.width));
       const key = [
         w,
         h,
         cv.dataset.scene,
-        cv.dataset.options
+        cv.dataset.options,
+        portraitReady
       ].join('|');
       if (cv._sceneKey === key)
         continue;
       cv.width = w;
       cv.height = h;
-      A.scene(cv.getContext('2d'), cv.dataset.scene, w, h, JSON.parse(cv.dataset.options || '{}'));
+      const context=cv.getContext('2d');context.imageSmoothingEnabled=false;
+      A.scene(context, cv.dataset.scene, w, h, Object.assign(JSON.parse(cv.dataset.options || '{}'),{portrait:portraitReady?portraitImage:null}));
       cv._sceneKey = key;
     }
   }
@@ -892,6 +904,13 @@
     put('resources', resources(st));
     put('operations', rigPanel(st) + tutorial(st) + (inspecting ? inspector(st) : '') + chainPanel(st) + (!inspecting ? inspector(st) : '') + foreman(st));
     put('toolbelt', toolbelt(st));
+    // A scrollable belt keeps names and prices readable on a small display.
+    // Reveal a keyboard-selected tool once; do not fight manual scrolling.
+    if(lastTool!==st.ui.tool){
+      lastTool=st.ui.tool;
+      const selected=nodes.toolbelt.querySelector('.tool.selected');
+      if(selected)selected.scrollIntoView({block:'nearest',inline:'nearest'});
+    }
     put('map-caption', '<b>' + esc(title(s.name).replace(/†/g, '')) + '</b>' + esc(mut ? mut.name + ' / ' + mut.tag : s.tag));
     const flash = st.ui.flash && st.ui.flash.until > r.t ? clean(st.ui.flash.text) : '';
     const offer = r.coreOffer && r.totalT < r.coreOffer.until;
@@ -907,9 +926,16 @@
     }, 'hero-art') + '<div class="title-number">BEDROCK EDITION <span>KEEP ON DIGGING.</span></div></div>';
   }
   function contracts(st) {
-    return '<div class="page paperwork">' + header('Personnel division / terms of engagement', 'Sign before you descend.', 'Choose your contract. The Company will retain the original.') + '<div class="cards">' + D.CONTRACTS.map((c, i) => {
+    return '<div class="page paperwork">' + header('Personnel division / terms of engagement', 'Sign before you descend.', 'Choose your contract. The Company will retain the original.') + '<div class="permit-desk">' + D.CONTRACTS.map((c, i) => {
       const open = DC.Meta.contractUnlocked(st.meta, c.id), won = DC.Meta.contractWon(st.meta, c.id);
-      return '<article class="card ' + (open ? '' : 'locked ') + (i === (st.ui.contractCursor || 0) ? 'chosen' : '') + '"><div class="card-illustration">' + icon(c.id) + '</div><div class="card-body"><div class="eyebrow">' + esc(c.sub) + ' / ' + (won ? 'Concluded' : open ? 'Approved for signature' : 'Authorization required') + '</div><h2>' + esc(title(c.name)) + '</h2><ul>' + c.terms.map(t => '<li>' + esc(t) + '</li>').join('') + '</ul><div class="wage">\xD7' + Number(c.wage).toFixed(1) + ' <span class="small muted">core wage</span></div><div class="signature">' + (open ? button('Sign contract', String(i + 1), 'primary') : '<p>' + esc(c.lockText.replace(/^LOCKED: /, '')) + '</p>') + '</div></div></article>';
+      return '<article class="permit permit-'+i+' '+(open?'':'locked ')+(i===(st.ui.contractCursor||0)?'chosen':'')+'">'+
+        '<div class="permit-tab">DC / 0'+(i+1)+' <span>OPERATOR COPY</span></div><div class="permit-body">'+
+        '<div class="permit-heading"><div><div class="eyebrow">'+esc(c.sub)+'</div><h2>'+esc(title(c.name))+'</h2></div>'+icon(c.id)+'</div>'+
+        '<div class="permit-stamp">'+(won?'CONCLUDED':open?'CLEARED':'RESTRICTED')+'</div>'+
+        '<div class="permit-terms"><div class="eyebrow">Terms of descent</div><ol>'+c.terms.map(t=>'<li>'+esc(t)+'</li>').join('')+'</ol></div>'+
+        '<div class="permit-wage"><span>CORE WAGE<br><small>Payable on return</small></span><strong>\xD7'+Number(c.wage).toFixed(1)+'</strong></div>'+
+        '<div class="signature">'+(open?button('Sign & descend',String(i+1),'primary'):'<p>'+esc(c.lockText.replace(/^LOCKED: /,''))+'</p>')+'</div>'+
+        '<div class="permit-serial" aria-hidden="true">DC · PERSONNEL · 0'+(i+1)+' / RETAIN FOR YOUR RECORDS</div></div></article>';
     }).join('') + '</div>' + foot('The Company accepts no liability. The Company accepts everything else.', button('Return', 'Escape', 'quiet')) + '</div>';
   }
   function foundry(st) {
@@ -1202,7 +1228,9 @@
       transform: Object.assign({}, transform),
       spriteCount: spriteCache.size,
       spritePixels: Array.from(spriteCache.values()).reduce((n, v) => n + v.width * v.height, 0),
-      terrainPixels: surface ? surface.width * surface.height : 0
+      terrainPixels: surface ? surface.width * surface.height : 0,
+      portraitReady,
+      reduced
     })
   };
 }());

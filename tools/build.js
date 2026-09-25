@@ -25,7 +25,9 @@ if (sheets.length === 0) {
   console.error('build: no stylesheet links found in index.html');
   process.exit(1);
 }
-const css = sheets.map((f) => '/* ==== ' + f + ' ==== */\n' + read(f)).join('\n');
+const css = sheets.map((f) => '/* ==== ' + f + ' ==== */\n' + read(f)).join('\n')
+  .replace(/url\(["']?(vendor\/pixelify-sans\.ttf)["']?\)/g, (_,f) =>
+    'url(data:font/ttf;base64,' + fs.readFileSync(path.join(root,f)).toString('base64') + ')');
 let firstSheet = true;
 html = html.replace(linkTag, () => {
   if (!firstSheet) return '';
@@ -58,9 +60,15 @@ if (missing.length) {
 // The frozen ascii-native branch is the historical port. This second artifact
 // also lets a player use current game fixes without loading the fine-art layer.
 const activeFiles = classic ? files.filter(f => !['js/engraving.js','js/strata.js'].includes(f)) : files;
-const bundle = activeFiles
+let bundle = activeFiles
   .map((f) => '/* ==== ' + f + ' ==== */\n' + read(f))
   .join('\n');
+if (graphical) {
+  bundle = bundle.replace(/'assets\/bedrock\/(rig|grit)-pixel\.png'/g, (_,id) =>
+    "'data:image/png;base64," + fs.readFileSync(path.join(root,'assets/bedrock/'+id+'-pixel.png')).toString('base64') + "'");
+  html = html.replace('</head>', '<!-- Pixelify Sans, Copyright 2021 The Pixelify Sans Project Authors.\n' +
+    read('vendor/LICENSE-pixelify.txt').replace(/--/g,'—') + '\n-->\n</head>');
+}
 html = html.replace(scriptTag, '');
 html = html.replace('</body>', '<script>\n' + bundle + '\n</script>\n</body>');
 // Edition navigation stays local in the standalone artifacts too.
