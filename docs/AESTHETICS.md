@@ -1,5 +1,20 @@
 # DEEPCORE 1.4 — Engraved
 
+## Readability follow-up — coal versus iron
+
+Human feedback caught a real weakness: coal reused the metallic ore silhouette,
+with only a tint and highlight separating it from iron. Coal now has three
+matte, fractured lumps with readable rims; iron is one broad, silver-banded
+slab, and copper is a pair of broken angular nuggets. This shared icon artwork
+appears in stock and manual views. Map deposits use ragged carbon seams versus
+parallel iron bands, while retaining their established resource glyphs.
+
+Engraved belt cargo now carries the corresponding ore glyph (iron `≡`, coal
+`♠`, copper `¢`) instead of collapsing all three to `•`. Existing jam dimming,
+production flashes, tooltips and routing remain intact. Classic keeps its
+original glyphs and palette. New tests compare colour-free icon silhouettes
+at three resolutions and verify actual belt glyphs in both editions.
+
 ## Extension — 2026-09-25
 
 The director asked to carry Engraved through every remaining screen, then

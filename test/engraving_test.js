@@ -96,6 +96,31 @@ for(const id of [...D.ITEM_ORDER,...D.BUILD_ORDER,...D.META_UPGRADES.map(u=>u.id
 }
 assert(new Set(iconShapes).size>=22,'icon family has distinct silhouettes even before colour');
 
+// Silhouette gate, not just a different draw-call count or a new highlight.
+// Sample filled geometry with colour removed at real small icon dimensions.
+function silhouette(id,w,h) {
+  const ctx=context(),polys=[];let path=[];
+  ctx.beginPath=()=>{path=[];};ctx.moveTo=ctx.lineTo=(x,y)=>path.push([x,y]);
+  ctx.fill=()=>polys.push(path.slice());
+  DC.Strata.icon(ctx,id,0,0,w,h,'#888888');
+  const inside=(x,y,poly)=>{
+    let hit=false;
+    for(let i=0,j=poly.length-1;i<poly.length;j=i++) {
+      const a=poly[i],b=poly[j];
+      if((a[1]>y)!==(b[1]>y) && x<(b[0]-a[0])*(y-a[1])/(b[1]-a[1])+a[0])hit=!hit;
+    }
+    return hit;
+  };
+  return Array.from({length:w*h},(_,i)=>polys.some(p=>inside(i%w+.5,Math.floor(i/w)+.5,p)));
+}
+for(const [w,h] of [[24,14],[42,24],[84,48]]) {
+  const iron=silhouette('ironOre',w,h),coal=silhouette('coal',w,h),copper=silhouette('copperOre',w,h);
+  const iou=(a,b)=>a.filter((v,i)=>v&&b[i]).length/a.filter((v,i)=>v||b[i]).length;
+  assert(iou(iron,coal)<.72,'coal is not iron recoloured at '+w+'x'+h);
+  assert(iou(iron,copper)<.8,'copper has its own broken silhouette at '+w+'x'+h);
+  assert(coal.filter(Boolean).length>w*h*.22,'coal remains substantial at small sizes');
+}
+
 DC.Engine.start();
 assert.strictEqual(DC.Render.artMode(),'engraved','new edition is the default');
 DC.Render.frame(DC.state,0);
@@ -116,6 +141,8 @@ assert.strictEqual(DC.Render.illustrationStats().regions,0,'classic has no fine-
 press('v');assert.strictEqual(DC.Render.artMode(),'engraved');
 const profile=DC.Meta.newProfile(),run=DC.Sim.newRun(DC.Meta.effects(profile),1337);
 run.grid.flat().forEach(t=>{t.revealed=true;});
+for(const [x,id] of ['ironOre','coal','copperOre'].entries())
+  Object.assign(run.grid[0][x],{t:'floor',ore:null,machine:null,belt:{dir:1,item:id}});
 DC.state.meta=profile;DC.state.run=run;DC.state.screen='run';
 const before=JSON.stringify(run),metaBefore=JSON.stringify(profile);
 const rng=run.rng;run.rng=()=>{throw Error('renderer spent simulation RNG');};
@@ -123,6 +150,11 @@ DC.Render.frame(DC.state,450);
 assert.strictEqual(DC.Render.illustrationStats().regions,1,'in-run rig is engraved');
 assert.strictEqual(JSON.stringify(run),before,'render never changes gameplay state');
 assert.strictEqual(JSON.stringify(profile),metaBefore,'art preference is not a meta/save migration');
+// Let the existing eight-frame sonar reveal pulse finish before inspecting
+// cargo identity; its temporary dot correctly outranks a newly exposed item.
+for(let i=0;i<12;i++)DC.Render.frame(DC.state,470+i*17);
+for(const [x,id] of ['ironOre','coal','copperOre'].entries())
+  assert.strictEqual(DC.Render.cellAt(D.MAP_X+x,D.MAP_Y).ch,D.ORE_GLYPHS[id].glyph,'Engraved belts retain '+id+' identity');
 // Hybrid geometry only receives revealed cells; it never sees hidden ore.
 const paint=DC.Strata.paint;let visibleTiles=null;
 DC.Strata.paint=(ctx,tiles,w,h)=>{visibleTiles=JSON.parse(JSON.stringify(tiles));paint(ctx,tiles,w,h);};
@@ -146,6 +178,7 @@ assert(DC.Render.illustrationStats().subjects.includes('machine:crusher'),'build
 DC.state.ui.tool=null;
 const cell=DC.Render.pxToCell(500,300);
 DC.Render.setArtMode('classic');DC.Render.frame(DC.state,500);
+assert.strictEqual(DC.Render.cellAt(D.MAP_X+1,D.MAP_Y).ch,D.ITEMS.coal.glyph,'Classic cargo glyph stays unchanged');
 assert.deepStrictEqual(DC.Render.pxToCell(500,300),cell,'mode switch leaves hit testing unchanged');
 const classicGrid=[];
 for(let y=0;y<D.ROWS;y++)for(let x=0;x<D.COLS;x++)classicGrid.push(DC.Render.cellAt(x,y).ch);

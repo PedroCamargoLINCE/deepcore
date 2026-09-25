@@ -18,6 +18,12 @@ retains GRIT. No gameplay values, lore, save formats or controls were changed.
 Both visual layers are omitted from the Classic standalone build. See
 `docs/AESTHETICS.md` for the new verification and invariants.
 
+Follow-up human feedback: coal looked too similar to iron. Engraved now uses
+fractured coal clusters, banded iron slabs and separate copper nuggets, with
+distinct map-deposit textures and ore-specific belt cargo glyphs. Colour-free
+silhouette tests guard against returning to the same recoloured rock. Classic
+and all gameplay values remain unchanged.
+
 The director subsequently requested a complete aesthetics overhaul, with no
 commitment to the old visuals, keeping gameplay and lore. `docs/AESTHETICS.md`
 records the implemented Engraved edition: high-definition character portraits,

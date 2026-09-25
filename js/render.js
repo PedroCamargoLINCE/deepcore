@@ -892,7 +892,10 @@
         if (tile.digT > 0 && phase) { ch = '▒'; fg = C.gray; }
         if (tile.belt) {
           const it = tile.belt.item && D.ITEMS[tile.belt.item];
-          if (it) { ch = it.glyph; fg = it.color; }
+          if (it) {
+            const ore=engraved() && DC.Strata && D.ORE_GLYPHS[tile.belt.item];
+            ch = ore ? ore.glyph : it.glyph; fg = it.color;
+          }
           else { ch = D.ARROWS[tile.belt.dir] || '·'; fg = shade(C.cyan, 0.6); }
         }
         if (tile.machine !== null && tile.machine !== undefined) {

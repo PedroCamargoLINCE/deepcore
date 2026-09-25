@@ -34,11 +34,34 @@
       poly(pts,hi);oval(.5,.5,.2,.2,dark);oval(.5,.5,.085,.085,white);
     };
     switch(id) {
-      case 'ironOre':case 'copperOre':case 'coal':
-        poly([[.1,.67],[.2,.34],[.46,.17],[.72,.28],[.91,.64],[.65,.83],[.28,.8]],mid);
-        poly([[.2,.34],[.46,.17],[.57,.56],[.1,.67]],hi);
-        poly([[.57,.56],[.72,.28],[.91,.64],[.65,.83]],dark);
-        if(id==='coal')line(.3,.37,.43,.27,white,.06);break;
+      case 'ironOre':
+        // One broad, banded metallic slab: not the same nugget tinted grey.
+        poly([[.06,.61],[.22,.19],[.64,.12],[.94,.38],[.82,.83],[.29,.88]],mid);
+        poly([[.06,.61],[.22,.19],[.64,.12],[.58,.56]],hi);
+        poly([[.58,.56],[.94,.38],[.82,.83],[.29,.88]],dark);
+        for(let i=0;i<3;i++)line(.21+i*.12,.32-i*.025,.14+i*.12,.51-i*.025,tone(hi,1.3),.035);
+        break;
+      case 'copperOre':
+        // Broken angular nuggets with a visible gap, rather than iron's slab.
+        poly([[.06,.58],[.23,.28],[.46,.4],[.42,.81],[.15,.85]],mid);
+        poly([[.06,.58],[.23,.28],[.46,.4],[.29,.61]],hi);
+        poly([[.5,.72],[.56,.18],[.79,.12],[.95,.39],[.86,.78]],mid);
+        poly([[.56,.18],[.79,.12],[.95,.39],[.7,.43]],hi);
+        line(.59,.55,.81,.5,tone(hi,1.2),.045);break;
+      case 'coal': {
+        // Three matte, fractured lumps. Light rims make black material read
+        // on the dark panel, without the broad silver face of metallic ore.
+        const lumps=[[[.04,.58],[.09,.4],[.24,.3],[.39,.43],[.35,.75],[.17,.81]],
+          [[.47,.68],[.51,.4],[.68,.27],[.87,.35],[.96,.64],[.79,.83],[.59,.83]],
+          [[.34,.23],[.37,.09],[.5,.07],[.58,.2],[.49,.3]]];
+        for(const points of lumps){
+          poly(points,tone(hi,.3));
+          for(let i=1;i<points.length;i++)line(...points[i-1],...points[i],tone(hi,.94),.035);
+        }
+        line(.1,.46,.25,.51,tone(hi,.58),.035);line(.25,.51,.21,.7,tone(hi,.58),.035);
+        line(.59,.47,.72,.57,tone(hi,.62),.035);line(.72,.57,.86,.51,tone(hi,.62),.035);
+        break;
+      }
       case 'crystal':case 'm_deep':
         poly([[.47,.07],[.72,.33],[.62,.88],[.29,.76],[.22,.29]],mid);
         poly([[.47,.07],[.5,.77],[.29,.76],[.22,.29]],hi);
@@ -131,9 +154,20 @@
       }
       if(t.ore) {
         const ore=tone(t.oreColor,.58);
-        poly([[.12,.2],[.29,.1],[.39,.23],[.23,.34]],ore);
-        poly([[.64,.71],[.78,.62],[.88,.77],[.69,.87]],ore);
-        line(.1,.94,.9,.94,tone(t.oreColor,.65),.055);
+        if(t.ore==='coal') {
+          // Ragged carbon seam; leave the central spade glyph unobstructed.
+          poly([[.03,.12],[.36,.06],[.3,.29],[.12,.35],[.04,.27]],tone(t.oreColor,.22));
+          poly([[.59,.76],[.74,.68],[.96,.77],[.84,.95],[.63,.91]],tone(t.oreColor,.24));
+          line(.04,.13,.35,.07,ore,.045);line(.65,.92,.85,.96,ore,.045);
+          line(.08,.19,.2,.25,tone(t.oreColor,.43),.025);
+        }else if(t.ore==='ironOre') {
+          line(.07,.12,.44,.12,ore,.065);line(.12,.2,.4,.2,ore,.045);
+          line(.6,.83,.95,.83,ore,.065);line(.55,.92,.89,.92,ore,.045);
+        }else{
+          poly([[.12,.2],[.29,.1],[.39,.23],[.23,.34]],ore);
+          poly([[.64,.71],[.78,.62],[.88,.77],[.69,.87]],ore);
+          line(.1,.94,.9,.94,tone(t.oreColor,.65),.055);
+        }
       }
       if(t.belt!=null) {
         const horizontal=t.belt%2===1;
