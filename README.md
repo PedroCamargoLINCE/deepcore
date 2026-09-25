@@ -19,8 +19,10 @@ stay: quakes, rubble, magma. This is not a game about surviving. Get through.
 Open `index.html` in any modern browser (double-click works — no server, no
 build step). Or the single-file build: `dist/deepcore.html`.
 
-The default is **Engraved**, the high-definition ASCII edition: shaded character
-portraits, detailed machinery and illustrated encounters. Press `V` at any time
+The default is **Engraved**, a hybrid illustrated edition: high-definition ASCII
+portraits and encounters, graphical strata, and distinct vector resource/machine
+icons. The inspector shows the machine you're hovering over or about to build;
+its working parts follow actual production, not an idle timer. Press `V` at any time
 to switch between Engraved and Classic; gameplay and your save are unchanged.
 `?art=classic` opens the classic view directly. Build a standalone classic port
 with `node tools/build.js --classic` (`dist/deepcore-classic.html`). The original

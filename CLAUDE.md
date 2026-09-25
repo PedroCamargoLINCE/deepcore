@@ -18,6 +18,12 @@ This supersedes old rules requiring every visible detail to occupy one logical
 cell. Readability, offline operation, save safety and simulation RNG isolation
 remain requirements. Add `node test/engraving_test.js` to the gauntlet.
 
+**Extension, 2026-09-25:** the director explicitly permits non-ASCII rendering
+for readability, especially the stratum and icons. `js/strata.js` is the hybrid
+map/vector icon layer; it receives revealed visual descriptors, never the run
+or its RNG. Classic omits both new visual modules. Keep small gameplay labels
+and fault/cargo markers legible over the geometry.
+
 ## Where the truth lives
 
 - **`SPEC3.md`** — design canon. The Eight Laws (§0), the lineage, every brief,

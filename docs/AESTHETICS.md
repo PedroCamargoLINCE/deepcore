@@ -1,4 +1,55 @@
-# DEEPCORE 1.3 — Engraved
+# DEEPCORE 1.4 — Engraved
+
+## Extension — 2026-09-25
+
+The director asked to carry Engraved through every remaining screen, then
+explicitly released the ASCII-only restriction for readability, naming the
+stratum and icons. The result is a hybrid edition, not a different game.
+
+- `js/strata.js` paints faceted, biome-coloured rock, glass cleavage, magma,
+  ore deposits, belt rails and connected machine chassis. Plain floor dots
+  give way to quieter ground; sparse biome flora remains. Resource glyphs,
+  machine anchor letters, cargo, warnings, cursors, placement ghosts, wildlife
+  and landmarks retain their existing meanings and positions.
+- A shared vector icon family covers all eight resources, ten build tools,
+  nine Foundry upgrades and the demolish symbol. Build/stock/Foundry rows and
+  manual illustrations use the same palette and physical silhouettes. Keys,
+  names, prices and quantities are never replaced with unexplained pictures.
+- The rig panel becomes a detailed machine cutaway on hover or build selection.
+  Ten authored machine subjects; working poses read `status` and `progress`.
+  A build preview never pretends to be producing. Induction keeps GRIT, and
+  the rig shows sparks only during the existing post-quake shake signal.
+- Contracts have engraved seals, locked/concluded variants and room for the
+  unchanged terms and signature controls. The Foundry has an illustrated anvil
+  reacting to purchases. Sixteen trophy objects replace the old miniatures,
+  with a larger inspection specimen and unearned objects kept under dust.
+- The ledger has an abacus and audit seal; the archive's tabs reflect actual
+  recovered logs. All manual pages gain machinery and resource illustrations
+  in their margins, outside the unchanged text. The recap gains a bore section
+  and GRIT's portrait; the pause panel gains a mechanical pause badge.
+
+The graphic layer receives only revealed tile descriptors, never a run object.
+It cannot inspect hidden ore, use RNG, change a map, or predict a quake. The
+original grid still owns all hit testing. The expanded contract cards publish
+their actual click rectangles; a real mouse-route test signs one of them.
+Opaque modal backgrounds cover map art; the pause badge alone is composited
+above its own panel. Icons sit in reserved gutters, not on prose.
+
+Both the illustration cache and the single terrain surface are capped at
+12 million pixels each; offscreen DPR is capped at 2. Stable frames reuse the
+surfaces. `--classic` omits both `engraving.js` and `strata.js`; V switches all
+new art and geometry off together. No dependency or save migration was added.
+
+Verification adds 87 illustration configurations, distinct machine subjects,
+vector icon coverage and finite geometry, fog-of-war isolation, render-only
+state/RNG checks, Classic/module-free equivalence on all newly treated screens
+(apart from the manual's existing V capability hint),
+actual contract clicks, and cache budgets through 8000x4500 / DPR 2. Real
+Chromium review covers the new screens and a populated stratum at 1600x1000
+and 960x700 / DPR 2. The canonical balance outcome rows are compared with a
+fresh pre-extension sweep; the renderer is not a balance change.
+
+## Original 1.3 direction and implementation
 
 ## The director's brief
 

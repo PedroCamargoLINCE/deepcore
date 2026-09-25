@@ -141,6 +141,7 @@
   let artMode = 'engraved';
   const plates = [], plateCache = new Map();
   const terrainPlates = [];
+  const stratumPlates = [], iconPlates = [];
   let terrainCache = null;
   function engraved() { return artMode === 'engraved' && !!DC.Engraving; }
   function artChrome() {
@@ -149,10 +150,14 @@
       if(frame && frame.dataset)frame.dataset.art=engraved()?'engraved':'classic';
     } catch(e) { /* page chrome is optional */ }
   }
-  function illustration(kind, x, y, w, h, options) {
+  function illustration(kind, x, y, w, h, options, foreground) {
     if (!engraved()) return false;
-    plates.push({kind,x,y,w,h,options:options||{}});
+    plates.push({kind,x,y,w,h,options:options||{},foreground:!!foreground});
     return true;
+  }
+  function graphicIcon(id,x,y,w,h,color) {
+    if(!engraved() || !DC.Strata)return false;
+    iconPlates.push({id,x,y,w,h,color});return true;
   }
   function rigOptions(run, meta, extra) {
     const active = !!(run && run.stats && run.stats.lastFeedT > 0 &&
@@ -163,8 +168,9 @@
       ground:run && D.BIOMES ? shade(D.BIOMES[Math.min(run.depth,8)-1].rock,1.65) : null,
       accent:SK.amber}, extra||{});
   }
-  function paintIllustrations() {
+  function paintIllustrations(foreground) {
     for (const p of plates) {
+      if(p.foreground!==!!foreground)continue;
       // Three times the linear definition; small canvases use two for a
       // readable micro-font. Density is independent of device pixel ratio.
       const sub = fontPx >= 18 ? 3 : 2;
@@ -213,25 +219,31 @@
     }
   }
   function paintTerrain() {
-    if(!terrainPlates.length || !DC.Engraving) return;
-    const key=JSON.stringify([cw,ch,dpr,fontReady,terrainPlates]);
+    const hybrid=!!(stratumPlates.length && DC.Strata);
+    if(!hybrid && (!terrainPlates.length || !DC.Engraving)) return;
+    const key=JSON.stringify([cw,ch,dpr,fontReady,hybrid?stratumPlates:terrainPlates]);
     if(!terrainCache || terrainCache.key!==key) {
       let cv=null;
       try {cv=root.document&&root.document.createElement('canvas');}catch(e){/* optional */}
       if(!cv || !cv.getContext)return;
-      cv.width=Math.ceil(D.MAP_W*cw*dpr);cv.height=Math.ceil(D.MAP_H*ch*dpr);
+      const terrainDpr=Math.min(dpr,2,Math.sqrt(11900000/(D.MAP_W*cw*D.MAP_H*ch)));
+      cv.width=Math.ceil(D.MAP_W*cw*terrainDpr);cv.height=Math.ceil(D.MAP_H*ch*terrainDpr);
       const cx=cv.getContext('2d');if(!cx)return;
-      cx.setTransform(dpr,0,0,dpr,0,0);
-      cx.font=(fontPx/3)+'px '+FONT_STACK;
-      cx.textBaseline='middle';cx.textAlign='left';
-      const step=cx.measureText('M').width || cw/3;
-      cx.save();cx.scale(cw/3/step,1);
-      for(const p of terrainPlates) {
-        const rows=DC.Engraving.tile(p[2],p[3],p[4]);
-        cx.fillStyle=p[5];
-        for(let y=0;y<3;y++)cx.fillText(rows[y],p[0]*3*step,(p[1]+(y+.55)/3)*ch);
+      cx.setTransform(terrainDpr,0,0,terrainDpr,0,0);
+      if(hybrid)DC.Strata.paint(cx,stratumPlates,cw,ch);
+      else {
+        cx.font=(fontPx/3)+'px '+FONT_STACK;
+        cx.textBaseline='middle';cx.textAlign='left';
+        const step=cx.measureText('M').width || cw/3;
+        cx.save();cx.scale(cw/3/step,1);
+        for(const p of terrainPlates) {
+          const rows=DC.Engraving.tile(p[2],p[3],p[4]);
+          cx.fillStyle=p[5];
+          for(let y=0;y<3;y++)cx.fillText(rows[y],p[0]*3*step,(p[1]+(y+.55)/3)*ch);
+        }
+        cx.restore();
       }
-      cx.restore();terrainCache={key,canvas:cv};
+      terrainCache={key,canvas:cv};
     }
     if(ctx.drawImage)ctx.drawImage(terrainCache.canvas,D.MAP_X*cw,D.MAP_Y*ch,D.MAP_W*cw,D.MAP_H*ch);
   }
@@ -735,12 +747,13 @@
 
     // pause menu overlay
     if (ui.paused) {
-      const bw = 26, bh = 8, bx = (48 - bw) >> 1, by = 12;
+      const bw = engraved()?40:26, bh = 8, bx = (48 - bw) >> 1, by = 12;
       for (let r = by; r < by + bh; r++) text(bx, r, ' '.repeat(bw), C.gray, C.bg);
       box(bx, by, bw, bh, C.amber, 'PAUSED', C.white);
       text(bx + 3, by + 2, '[ESC] RESUME', C.amber);
       text(bx + 3, by + 4, '[A]   ABANDON RUN', C.red);
       text(bx + 3, by + 5, '[H]   MANUAL', C.gray);
+      illustration('station',bx+28,by+1,10,6,{id:'pause',accent:SK.amber},true);
     }
   }
 
@@ -933,7 +946,25 @@
         const natural = !tile.ore && !tile.lm && !tile.rubble && !tile.digT &&
           !tile.belt && tile.machine == null;
         const body = tile.machine != null && tile.machine !== 0 && ch === '▓';
-        if(engraved() && ((natural && (tile.t==='rock'||tile.t==='obsidian')) || body)) {
+        if(engraved() && DC.Strata) {
+          let edge=0,machineEdge=0;
+          for(let i=0;i<4;i++){
+            const d=[D.DIRS[0],D.DIRS[3],D.DIRS[2],D.DIRS[1]][i];
+            const other=run.grid[y+d.dy] && run.grid[y+d.dy][x+d.dx];
+            if(other && other.revealed && other.t!==tile.t)edge|=1<<i;
+            if(!other || !other.revealed || other.machine!==tile.machine)machineEdge|=1<<i;
+          }
+          const m=tile.machine!=null && run.machines[tile.machine];
+          const b=m && D.BUILDINGS[m.type];
+          const active=!!(m && m.status==='ok');
+          stratumPlates.push({x:gc-D.MAP_X,y,kind:tile.t,edge,variant:(x*7+y*11)%3,
+            color:biome?(tile.t==='floor'?biome.floor:biome.rock):C.rock,
+            ore:tile.ore,oreColor:tile.ore?shade((D.ORE_GLYPHS[tile.ore]||{}).color,tile.oreAmt<25?.55:1):null,
+            belt:tile.belt?tile.belt.dir:null,machine:m?m.type:null,
+            machineColor:b?b.color:C.amber,machineEdge,body,active,
+            phase:active?Math.floor((m.progress||0)/2)%3:0});
+          if(body || (natural && (tile.t==='rock'||tile.t==='obsidian'||(tile.t==='floor'&&ch===ter.glyph))))ch=' ';
+        } else if(engraved() && ((natural && (tile.t==='rock'||tile.t==='obsidian')) || body)) {
           let edge=0;
           for(let i=0;i<4;i++) {
             const d=[D.DIRS[0],D.DIRS[3],D.DIRS[2],D.DIRS[1]][i];
@@ -1197,10 +1228,11 @@
       const bad = shade(C.red, 0.8);
       const nameW = w - 5;
       if (t === 'demolish') {
-        if (sel) text(col, row, U.pad('X  ×  demolish', w), C.bg, C.amber);
+        const pictogram=graphicIcon('demolish',col+(sel?3:two?2:3),row,1.5,1,sel?C.bg:C.red);
+        if (sel) text(col, row, U.pad(pictogram?'X     demolish':'X  ×  demolish', w), C.bg, C.amber);
         else {
           put(col, row, 'X', C.amber);
-          put(col + (two ? 2 : 3), row, '×', C.red);
+          if(!pictogram)put(col + (two ? 2 : 3), row, '×', C.red);
           text(col + (two ? 4 : 6), row, 'demolish', C.gray);
         }
         layout.buildRows.push({ row: row, col: col, w: w, tool: t });
@@ -1209,7 +1241,8 @@
       const b = D.BUILDINGS[t];
       const free = t === 'belt' && run.mods && run.mods.beltFree;
       const afford = free || Object.keys(b.cost).every(k => (inv[k] || 0) >= b.cost[k]);
-      const bIcon = buildIcon(t);
+      const detailed=graphicIcon(t,col+(two?1:2),row,3,1,sel?C.bg:b.color);
+      const bIcon = detailed?'   ':buildIcon(t);
       if (two) {
         // key, pictogram, name — and nothing else, so the name never truncates
         if (sel) text(col, row, U.pad(b.key + bIcon + ' ' + b.name, w), C.bg, C.amber);
@@ -1396,17 +1429,27 @@
   const GROUND_CH = '▓▒░█▀';
   const RIG_GROUND_ROW = 7;              // rigBase row 7 is the surface line
 
-  function drawRigPanel(y, run, meta, accent) {
+  function drawRigPanel(y, run, meta, accent, ui) {
+    ui=ui||{};
     const broadcast = engraved() && DC.Tutorial && DC.Tutorial.active(run);
-    y = panelEdge(SB2, SBW2, y, 'top', broadcast ? 'GRIT / INTERCOM' : 'YOUR RIG');
+    const hover=ui.hover||ui.cursor;
+    const tile=hover && run.grid[hover.y] && run.grid[hover.y][hover.x];
+    const subject=tile && tile.revealed && tile.machine>0 && run.machines[tile.machine];
+    const preview=!subject && ui.tool && D.BUILDINGS[ui.tool]?ui.tool:null;
+    const inspected=engraved() && !broadcast && (subject?subject.type:preview);
+    const title=inspected ? (subject?'INSPECT / ':'BUILD / ')+D.BUILDINGS[inspected].name.toUpperCase() : broadcast?'GRIT / INTERCOM':'YOUR RIG';
+    y = panelEdge(SB2, SBW2, y, 'top', title);
     const rig = composeRigSafe(meta && meta.upgrades) || placeholder('rig');
     const h = Math.min(rig.length, 12);
     const ox = SBC2 + Math.max(0, (SCW2 - blockWidth(rig)) >> 1);
-    const portraitOptions = broadcast ? {accent:SK.amber,
+    const portraitOptions = inspected ? {id:inspected,accent:D.BUILDINGS[inspected].color,
+      active:!!(subject&&subject.status==='ok'),phase:subject?Math.floor((subject.progress||0)/2)%3:0,
+      bad:!!(subject&&['blocked','nofuel','depleted','unpaired','cold'].includes(subject.status))} : broadcast ? {accent:SK.amber,
       talking:!!(run.foreman && run.totalT<run.foreman.until && Math.floor((run.totalT-run.foreman.t0)/3)%2),
-      alarm:DC.Tutorial.mood(run)==='alarmed'} : rigOptions(run,meta);
-    if (illustration(broadcast?'grit':'rig', SBC2, y, SCW2, h, portraitOptions)) {
+      alarm:DC.Tutorial.mood(run)==='alarmed'} : rigOptions(run,meta,{quake:!!(ui.shakeUntil && run.t<ui.shakeUntil)});
+    if (illustration(inspected?'machine':broadcast?'grit':'rig', SBC2, y, SCW2, inspected?h-1:h, portraitOptions)) {
       for (let i=0;i<h;i++) panelWalls(SB2,SBW2,y+i);
+      if(inspected)text(SBC2+1,y+h-1,subject?'STATE: '+String(subject.status||'idle').toUpperCase():'PLACEMENT PREVIEW',C.gray);
       layout.runRig={x:SBC2,y,w:SCW2,h,engraved:true};
       return y+h;
     }
@@ -1493,7 +1536,8 @@
       const idle = n === 0 && !flow[id];
       panelWalls(SB2, SBW2, y);
       const x = SBC2 + 1;
-      text(x, y, itemIcon(id), idle ? shade(it.color, 0.45) : it.color);
+      const ic=idle ? shade(it.color, 0.45) : it.color;
+      if(!graphicIcon(id,x,y,3,1,ic))text(x, y, itemIcon(id), ic);
       text(x + 4, y, itemLabel(id).slice(0, STOCK_NAME_W), idle ? C.darkgray : C.gray);
       // count and arrow ride the right edge: one column of numbers the eye
       // can run down, rather than eight ragged ones
@@ -1561,7 +1605,7 @@
     const accent = st.accent || C.amber;
     const ch = chainSafe(run);
     let y = 1;
-    y = drawRigPanel(y, run, meta, accent);
+    y = drawRigPanel(y, run, meta, accent, ui);
     y = drawStockPanel(y, run, ch);
     y = drawLoadoutPanel(y, run);
     panelEdge(SB2, SBW2, Math.min(y, ROWS - 1), 'bot');
@@ -2047,6 +2091,7 @@
     const cur = Math.max(0, Math.min(list.length - 1, ui.contractCursor | 0));
     const denied = ui.contractDenied || null;
     const rule = mix(SK.amber, C.bg, 0.42);
+    const cardY=engraved()?4:CONTRACT_ROW, cardH=engraved()?20:CONTRACT_H;
 
     ctext(1, 'DEEPCORE MINING CONCERN  ·  TERMS OF ENGAGEMENT', SK.amber);
     ctext(2, 'sign one before you descend — the wage is paid on every core banked', C.gray);
@@ -2055,24 +2100,26 @@
     layout.contracts = [];
     for (let i = 0; i < list.length; i++) {
       const c = list[i];
-      const cx = x0 + i * (w + gap), cy = CONTRACT_ROW;
+      const cx = x0 + i * (w + gap), cy = cardY;
       const open = M && M.contractUnlocked ? M.contractUnlocked(meta, c.id) : i === 0;
       const won = M && M.contractWon ? M.contractWon(meta, c.id) : false;
       const sel = i === cur;
       const ink = !open ? C.darkgray : sel ? C.white : c.id === 'warrant' ? C.red : c.id === 'hazard' ? C.orange : SK.amber;
-      box(cx, cy, w, CONTRACT_H, ink, c.name, open ? (sel ? C.white : ink) : C.darkgray);
+      box(cx, cy, w, cardH, ink, c.name, open ? (sel ? C.white : ink) : C.darkgray);
+      illustration('seal',cx+3,cy+2,w-6,6,{id:c.id,locked:!open,won,accent:open?ink:C.darkgray});
       // the form number, top-right inside the box, in the Company's small print
       if (c.sub) textR(cx + w - 3, cy + 1, c.sub, C.darkgray);
       // the mark — the glyph the run header will carry
-      if (c.mark) put(cx + 2, cy + 2, c.mark, open ? ink : C.darkgray);
-      let yy = cy + 2;
+      const termsY=cy+(engraved()?9:2);
+      if (c.mark) put(cx + 2, termsY, c.mark, open ? ink : C.darkgray);
+      let yy = termsY;
       const tc = open ? C.gray : C.darkgray;
-      for (let t = 0; t < c.terms.length && yy < cy + CONTRACT_H - 5; t++) {
+      for (let t = 0; t < c.terms.length && yy < cy + cardH - 5; t++) {
         const ln = String(c.terms[t]).slice(0, w - 6);
         text(cx + 4, yy++, ln, tc);
       }
       // wage line, or the lock
-      const wy = cy + CONTRACT_H - 4;
+      const wy = cy + cardH - 4;
       if (open) {
         const wage = 'WAGE x' + (Number(c.wage).toFixed(1));
         text(cx + 4, wy, wage, c.wage > 1 ? C.gold : C.gray);
@@ -2081,7 +2128,7 @@
         text(cx + 4, wy, (c.lockText || 'LOCKED').slice(0, w - 6), C.darkgray);
       }
       // the signature line
-      const sigy = cy + CONTRACT_H - 2;
+      const sigy = cy + cardH - 2;
       const isDenied = denied && denied.id === c.id;
       if (!open) {
         text(cx + 2, sigy, (isDenied ? 'x  NOT YOURS TO SIGN' : 'x  ' + '_'.repeat(w - 8)).slice(0, w - 4), isDenied ? C.red : C.darkgray);
@@ -2090,10 +2137,10 @@
       } else {
         text(cx + 2, sigy, 'x  [ ' + (i + 1) + ' ]', C.green);
       }
-      if (sel) { put(cx - 1, cy + (CONTRACT_H >> 1), '▸', C.white); put(cx + w, cy + (CONTRACT_H >> 1), '◀', C.white); }
-      layout.contracts.push({ col: cx, row: cy, w: w, h: CONTRACT_H, id: c.id, index: i, unlocked: open });
+      if (sel) { put(cx - 1, cy + (cardH >> 1), '▸', C.white); put(cx + w, cy + (cardH >> 1), '◀', C.white); }
+      layout.contracts.push({ col: cx, row: cy, w: w, h: cardH, id: c.id, index: i, unlocked: open });
     }
-    const y = CONTRACT_ROW + CONTRACT_H + 1;
+    const y = cardY + cardH + 1;
     text(x0, y, '═'.repeat(n * w + (n - 1) * gap), rule);
     // the small print
     const selDef = list[cur];
@@ -2159,7 +2206,11 @@
     const meta = state.meta || { cores: 0, upgrades: {} };
     const ui = state.ui || {};
     const lines = art('foundry');
-    drawArt(lines, 1, liveryId === 'amber' ? artColor('foundry', C.orange) : SK.hi);
+    if(illustration('station',25,1,24,6,{id:'forge',accent:SK.amber,struck:!!activeFlash(ui)})) {
+      text(53,2,'T H E   F O U N D R Y',SK.hi);
+      text(53,4,'cores hammered into steel',C.gray);
+      text(53,5,'─'.repeat(29),SK.dim);
+    } else drawArt(lines, 1, liveryId === 'amber' ? artColor('foundry', C.orange) : SK.hi);
     ctext(Math.min(1 + lines.length + 1, 8), '◈ ' + (meta.cores || 0) + ' CORES', C.magenta);
 
     // Two columns — the rig, and what can be bolted to it — CENTRED as one
@@ -2211,7 +2262,8 @@
           m_torque:C.orange, m_fix:C.red, m_scan:C.cyan, m_salv:C.steel,
           m_deep:C.magenta, m_schem:C.blue };
         const hue = maxed ? C.green : afford ? materials[up.id] || SK.amber : C.gray;
-        for (let j = 0; j < icon.length; j++) drawIconRow(lx - 4, row + j, icon[j], hue);
+        if(!graphicIcon(up.id,lx-4,row,3,2,hue))
+          for (let j = 0; j < icon.length; j++) drawIconRow(lx - 4, row + j, icon[j], hue);
       }
       put(lx, row, LETTERS[i], afford ? C.amber : C.darkgray);
       put(lx + 1, row, ')', C.darkgray);
@@ -2280,6 +2332,7 @@
       const obj = (A && A.trophy) ? A.trophy(t.id) : { color: 'gray', lines: ['     ', '  ?  ', '     '] };
       const ox = x0 + ((TROPHY_SLOT - TW) >> 1);
       const oc = resolveColor(obj.color) || C.amber;
+      if(!illustration('trophy',x0+2,y0,TROPHY_SLOT-4,TH,{id:t.id,locked:!earned,selected:i===cur,accent:oc}))
       for (let r = 0; r < TH && r < obj.lines.length; r++) {
         const ln = obj.lines[r];
         for (let j = 0; j < ln.length; j++) {
@@ -2305,6 +2358,13 @@
 
     // the inspection card
     const sel = list[cur];
+    const tail=list.length%TROPHY_COLS;
+    if(sel && tail>0 && tail<=3) {
+      const free=(TROPHY_COLS-tail-2)*TROPHY_SLOT, hw=Math.min(20,free);
+      const hx=SHELF_X+(tail+1)*TROPHY_SLOT+Math.floor((free-hw)/2), hy=SHELF_ROW0+Math.floor(list.length/TROPHY_COLS)*SHELF_PITCH;
+      illustration('trophy',hx,hy,hw,5,
+        {id:sel.id,locked:have.indexOf(sel.id)<0,selected:true,accent:SK.amber});
+    }
     const iy = SHELF_ROW0 + Math.ceil(list.length / TROPHY_COLS) * SHELF_PITCH;
     text(SHELF_X, iy, '─'.repeat(SHELF_W), mix(SK.amber, C.bg, 0.42));
     if (sel) {
@@ -2336,6 +2396,8 @@
     const rule = mix(SK.amber, C.bg, 0.42);
     const dots = mix(C.gray, C.bg, 0.55);
     const x = LEDGER_X, w = LEDGER_W;
+    illustration('station',3,6,10,15,{id:'accounts',accent:SK.amber});
+    illustration('seal',99,7,10,9,{id:'standard',accent:SK.amber});
 
     ctext(1, 'DEEPCORE MINING CONCERN  ·  FORM 7-B', SK.amber);
     ctext(2, 'LIFETIME ACCOUNT OF OPERATOR  —  retain until death, whichever is sooner', C.gray);
@@ -2450,6 +2512,8 @@
     const logs = (E && E.LOGS) || [];
     const found = (DC.Meta && DC.Meta.logbook) ? DC.Meta.logbook(meta) : [];
     const dim = mix(C.gray, C.bg, 0.5);
+    illustration('station',3,4,11,22,{id:'archive',found,accent:SK.amber});
+    illustration('station',98,7,11,12,{id:'manual',accent:SK.amber});
 
     ctext(1, 'DEAD FOREMEN OF THE DEEP', C.amber);
     ctext(2, 'what they wrote down before the rock had them', C.gray);
@@ -2514,6 +2578,20 @@
     const page = pages[helpIndex(state, pages.length)];
     const x0 = Math.max(0, (COLS - page.w) >> 1);
     const y0 = Math.max(0, (ROWS - page.h) >> 1);
+    if(engraved()) {
+      const pi=helpIndex(state,pages.length);
+      const ids=[['extractor','smelter','assembler'],['belt','splitter','filter'],['tunnel','loader','damper']][Math.min(pi,2)];
+      ids.forEach((id,i)=>{
+        illustration('machine',2,4+i*9,16,7,{id,accent:(D.BUILDINGS[id]||{}).color});
+        text(3,11+i*9,id.toUpperCase(),C.gray);
+      });
+      illustration('station',95,4,14,9,{id:'manual'+(pi+1),accent:SK.amber});
+      const items=pi===2?['copperPlate','crystal','charge']:pi===1?['coal','ironOre','copperOre']:['ironOre','ironPlate','gear'];
+      items.forEach((id,i)=>{
+        graphicIcon(id,98,15+i*5,8,3,D.ITEMS[id].color);
+        text(95,18+i*5,itemLabel(id),C.gray);
+      });
+    }
     if(DC.Engraving) {
       text(x0+2,y0+2,'[V]',C.green);
       text(x0+6,y0+2,'ENGRAVED / CLASSIC — same save, same game',C.gray);
@@ -2861,6 +2939,9 @@
     const rows = card.rows;
     const x = Math.max(0, (COLS - CARD_W) >> 1);
     const y0 = Math.max(1, (ROWS - 2 - rows.length) >> 1);
+    illustration('station',6,5,18,21,{id:'bore',depth:state.run?state.run.depth:1,accent:SK.amber});
+    illustration('grit',84,6,24,15,{accent:SK.amber});
+    if(engraved()){text(6,3,'BORE RECORD',SK.amber);text(85,23,'REVIEW ON FILE',C.cyan);}
     for (let i = 0; i < rows.length && y0 + i < ROWS - 2; i++) {
       const r = rows[i];
       text(x, y0 + i, r.text, r.color);
@@ -2971,6 +3052,8 @@
         c = e;
       }
     }
+    paintIllustrations(true);
+    if(DC.Strata)for(const p of iconPlates)DC.Strata.icon(ctx,p.id,p.x*cw,p.y*ch,p.w*cw,p.h*ch,p.color);
     // text runs: same-color spans in one fillText; x-scale maps the measured
     // glyph advance onto the `cw` cell pitch so long runs stay grid-aligned
     ctx.font = font;
@@ -3147,7 +3230,9 @@
       return DC.Render.artMode();
     },
     illustrationStats: function () { return {regions:plates.length,cached:plateCache.size,
-      pixels:Array.from(plateCache.values()).reduce((n,v)=>n+v.canvas.width*v.canvas.height,0)}; },
+      pixels:Array.from(plateCache.values()).reduce((n,v)=>n+v.canvas.width*v.canvas.height,0),
+      subjects:plates.map(p=>p.kind+':'+(p.options.id||'')),icons:iconPlates.length,mapTiles:stratumPlates.length,
+      terrainPixels:terrainCache?terrainCache.canvas.width*terrainCache.canvas.height:0}; },
     FONT_FAMILY: FONT_FAMILY,
 
     // Which sub-cell technique the art may use on THIS machine, right now.
@@ -3204,6 +3289,8 @@
       clearBuf();
       plates.length=0;
       terrainPlates.length=0;
+      stratumPlates.length=0;
+      iconPlates.length=0;
       applyLivery(state.meta);   // M-RIGSKINS: the chrome for this frame
       // SPEC3 §A: fx.js advances its frame clock and takes its per-frame read
       // of the world BEFORE anything draws; its overlay lands after everything.

@@ -3,9 +3,20 @@
 Living orientation doc. Any new session should be able to read **this file plus
 the specs** and pick the work up cold — no prior conversation required.
 
-Last updated: 2026-09-09, 1.3 Engraved visual edition.
+Last updated: 2026-09-25, 1.4 Engraved extension and hybrid strata.
 
 ## Current handoff — read this before the historical notes
+
+Engraved now extends through the contract desk, Foundry tooling, trophy shelf,
+ledger, logbook, all three manual pages, recap and pause screen. The director
+explicitly allowed non-ASCII graphics for the stratum and asked for better
+icons: `js/strata.js` paints faceted geology, ore deposits, machine chassis and
+belt rails below the semantic character layer. Its vector icons cover every
+resource, build tool and Foundry upgrade. The right-hand rig panel becomes a
+state-driven machine cutaway while inspecting or preparing a build; induction
+retains GRIT. No gameplay values, lore, save formats or controls were changed.
+Both visual layers are omitted from the Classic standalone build. See
+`docs/AESTHETICS.md` for the new verification and invariants.
 
 The director subsequently requested a complete aesthetics overhaul, with no
 commitment to the old visuals, keeping gameplay and lore. `docs/AESTHETICS.md`

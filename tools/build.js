@@ -52,7 +52,7 @@ if (missing.length) {
 // The frozen ascii-native branch is the historical port. This second artifact
 // also lets a player use current game fixes without loading the fine-art layer.
 const classic = process.argv.includes('--classic');
-const activeFiles = classic ? files.filter(f => f !== 'js/engraving.js') : files;
+const activeFiles = classic ? files.filter(f => !['js/engraving.js','js/strata.js'].includes(f)) : files;
 const bundle = activeFiles
   .map((f) => '/* ==== ' + f + ' ==== */\n' + read(f))
   .join('\n');

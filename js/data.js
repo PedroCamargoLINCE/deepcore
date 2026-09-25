@@ -943,8 +943,8 @@
   D.CONTRACT_DEFAULT = 'standard';
 
   D.SAVE_KEY = 'deepcore_save_v1';
-  // Display only (title-screen corner). v1.3 is the Engraved visual edition,
+  // Display only (title-screen corner). v1.4 extends Engraved with hybrid strata,
   // with the completed human-balance board unchanged. The save
   // key is deliberately NOT versioned with it: no save format change here.
-  D.VERSION = '1.3';
+  D.VERSION = '1.4';
 })();

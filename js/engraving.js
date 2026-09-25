@@ -231,6 +231,10 @@
       for(let i=0;i<11;i++) poly([[.12+i*.07,.66],[.17+i*.067,.59+(i%3)*.08],[.26+i*.066,.77]],.33+(i%3)*.12,0);
       line(.47,.19,.65,.45,.013,.9,5);
     }
+    if(o.quake)for(let i=0;i<7;i++){
+      const x=.27+i*.08,y=.57+(i%3)*.04;
+      line(x,y,x+.017,y-.045,.008,.98,3);
+    }
   }
 
   function core(p,o) {
@@ -401,6 +405,177 @@
     }
   }
 
+  // Objects on the Company's desks. These are illustrated from their own
+  // geometry, never enlarged five-character trophy glyphs.
+  function object(p,o) {
+    const {rect,ellipse,poly,line,label}=p, id=o.id||'first_win';
+    const metal=(x)=>.85-x*.42;
+    const book=()=>{
+      poly([[.17,.2],[.48,.25],[.5,.83],[.15,.76]],.6,2);
+      poly([[.5,.25],[.83,.17],[.85,.76],[.5,.83]],.78,0);
+      line(.49,.25,.5,.82,.012,.2,1);
+      for(let i=0;i<6;i++){line(.22,.32+i*.065,.44,.36+i*.062,.008,.28,1);line(.56,.35+i*.065,.78,.3+i*.065,.008,.4,1);}
+    };
+    const paper=()=>{
+      rect(.24,.14,.52,.66,.65,0);rect(.27,.16,.46,.6,.3,1);
+      for(let i=0;i<5;i++)rect(.32,.23+i*.08,.34-(i%2)*.08,.017,.68,0);
+    };
+    if(o.locked){rect(.16,.84,.68,.05,.19,1);for(let i=0;i<8;i++)ellipse(.22+i*.08,.82,.009,.018,.28,0);return;}
+    switch(id) {
+      case 'first_win': case 'shareholder':
+        for(const x of id==='shareholder'?[.27,.5,.73]:[.5]) {
+          poly([[x,.13],[x+.15,.4],[x,.76],[x-.15,.4]],metal,2);
+          poly([[x,.13],[x,.76],[x-.15,.4]],.95,3);
+        }break;
+      case 'sub15':
+        rect(.45,.1,.1,.1,.7,1);ellipse(.5,.49,.29,.33,metal,1);ellipse(.5,.49,.24,.27,.15,1);
+        line(.5,.49,.5,.27,.012,.94,3);line(.5,.49,.66,.59,.014,.8,2);
+        for(let i=0;i<12;i++){const a=i*Math.PI/6;ellipse(.5+Math.sin(a)*.21,.49+Math.cos(a)*.24,.012,.018,.7,1);}break;
+      case 'no_repair':
+        poly([[.27,.72],[.61,.31],[.72,.4],[.38,.82]],metal,1);
+        poly([[.6,.17],[.75,.14],[.66,.28],[.75,.36],[.86,.23],[.84,.41],[.66,.48],[.55,.32]],.83,1);break;
+      case 'scenic':
+        rect(.14,.19,.72,.6,.72,2);rect(.19,.24,.62,.5,.14,4);
+        ellipse(.67,.37,.067,.082,.94,3);poly([[.2,.68],[.37,.39],[.54,.64],[.67,.49],[.81,.73]],.59,4);break;
+      case 'depth12':
+        poly([[.26,.7],[.39,.4],[.52,.62],[.68,.28],[.77,.73]],metal,1);
+        line(.52,.13,.52,.51,.022,.89,5);line(.42,.25,.62,.25,.015,.72,5);break;
+      case 'cat':
+        ellipse(.52,.61,.23,.2,.63,0);ellipse(.43,.38,.16,.18,.81,0);
+        poly([[.27,.36],[.27,.13],[.4,.24],[.51,.15],[.59,.38]],.79,0);
+        ellipse(.37,.35,.018,.028,.95,4);ellipse(.48,.35,.018,.028,.95,4);
+        line(.69,.63,.82,.45,.045,.68,0);break;
+      case 'schems_all': case 'logbook_full':book();if(id==='schems_all')line(.29,.64,.7,.41,.012,.86,4);break;
+      case 'wormfood':
+        for(let i=0;i<9;i++)ellipse(.2+i*.071,.45+Math.sin(i*.7)*.16,.064,.073,.5+i*.04,5);
+        ellipse(.77,.41,.016,.023,.99,3);poly([[.34,.8],[.43,.6],[.54,.81]],.7,4);break;
+      case 'hard_hats':
+        ellipse(.5,.46,.32,.28,metal,2);rect(.18,.46,.64,.17,.66,2);
+        rect(.12,.63,.76,.07,.91,2);rect(.46,.2,.08,.4,.9,1);ellipse(.5,.4,.1,.1,.2,1);ellipse(.5,.4,.06,.06,.96,3);break;
+      case 'high_score':
+        rect(.47,.32,.06,.45,.68,4);
+        for(const v of [[.33,.29],[.67,.29],[.5,.19]])ellipse(v[0],v[1],.17,.16,.79,4);
+        poly([[.26,.66],[.75,.66],[.67,.82],[.34,.82]],.7,2);break;
+      case 'company_man':case 'daily_win':case 'hazard_win':case 'warrant_win':
+        paper();
+        if(id==='company_man')label(.38,.43,'10',3);
+        if(id==='daily_win'){rect(.2,.12,.6,.075,.9,2);label(.44,.5,'T',3);}
+        if(id==='hazard_win')poly([[.63,.45],[.81,.72],[.46,.72]],.96,5);
+        if(id==='warrant_win'){line(.31,.35,.69,.71,.027,.85,5);line(.69,.35,.31,.71,.027,.85,5);}break;
+      default:book();
+    }
+    rect(.12,.86,.76,.055,.65,1);rect(.22,.81,.56,.04,.36,2);
+    if(o.selected)line(.17,.94,.83,.94,.012,.86,2);
+  }
+
+  function seal(p,o) {
+    const {rect,ellipse,line,poly}=p;
+    const locked=!!o.locked, ink=locked?1:o.id==='warrant'?5:2;
+    // Medal in physically round proportions on the broad contract plates.
+    const rx=Math.min(.23,.35*p.h*1.9/p.w), ry=rx*p.w/(p.h*1.9);
+    poly([[.5-rx*.7,.52],[.5-rx*1.2,.94],[.5,.81],[.5+rx*1.2,.94],[.5+rx*.7,.52]],locked?.21:.54,ink);
+    ellipse(.5,.43,rx,ry,.62,ink);ellipse(.5,.43,rx*.81,ry*.81,.19,1);
+    if(locked){rect(.5-rx*.33,.39,rx*.66,ry*.61,.56,1);ellipse(.5,.35,rx*.3,ry*.34,.62,1);}
+    else if(o.id==='warrant'){line(.5-rx*.43,.43-ry*.43,.5+rx*.43,.43+ry*.43,.016,.9,5);line(.5+rx*.43,.43-ry*.43,.5-rx*.43,.43+ry*.43,.016,.9,5);}
+    else if(o.id==='hazard'){poly([[.5,.43-ry*.62],[.5+rx*.6,.43+ry*.48],[.5-rx*.6,.43+ry*.48]],.92,2);rect(.49,.36,.02,.12,.12,1);}
+    else{line(.5-rx*.45,.43,.49,.43+ry*.35,.018,.85,4);line(.49,.43+ry*.35,.5+rx*.5,.43-ry*.4,.018,.85,4);}
+    for(let i=0;i<4;i++){line(.08,.24+i*.15,.5-rx*1.5,.24+i*.15,.005,.21,1);line(.5+rx*1.5,.24+i*.15,.92,.24+i*.15,.005,.21,1);}
+    if(o.won)line(.34,.98,.66,.98,.012,.86,4);
+  }
+
+  function station(p,o) {
+    const {rect,ellipse,line,poly,label}=p, id=o.id||'archive';
+    if(id==='archive') {
+      rect(.18,.03,.64,.94,.24,2);rect(.26,.07,.48,.86,.12,1);
+      for(let i=0;i<20;i++){
+        const y=.09+i*.041,found=(o.found||[]).indexOf(i)>=0;
+        rect(.3,y,.38,.022,found?.72:.24,found?2:1);
+        rect(.2,y,.075,.022,found?.9:.24,1);
+      }
+      line(.14,.02,.14,.97,.015,.75,1);return;
+    }
+    if(id==='bore') {
+      for(let i=0;i<8;i++){
+        const y=.05+i*.11;
+        rect(.13,y,.74,.09,.19+i*.033,i%3?0:2);
+        line(.16,y+.056,.84,y+.022,.007,.55,1);
+        if(i<Math.min(8,o.depth||1))rect(.45,y,.1,.1,.89,2);
+      }
+      if((o.depth||1)>8)poly([[.38,.92],[.62,.92],[.5,.99]],.94,5);
+      return;
+    }
+    if(id==='forge'){
+      poly([[.18,.22],[.89,.22],[.78,.39],[.62,.4],[.58,.71],[.83,.78],[.83,.88],[.19,.88],[.19,.78],[.4,.7],[.36,.4],[.15,.36],[.05,.25]],(x,y)=>.87-y*.5,1);
+      rect(.17,.19,.7,.035,.99,2);
+      for(let i=0;i<4;i++)line(.48+i*.07,.42,.48+i*.064,.64,.01,.24,1);
+      if(o.struck)for(let i=0;i<7;i++)line(.53,.14,.2+i*.1,.03+(i%2)*.06,.011,.99,3);
+      return;
+    }
+    if(id==='pause'){
+      ellipse(.5,.49,.35,.4,.63,1);ellipse(.5,.49,.28,.32,.15,1);
+      rect(.34,.26,.11,.46,.85,2);rect(.55,.26,.11,.46,.85,2);return;
+    }
+    if(id==='accounts'){
+      rect(.16,.08,.68,.83,.6,2);rect(.22,.12,.56,.75,.12,1);
+      for(let i=0;i<6;i++){
+        const y=.2+i*.112;line(.22,y,.78,y,.008,.66,1);
+        for(let j=0;j<3;j++)ellipse(.31+j*.11+(i%2)*.13,y,.043,.045,.82,2);
+      }return;
+    }
+    // Bound technical manual: folded pages and a brass spine.
+    object(p,{id:'logbook_full'});
+    label(.35,.44,id==='manual2'?'II':id==='manual3'?'III':'I',3);
+  }
+
+  function machine(p,o) {
+    const {rect,line,ellipse,poly}=p, id=o.id||'extractor';
+    const active=!!o.active, phase=active?(o.phase||0)%3:0;
+    rect(.08,.82,.84,.065,.72,1);rect(.16,.885,.17,.07,.35,1);rect(.67,.885,.17,.07,.35,1);
+    poly([[.19,.34],[.68,.34],[.84,.43],[.84,.8],[.19,.8]],(x)=>.77-x*.5,1);
+    rect(.21,.38,.43,.37,.12,1);
+    if(id==='smelter'){
+      ellipse(.45,.54,.18,.23,.69,2);ellipse(.45,.54,.13,.18,active?.94:.23,active?5:1);
+      for(let i=0;i<4;i++)line(.31+i*.09,.36,.31+i*.09,.74,.008,.6,1);
+      rect(.65,.13,.06,.22,.58,1);rect(.63,.11,.1,.025,.84,1);
+      if(active)for(let i=0;i<3;i++)ellipse(.68+(i%2)*.018,.08-i*.028-phase*.012,.021+i*.01,.016,.25,0);
+    }else if(id==='damper'){
+      ellipse(.45,.51,.25,.3,.78,4);ellipse(.45,.51,.2,.25,.12,1);
+      ellipse(.45,.51,.12,.19,.66,2);ellipse(.45,.51,.07,.13,.12,1);
+      line(.2,.5+phase*.018,.7,.5-phase*.018,.022,.88,1);rect(.41,.15,.07,.63,.6,1);
+    }else if(id==='crusher'){
+      poly([[.2,.12],[.75,.12],[.62,.4],[.33,.4]],.77,2);
+      for(const x of [.33,.57]){
+        ellipse(x,.58,.12,.17,.73,1);
+        for(let i=0;i<3;i++)line(x-.07,.49+i*.065+phase*.012,x+.07,.52+i*.065,.012,.21,1);
+      }
+    }else if(id==='loader'){
+      line(.28,.75,.41,.19,.033,.88,2);line(.41,.19,.71,.33,.028,.77,1);
+      ellipse(.41,.19,.054,.061,.88,1);line(.71,.33,.66,.52,.018,.8,2);line(.71,.33,.81,.47,.018,.8,2);
+    }else if(id==='extractor'){
+      rect(.4,.11,.08,.59,.85,2);
+      for(let i=0;i<5;i++)line(.38,.32+i*.067,.51,.35+i*.067+(phase*.012),.016,.23,1);
+      poly([[.36,.71],[.53,.71],[.45,.84]],.92,2);
+      line(.25,.2,.7,.2,.025,.8,1);
+    }else if(id==='assembler'){
+      for(let i=0;i<8;i++){
+        const a=i*Math.PI/4+phase*.18;
+        line(.44+Math.cos(a)*.09,.56+Math.sin(a)*.12,.44+Math.cos(a)*.18,.56+Math.sin(a)*.22,.022,.78,2);
+      }ellipse(.44,.56,.075,.1,.76,1);ellipse(.44,.56,.035,.045,.13,1);
+      rect(.23,.23,.11,.11,.72,2);line(.285,.29,.54,.38,.02,.83,1);
+    }else{
+      // Logistics bodies share the conveyor grammar, not the production rotor.
+      for(let i=0;i<4;i++)ellipse(.29+i*.092,.61,.035,.15,.57,1);
+      line(.22,.45,.64,.45,.012,.9,2);line(.22,.76,.64,.76,.012,.72,2);
+      if(id==='buffer')for(let i=0;i<3;i++)rect(.26+i*.115,.43,.08,.21,.69,2);
+      if(id==='filter'){rect(.41,.39,.034,.42,.86,4);ellipse(.45,.21,.06,.07,.84,4);}
+      if(id==='splitter'){line(.44,.48,.72,.22,.02,.82,2);line(.44,.48,.27,.21,.02,.82,2);}
+      if(id==='tunnel'){ellipse(.44,.49,.24,.28,.7,2);ellipse(.44,.52,.17,.2,.1,1);}
+    }
+    for(let i=0;i<4;i++)rect(.7,.49+i*.065,.095,.017,.19,1);
+    ellipse(.75,.43,.022,.027,active?.95:.28,active?4:1);
+    if(o.bad)line(.69,.73,.8,.62,.021,.96,5);
+  }
+
   function create(kind,w,h,options) {
     const p=plate(w,h),o=options||{};
     if(kind==='grit')grit(p,o);
@@ -408,6 +583,10 @@
     else if(kind==='schematic')schematic(p,o);
     else if(kind==='encounter')encounter(p,o);
     else if(kind==='descent')descent(p,o);
+    else if(kind==='trophy')object(p,o);
+    else if(kind==='seal')seal(p,o);
+    else if(kind==='station')station(p,o);
+    else if(kind==='machine')machine(p,o);
     else rig(p,o);
     return p.finish();
   }
