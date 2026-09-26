@@ -3,14 +3,31 @@
 Living orientation doc. Any new session should be able to read **this file plus
 the specs** and pick the work up cold — no prior conversation required.
 
-Last updated: 2026-09-25, Bedrock cockpit and working camera.
+Last updated: 2026-09-26, Bedrock equipment HUD.
 
 ## Current handoff — read this before the historical notes
+
+The director asked to keep making Bedrock look less like a website. The latest
+pass removes the in-game branded header: the world runs behind a stratum badge,
+stock counters and icon controls. Construction is an unboxed sprite rack.
+The fixed console has real-value segmented lamps, a pressure dial, an explicit
+Overdrive lever and a dedicated breach trigger. Pause is a full-screen GRIT
+menu rather than a dialog card. `bedrock-hud.css` owns this presentation.
+
+All nine suites pass and all three offline editions build. New browser checks
+cover instruments, full-bleed bounds, HUD-safe tutorial targets, inventory
+labels/large counts, Overdrive and pause keyboard focus. Screens reviewed at
+desktop, notebook and phone sizes. All 28 balance outcomes are unchanged:
+`/tmp/deepcore-console-before-balance.txt` and
+`/tmp/deepcore-console-after-balance.txt`. No gameplay, save, art-asset, Classic
+or Engraved changes. Existing title/Foundry/contracts retain their presentation.
+
+### Previous cockpit correction (still current)
 
 The director loves the new art but wanted a larger stratum and a game HUD
 without scrolling to reach drill controls. That revision is implemented:
 
-- `bedrock-hud.css` owns the run-only viewport layout; menus remain unchanged.
+- `bedrock-hud.css` owns the run-only viewport layout (and now Pause).
 - A fixed bottom cockpit keeps Hull, Pressure, gears/charges, feed rate,
   Overdrive, Descend and supply/departure advice visible together.
 - The camera starts close to the rig and includes induction targets. Rig

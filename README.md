@@ -21,7 +21,9 @@ for a pixel-art mining world: an illustrated drill and GRIT, distinct material
 and machine sprites, a playful pixel font, flat controls and action-driven
 impact effects. A close working camera makes the stratum readable; a fixed
 cockpit keeps drill meters and actions visible without scrolling. Production
-details open on demand. Stamped work permits retain their Papers, Please flavor.
+details open on demand. Overlaid mineral counters, an unboxed tool rack,
+pressure dial and Overdrive lever give the HUD an equipment feel; Pause is a
+full-screen GRIT menu. Stamped work permits retain their Papers, Please flavor.
 No ASCII art or terminal
 renderer. Same gameplay, lore and progression. Mouse wheel zooms; right-drag
 pans; **Rig** restores working scale, **Overview** fits the floor, and the corner

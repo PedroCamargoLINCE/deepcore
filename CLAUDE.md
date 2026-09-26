@@ -8,6 +8,14 @@ workers, verifies, merges) or **THE LABORER** (one brief, one branch). Know whic
 
 ## Current visual direction — director override, 2026-09-09
 
+**Equipment HUD, 2026-09-26:** keep pushing Bedrock away from a website.
+The mine now runs behind overlaid stock counters, a stratum badge and compact
+icon controls, not a branded header. Tools are an unboxed sprite rack. The
+console uses actual-value segmented lamps, a pressure needle, an Overdrive
+lever and a dedicated breach trigger; Pause is a full-screen game menu.
+Keep every primary readout visible, native keyboard controls accessible and
+induction targets below the HUD. No fake instrument activity or glossy UI.
+
 **Cockpit correction, 2026-09-25:** the director approved the pixel art but
 rejected the tiny stratum and scrolling drill sidebar. Bedrock now has a
 close working camera, a fixed bottom cockpit with every drill meter/action,

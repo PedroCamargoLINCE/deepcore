@@ -20,6 +20,11 @@
     return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
   };
   const number = n => Math.floor(n || 0).toLocaleString('en-US');
+  const stockNumber = n => {
+    for(const [scale,suffix] of [[1e12,'t'],[1e9,'b'],[1e6,'m'],[1e3,'k']])
+      if(n>=scale)return (n<scale*10?Math.floor(n/scale*10)/10:Math.floor(n/scale))+suffix;
+    return number(n);
+  };
   const strata = d => d <= D.STRATA_COUNT ? D.STRATA[d - 1] : D.mantleStratum(d);
   const directions = [
     'North',
@@ -100,7 +105,7 @@
   let htmlCache = {}, pointerBusy = false, pan = null, modelCache = {}, pauseOpen = false, pauseFocus = null;
   let reduced = false, frameCalls = 0, terrainBuilds = 0, mapBuilds = 0, lastRun = null, lastDepth = 0, lastCursor = '';
   let portraitImage=null,portraitReady=false,lastTool=null;
-  let detailOpen=false, cameraMode='work', fieldWidth=0, lastLesson='';
+  let detailOpen=false, cameraMode='work', fieldWidth=0, hudTop=76, lastLesson='';
   let observed = null, sparks = [], gains = {};
   // View-local event snapshots. Never inspect unrevealed terrain, spend RNG,
   // or invent activity for an idle machine. Tick ages freeze with the sim.
@@ -382,6 +387,7 @@
     if (!canvas)
       return;
     const r = canvas.getBoundingClientRect();
+    hudTop=parseFloat(root.getComputedStyle(nodes.game).getPropertyValue('--hud-top'))||76;
     const w = Math.max(1, r.width), h = Math.max(1, r.height), dpr = Math.min(root.devicePixelRatio || 1, 2, Math.sqrt(12000000 / (w * h)));
     if (w !== viewport.w || h !== viewport.h || dpr !== viewport.dpr) {
       viewport = {
@@ -403,7 +409,7 @@
   function cameraArea() {
     // The guide has its own lane: neither it nor the map controls may hide
     // the machinery or induction targets. Overview uses this same safe area.
-    return { w: Math.max(160, viewport.w - fieldWidth), h: Math.max(100, viewport.h - 66) };
+    return { w: Math.max(160, viewport.w - fieldWidth), h: Math.max(100, viewport.h - hudTop - 44), top:hudTop };
   }
   function basePitch() {
     const a = cameraArea();
@@ -431,9 +437,9 @@
     const tile = base * camera.zoom, w = D.MAP_W * tile, h = D.MAP_H * tile;
     camera.x = clamp(camera.x, 0, D.MAP_W);
     camera.y = clamp(camera.y, 0, D.MAP_H);
-    let x = area.w / 2 - camera.x * tile, y = area.h / 2 - camera.y * tile + 32;
+    let x = area.w / 2 - camera.x * tile, y = area.h / 2 - camera.y * tile + area.top;
     x = w < area.w ? (area.w - w) / 2 : clamp(x, area.w - w - 10, 10);
-    y = h < area.h ? (area.h - h) / 2 + 32 : clamp(y, area.h - h + 22, 32);
+    y = h < area.h ? (area.h - h) / 2 + area.top : clamp(y, area.h - h + area.top - 10, area.top);
     transform = {
       x,
       y,
@@ -565,8 +571,8 @@
       const a=cameraArea(), px=transform.x+(cp.x+.5)*transform.tile, py=transform.y+(cp.y+.5)*transform.tile;
       if(px<48)camera.x-=(48-px)/transform.tile;
       if(px>a.w-48)camera.x+=(px-a.w+48)/transform.tile;
-      if(py<66)camera.y-=(66-py)/transform.tile;
-      if(py>a.h-16)camera.y+=(py-a.h+16)/transform.tile;
+      if(py<a.top+24)camera.y-=(a.top+24-py)/transform.tile;
+      if(py>a.top+a.h-24)camera.y+=(py-a.top-a.h+24)/transform.tile;
     }
     lastCursor = cpKey;
     computeTransform();
@@ -585,6 +591,7 @@
       camera,
       viewport,
       fieldWidth,
+      hudTop,
       run.nextId,
       run.gearsFed,
       run.inv.ironPlate
@@ -854,14 +861,22 @@
   function topbar(st) {
     const run = st.screen === 'run' && st.run, s = run && strata(run.depth);
     const fullscreen=root.document.fullscreenEnabled ? '<button type="button" data-action="fullscreen" aria-label="'+(root.document.fullscreenElement?'Exit full screen':'Full screen')+'" title="'+(root.document.fullscreenElement?'Exit full screen':'Full screen')+'">'+icon('fullscreen')+'</button>' : '';
-    return '<div class="wordmark">' + icon('bit') + '<div>DEEPCORE<small>MINING CONCERN</small></div></div>' + (run ? '<div class="location"><div class="eyebrow">Stratum ' + run.depth + ' / \u2212' + run.depth * D.DEPTH_M + ' m</div><h3>' + esc(title(s.name).replace(/†/g, '')) + '</h3></div>' : '<span class="eyebrow">Bedrock / Graphical edition</span>') + '<div class="top-actions">' + (run ? '<span class="time small amount">' + time(run.totalT / D.TICK_HZ) + '</span>' : '') + '<button data-key="m" aria-label="' + (st.meta.muted ? 'Unmute' : 'Mute') + ' audio">' + icon(st.meta.muted ? 'muted' : 'sound') + '<span class="mute-label">' + (st.meta.muted ? 'Sound off' : 'Sound on') + '</span></button>' + (st.screen === 'run' ? button('Manual', 'h', 'quiet') + button('Pause', ' ', 'quiet') : st.screen === 'title' ? '<button type="button" data-progress>Progress</button>' + button('Manual', 'h', 'quiet') : button('Back', 'Escape', 'quiet', [
+    if(run){
+      const control=(key,subject,label)=>'<button type="button" data-key="'+key+'" aria-label="'+label+'" title="'+label+'">'+icon(subject)+'</button>';
+      return '<div class="shaft-marker"><b class="depth-badge"><small>STRATUM</small>'+String(run.depth).padStart(2,'0')+'</b><div><h3>'+esc(title(s.name).replace(/†/g,''))+'</h3><span>\u2212'+number(run.depth*D.DEPTH_M)+' m <i> / </i> '+time(run.totalT/D.TICK_HZ)+'</span></div></div>'+
+        '<div class="top-actions">'+control('m',st.meta.muted?'muted':'sound',st.meta.muted?'Unmute audio (M)':'Mute audio (M)')+control('h','book','Manual (H)')+control(' ','pause','Pause (Space)')+fullscreen+'</div>';
+    }
+    return '<div class="wordmark">' + icon('bit') + '<div>DEEPCORE<small>MINING CONCERN</small></div></div><span class="eyebrow">Bedrock / Graphical edition</span><div class="top-actions"><button data-key="m" aria-label="' + (st.meta.muted ? 'Unmute' : 'Mute') + ' audio">' + icon(st.meta.muted ? 'muted' : 'sound') + '<span class="mute-label">' + (st.meta.muted ? 'Sound off' : 'Sound on') + '</span></button>' + (st.screen === 'title' ? '<button type="button" data-progress>Progress</button>' + button('Manual', 'h', 'quiet') : button('Back', 'Escape', 'quiet', [
       'descend',
       'vignette'
     ].includes(st.screen))) + fullscreen + '</div>';
   }
   function resources(st) {
     const run = st.run, tut = DC.Tutorial.layout(run), focus = tut && tut.panels ? tut.beat === 'feed' ? 'gear' : 'ironOre' : null;
-    return D.ITEM_ORDER.map(id => '<div class="resource ' + (run.inv[id] || 0 ? '' : 'empty') + (focus === id ? ' tutor-focus' : '') + (gains[id] ? ' gained' : '') + '" style="--resource:'+itemColors[id]+'" title="' + esc(D.ITEMS[id].name) + '">' + icon(id) + '<div><b>' + number(run.inv[id]) + '</b><span class="label">' + esc(title(D.ITEMS[id].name)) + '</span></div></div>').join('');
+    return D.ITEM_ORDER.map(id => {
+      const label=esc(D.ITEMS[id].name+': '+number(run.inv[id]));
+      return '<div class="resource ' + (run.inv[id] || 0 ? '' : 'empty') + (focus === id ? ' tutor-focus' : '') + (gains[id] ? ' gained' : '') + '" style="--resource:'+itemColors[id]+'" role="group" aria-label="'+label+'" title="'+label+'">' + icon(id) + '<div><b>' + stockNumber(run.inv[id]) + '</b><span class="label">' + esc(title(D.ITEMS[id].name)) + '</span></div></div>';
+    }).join('');
   }
   function chain(run) {
     if (modelCache.run !== run || modelCache.t !== run.t) {
@@ -879,16 +894,31 @@
     const active = r.stats && r.stats.lastFeedT > 0 && r.totalT - r.stats.lastFeedT < 2 * D.TICK_HZ;
     const ready = r.status === 'breachReady', reserve = DC.Sim.departureReserve();
     const warning = ready ? 'Machines stay here. Pack ' + reserve + ' iron plates for the next floor.' : DC.Sim.supplyWarning(r) ? 'No plates? Reclaim a misplaced machine with X.' : r.overdrive ? D.OVERDRIVE.drillMult + '\u00d7 feed. Pressure rises faster. Keep an eye on the hull.' : 'Gears auto-feed from stock. Deliver production to the rig by belt.';
-    const meter = (label,value,max,cls) => '<div class="cockpit-meter"><div class="meter-label"><span>'+label+'</span><strong>'+value+(label==='Pressure'?'%':'<small> / '+max+'</small>')+'</strong></div>'+bar(value,max,cls).replace('role="meter"','role="meter" aria-label="'+label+'"')+'</div>';
+    const meter = (label,value,max,cls) => '<div class="cockpit-meter"><div class="meter-label"><span>'+label+'</span><strong>'+value+'<small> / '+max+'</small></strong></div>'+segmentedMeter(label,value,max,cls)+'</div>';
     return '<section class="rig-panel '+(ready?'ready':r.overdrive?'overdriving':'')+'"><div class="rig-head">' + icon('rig', {
       active: !!active,
       upgrades: st.meta.upgrades,
       accent: livery(st.meta)
     }) + '<div><div class="eyebrow">Drill control</div><h3>' + (ready ? 'BREACH READY!' : r.overdrive ? 'OVERDRIVE!' : 'FEED THE DRILL') + '</h3></div></div>' +
-      '<div class="rig-health">'+meter('Hull',Math.max(0,Math.ceil(r.integrity)),r.maxIntegrity,r.integrity<30?'warn':'')+meter('Pressure',Math.floor(r.instability),100,r.instability>=D.QUAKE.startInst?'warn':'pressure')+'</div>'+
+      '<div class="rig-health">'+meter('Hull',Math.max(0,Math.ceil(r.integrity)),r.maxIntegrity,r.integrity<30?'warn':'')+pressureDial(r.instability)+'</div>'+
       '<div class="rig-feed">'+meter('Drill gears',r.gearsFed,req.gear,'gold')+(req.charge?meter('Core charges',r.chargesFed,req.charge,'charge'):'')+'</div>'+
-      '<div class="drill-actions">'+button(r.overdrive?'Overdrive ON':'Overdrive','c',r.overdrive?'selected':'')+button('Descend','d','primary',!ready)+'</div>'+
+      '<div class="drill-actions"><button type="button" data-key="c" class="drive-switch" aria-pressed="'+!!r.overdrive+'" title="'+D.OVERDRIVE.drillMult+'x gear/charge feed; higher pressure. No stock, no speed gain."><i class="switch-track" aria-hidden="true"><i></i></i><span>Overdrive<small>'+ (r.overdrive?'ENGAGED':'OFF')+' <kbd>C</kbd></small></span></button>'+
+      '<button type="button" data-key="d" class="breach-trigger'+(ready?' armed':'')+'" title="'+(ready?'Breach the floor. Machines stay behind.':'Feed the required gears and charges to unlock descent.')+'"'+(ready?'':' disabled')+'>'+icon('down')+'<span>'+(ready?'BREACH!':'Descend')+'<small>'+(ready?'READY':'LOCKED')+'</small></span><kbd>D</kbd></button></div>'+
       '<div class="rig-readout"><span class="feed-rate">'+(ready?'READY TO BREACH':(fr.gearPerSec||0).toFixed(1)+' gears/s'+(req.charge?' · '+(fr.chargePerSec||0).toFixed(1)+' charges/s':'')+(ch.breachSec!=null&&isFinite(ch.breachSec)?' · ~'+time(ch.breachSec):''))+'</span><span>'+esc(warning)+'</span></div></section>';
+  }
+  function segmentedMeter(label,value,max,cls) {
+    const fraction=clamp(max?value/max:1,0,1);
+    return '<div class="instrument-segments '+(cls||'')+'" role="meter" aria-label="'+label+'" aria-valuemin="0" aria-valuemax="'+Math.max(1,max)+'" aria-valuenow="'+clamp(value,0,Math.max(1,max))+'">'+
+      Array.from({length:20},(_,i)=>'<i aria-hidden="true" style="--fill:'+clamp((fraction*20-i)*100,0,100)+'%"></i>').join('')+'</div>';
+  }
+  function pressureDial(value) {
+    const v=clamp(value,0,100), point=(fraction,radius)=>{
+      const angle=Math.PI*(1-fraction);
+      return (48+Math.cos(angle)*radius).toFixed(2)+','+(48-Math.sin(angle)*radius).toFixed(2);
+    };
+    const ticks=Array.from({length:11},(_,i)=>'<path d="M'+point(i/10,34)+' L'+point(i/10,40)+'" stroke="'+(i*10>=D.QUAKE.startInst?'#e99678':'#718789')+'"/>').join('');
+    return '<div class="pressure-dial'+(v>=D.QUAKE.startInst?' danger':'')+'" role="meter" aria-label="Pressure" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+v+'">'+
+      '<span>Pressure</span><svg viewBox="0 0 96 58" aria-hidden="true"><g fill="none" stroke-width="3">'+ticks+'<path d="M48,48 L'+point(v/100,30)+'" stroke="'+(v>=D.QUAKE.startInst?'#e99678':'#f4c96b')+'"/></g><path d="M44 44h8v8h-8z" fill="#f4c96b"/></svg><strong>'+Math.floor(v)+'%</strong></div>';
   }
   function tutorial(st) {
     const T = DC.Tutorial, r = st.run;
@@ -992,7 +1022,7 @@
       const selected=nodes.toolbelt.querySelector('.tool.selected');
       if(selected)selected.scrollIntoView({block:'nearest',inline:'nearest'});
     }
-    put('map-caption', '<b>' + esc(title(s.name).replace(/†/g, '')) + '</b>' + esc(mut ? mut.name + ' / ' + mut.tag : s.tag));
+    put('map-caption', esc(mut ? mut.name + ' / ' + mut.tag : s.tag));
     const flash = st.ui.flash && st.ui.flash.until > r.t ? clean(st.ui.flash.text) : '';
     const offer = r.coreOffer && r.totalT < r.coreOffer.until;
     put('statusbar', '<span>' + esc(offer ? 'ENTER \xB7 ASCEND' : flash || 'Click to interact \xB7 drag to lay belts \xB7 arrows move cursor \xB7 Enter acts') + '</span><span>Scroll to zoom \xB7 right-drag to pan \xB7 ' + Math.round(camera.zoom * 100) + '%</span>');
@@ -1225,7 +1255,7 @@
       return;
     }
     nodes.modal.classList.add('open');
-    put('modal', '<div class="pause-card" role="dialog" aria-modal="true" aria-labelledby="pause-title">' + icon('grit') + '<div class="eyebrow">Authorized interruption</div><h1 id="pause-title">Tools down.</h1><p>The drill is quiet. Take a breath.<br>Your active shift stays here while this window remains open.</p><div class="stack">' + button('Return to the shaft', ' ', 'primary') + button('Field manual', 'h', 'quiet') + button('Abandon this shift', 'a', 'danger') + '</div></div>');
+    put('modal', '<div class="pause-card" role="dialog" aria-modal="true" aria-labelledby="pause-title"><div class="pause-portrait">' + icon('grit') + '<small>DC / CREW COMMS</small></div><div class="pause-content"><div class="eyebrow">Shift on hold</div><h1 id="pause-title">TOOLS<br>DOWN.</h1><p>The drill is quiet. Take a breath.<br>Your active shift stays here while this window remains open.</p><div class="stack">' + button('Return to the shaft', ' ', 'primary') + button('Field manual', 'h', 'quiet') + button('Abandon this shift', 'a', 'danger') + '</div></div></div>');
     if (!pauseOpen) {
       pauseOpen = true;
       pauseFocus = root.document.activeElement;

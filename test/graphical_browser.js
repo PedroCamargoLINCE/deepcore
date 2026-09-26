@@ -24,13 +24,15 @@ async function main(){
       const op=document.querySelector('#operations'),box=op.getBoundingClientRect();
       const visible=e=>{const r=e.getBoundingClientRect();return r.width>0&&r.left>=0&&r.right<=innerWidth+1&&r.top>=box.top&&r.bottom<=box.bottom+1};
       return {scroll:op.scrollHeight>op.clientHeight+1,overflow:document.documentElement.scrollHeight>innerHeight+1,
+        fullBleed:document.querySelector('#screen').getBoundingClientRect().top===0,
+        inventory:[...document.querySelectorAll('#resources .resource')].every(e=>{const r=e.getBoundingClientRect(),a=e.querySelector('.icon').getBoundingClientRect(),b=e.querySelector('b').getBoundingClientRect(),s=document.querySelector('#resources').getBoundingClientRect();return a.left>=r.left-1&&b.right<=r.right+1&&a.top>=s.top-1&&b.bottom<=s.bottom+1}),
         meters:[...op.querySelectorAll('[role="meter"]')].every(visible),
         controls:[...op.querySelectorAll('button')].every(visible),
         readout:visible(op.querySelector('.rig-readout')),
         tools:[...document.querySelectorAll('.tool-group button')].every(e=>{const r=e.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth+1&&r.bottom<=innerHeight}),
         tile:DC.Render.debug().transform.tile};
     })()`);
-    assert(!result.scroll&&!result.overflow&&result.meters&&result.controls&&result.readout&&result.tools,label+' cockpit needs no scrolling: '+JSON.stringify(result));
+    assert(!result.scroll&&!result.overflow&&result.fullBleed&&result.inventory&&result.meters&&result.controls&&result.readout&&result.tools,label+' cockpit needs no scrolling: '+JSON.stringify(result));
     return result;
   };
   try{
@@ -67,9 +69,9 @@ async function main(){
           s.run.tutorial.i=i;DC.Render.frame(s,performance.now());
           const p=document.querySelector('#field-notes');
           if(p.scrollHeight>p.clientHeight+1)fail.push('lesson '+i+' scrolls');
-          const l=DC.Tutorial.layout(s.run),t=DC.Render.debug().transform,c=document.querySelector('#screen').getBoundingClientRect(),f=p.getBoundingClientRect();
+          const l=DC.Tutorial.layout(s.run),t=DC.Render.debug().transform,c=document.querySelector('#screen').getBoundingClientRect(),f=p.getBoundingClientRect(),top=parseFloat(getComputedStyle(document.querySelector('#game')).getPropertyValue('--hud-top'));
           for(const q of [l&&l.target,l&&l.from])if(q){const x=c.x+t.x+(q.x+.5)*t.tile,y=c.y+t.y+(q.y+.5)*t.tile;
-            if(x<c.left||x>f.left-6||y<c.top+30||y>c.bottom-40)fail.push('lesson '+i+' obscures target');}
+            if(x<c.left||x>f.left-6||y<c.top+top+20||y>c.bottom-40)fail.push('lesson '+i+' obscures target');}
         }
         s.run.tutorial.i=original;DC.Render.frame(s,performance.now());return fail;
       })()`);
@@ -96,6 +98,22 @@ async function main(){
       s.run.gearsFed=19;s.run.instability=38;s.run.integrity=82;s.ui.tool=null;s.ui.hover=null;s.ui.cursor={x:18,y:14};s.screen='run';DC.Render.frame(s,performance.now());
     })()`);
     await shot('factory');
+    assert(await evaluate('!document.querySelector("#topbar .wordmark")&&[...document.querySelectorAll("#toolbelt button")].every(b=>getComputedStyle(b).borderWidth==="0px")'),'game HUD has no website masthead or boxed tool cards');
+    const instruments=await evaluate(`(()=>{
+      const s=DC.state,r=s.run,before={pressure:r.instability,gears:r.gearsFed};
+      r.instability=0;DC.Render.frame(s,performance.now());
+      const cold=document.querySelector('.pressure-dial g path:last-child').getAttribute('d');
+      r.instability=60;r.gearsFed=r.breachReq.gear/2;DC.Render.frame(s,performance.now());
+      const hot=document.querySelector('.pressure-dial g path:last-child').getAttribute('d');
+      const segments=[...document.querySelectorAll('.instrument-segments[aria-label="Drill gears"] i')].map(e=>parseFloat(e.style.getPropertyValue('--fill')));
+      const result={changed:cold!==hot,value:document.querySelector('.pressure-dial').getAttribute('aria-valuenow'),lit:segments.filter(v=>v===100).length,empty:segments.filter(v=>v===0).length};
+      r.instability=before.pressure;r.gearsFed=before.gears;DC.Render.frame(s,performance.now());return result;
+    })()`);
+    assert.deepStrictEqual(instruments,{changed:true,value:'60',lit:10,empty:10},'needle and segmented lamps represent actual values');
+    await click('#operations button[data-key="c"]');
+    assert(await evaluate('DC.state.run.overdrive&&document.querySelector(".drive-switch").getAttribute("aria-pressed")==="true"'),'Overdrive lever engages through the real engine');
+    await shot('overdrive');await click('#operations button[data-key="c"]');
+    assert(await evaluate('!DC.state.run.overdrive&&document.querySelector(".drive-switch").getAttribute("aria-pressed")==="false"'),'Overdrive lever disengages');
     const clickTile=async(x,y,type='mousePressed',button='left')=>{
       const p=await evaluate(`(()=>{const t=DC.Render.debug().transform,r=document.querySelector('#screen').getBoundingClientRect();return {x:r.x+t.x+(${x}+.5)*t.tile,y:r.y+t.y+(${y}+.5)*t.tile}})()`);
       await send('Input.dispatchMouseEvent',{type,button,clickCount:1,...p});return p;
@@ -162,6 +180,10 @@ async function main(){
     }
     await evaluate('DC.state.screen="run";DC.state.ui.paused=false;DC.Render.frame(DC.state,performance.now())');
     await click('#topbar button[data-key=" "]');assert(await evaluate('DC.state.ui.paused'));await shot('pause');
+    assert(await evaluate('(()=>{const r=document.querySelector("#modal").getBoundingClientRect();return r.top===0&&r.bottom===innerHeight&&document.querySelector("#modal").contains(document.activeElement)})()'),'pause is a full-screen game menu with keyboard focus');
+    await evaluate('document.querySelector("#modal button:last-child").focus()');
+    await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Tab',code:'Tab'});await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Tab',code:'Tab'});
+    assert(await evaluate('document.activeElement===document.querySelector("#modal button")'),'pause wraps keyboard focus');
     await click('#modal button[data-key=" "]');assert.strictEqual(await evaluate('DC.state.ui.paused'),false);
     // Breach -> timed interstitial -> real schematic choice -> next floor.
     await evaluate(`(()=>{const s=DC.state;s.run=DC.Sim.newRun(DC.Meta.effects(s.meta),2718);s.run.status='breachReady';s.run.gearsFed=s.run.breachReq.gear;s.run.chargesFed=s.run.breachReq.charge;s.ui.tool=null;s.ui.descendAnim=0;DC.Render.frame(s,performance.now())})()`);
@@ -196,6 +218,11 @@ async function main(){
     await send('Emulation.setEmulatedMedia',{features:[]});
     const overflow=await evaluate('({w:innerWidth,doc:document.documentElement.scrollWidth,body:document.body.scrollWidth})');assert(overflow.doc<=overflow.w&&overflow.body<=overflow.w,'no page horizontal overflow');
     await size(390,844,2);await cockpit('narrow 390x844');await shot('factory-mobile');
+    await evaluate('window.inventoryFixture={...DC.state.run.inv};DC.DATA.ITEM_ORDER.forEach(id=>DC.state.run.inv[id]=123456);DC.Render.frame(DC.state,performance.now())');
+    await cockpit('large stock counters on narrow screen');
+    assert(await evaluate('[...document.querySelectorAll(".resource")].every(e=>e.title.includes("123,456")&&e.getAttribute("aria-label").includes("123,456")&&e.querySelector("b").textContent==="123k")'),'compact stock retains exact values in labels and hover text');
+    await evaluate('DC.state.run.inv=window.inventoryFixture;DC.Render.frame(DC.state,performance.now())');
+    await click('#topbar button[data-key=" "]');await shot('pause-mobile');await click('#modal button[data-key=" "]');
     await evaluate('DC.state.screen="contract";DC.Render.frame(DC.state,performance.now())');await shot('contract-mobile');
     assert(await evaluate('[...document.querySelectorAll(".permit")].every(e=>e.getBoundingClientRect().right<=innerWidth)'),'all permits fit on mobile');
     await evaluate('DC.state.screen="title";DC.Render.frame(DC.state,performance.now())');await shot('title-mobile');

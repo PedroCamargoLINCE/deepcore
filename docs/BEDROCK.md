@@ -51,6 +51,16 @@ Chain, Loadout and Journal open through **Production**; Close or Escape returns
 to the field guide. GRIT's induction radio and contextual inspection occupy a
 reserved camera lane. The camera keeps the rig and lesson targets clear of it.
 
+The September 26 equipment pass removes the remaining website masthead during
+play. The world extends behind a stratum badge, mineral counters and small
+sound/manual/pause/fullscreen controls. Unselected construction tools are
+unboxed sprites in a rack, not equal-sized cards. Hull and feed use segmented
+lamps with accurate partial fills; a pressure needle follows actual instability.
+Overdrive is a lever with an explicit on/off state; the clipped-corner breach
+trigger stays locked until the real descent gate permits it. These are flat
+colors and physical silhouettes, not shaded/bevelled app controls. Pause is a
+full-screen GRIT menu over the quiet shaft, with native focus trapping.
+
 Terrain uses square tiles, connected wall edges, distinct materials for eight
 biomes, physical ore silhouettes, rail-like belts, and machine sprites with
 visible output ports. Coal is a fractured cluster, iron a banded metallic slab,
@@ -81,8 +91,9 @@ CRT overlay, or glyph-rendered terrain is used by this edition.
   metadata and the engine's existing descent-duration contract; its ASCII
   illustrations are never rendered.
 - `bedrock-hud.css`: the viewport-sized in-game cockpit, loaded after the
-  existing menu styles. Its run-only overrides leave title, contracts, Foundry
-  and the other editions alone. It is embedded by the ordinary offline build.
+  existing menu styles. It also owns the in-game pause presentation. Its
+  run-only overrides leave title, contracts, Foundry and the other editions
+  alone. It is embedded by the ordinary offline build.
 - `Engine.command(key)`: graphical buttons enter the same route as keyboard
   commands. The existing simulation, gates, tutorial, awards and input actions
   remain authoritative. Canvas hits map back to the unchanged logical tiles.
@@ -98,6 +109,10 @@ CRT overlay, or glyph-rendered terrain is used by this edition.
   updates preserve that scroll position. Supplemental journal/loadout content
   may scroll, but drill controls and readouts do not. Native buttons retain
   focus and keyboard activation. This remains a desktop-first factory game.
+- Camera framing reserves the overlaid HUD's actual responsive top inset.
+  Inventory counts abbreviate at high values; hover text and accessible labels
+  retain the exact quantity and material name. The pressure dial and segmented
+  lamps expose their numerical values as labeled meter roles.
 
 ## Save safety
 
@@ -191,3 +206,12 @@ production tabs and Escape, pinned utility tools, and strip scroll retention.
 Desktop, notebook and narrow-window screenshots were visually reviewed.
 All 28 balance outcomes match `/tmp/deepcore-hud-before-balance.txt` versus
 `/tmp/deepcore-hud-after-balance.txt`. No simulation, map-size or save changes.
+
+The September 26 console revision passes all nine suites and all three builds.
+Browser coverage adds full-bleed world bounds, unboxed tools, unclipped stock
+counters (including large quantities), actual-value needles/lamps, the real
+Overdrive toggle and full-screen Pause with keyboard focus wrapping. Tutorial
+targets must clear the responsive overlaid HUD. Desktop, notebook, phone and
+pause screens were visually reviewed. All 28 outcomes remain byte-identical:
+`/tmp/deepcore-console-before-balance.txt` and
+`/tmp/deepcore-console-after-balance.txt`.
