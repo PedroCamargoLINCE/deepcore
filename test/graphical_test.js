@@ -21,6 +21,10 @@ for(const name of ['rig','grit']){
   assert.strictEqual(png[25],6,name+' preserves RGBA transparency');
   assert(png.readUInt32BE(16)>=256&&png.readUInt32BE(20)>=256,name+' source retained at high resolution');
 }
+const shaft=fs.readFileSync(path.join(root,'assets/bedrock/shaft-house.png'));
+assert.strictEqual(shaft.subarray(1,4).toString(),'PNG');
+assert.strictEqual(shaft[25],2,'shaft-house retains the original opaque RGB source');
+assert(shaft.readUInt32BE(16)>shaft.readUInt32BE(20),'shaft-house is a landscape illustration');
 assert.strictEqual(R.artMode(),'bedrock');
 for(const f of ['js/render.js','js/engraving.js','js/strata.js','js/fx.js'])assert(!files.includes(f),'graphical entry excludes '+f);
 assert(!/fillText|strokeText|Math\.random|Date\.now|\.rng\(/.test(read('js/atelier.js')),'art engine cannot draw characters or roll a random stream');
@@ -54,7 +58,15 @@ for(const u of D.META_UPGRADES){
 const scenes=[];
 for(const e of DC.Events.VIGNETTES){const c=recorder();A.scene(c,e.id,500,400,{});scenes.push(JSON.stringify(c.calls));}
 assert.strictEqual(new Set(scenes).size,20,'every encounter is separately illustrated');
-for(const id of ['landscape','wreck','core','descent']){const c=recorder();A.scene(c,id,500,400,{upgrades:{m_hull:1}});}
+for(const id of ['landscape','shaft-house','wreck','core','descent']){const c=recorder();A.scene(c,id,500,400,{upgrades:{m_hull:1}});}
+const titleArt={backdrop:{naturalWidth:1672,naturalHeight:941},portrait:{decodedBitmap:true},upgrades:{m_hull:1},cat:true};
+const titleBefore=JSON.stringify(titleArt);
+for(const [w,h] of [[480,270],[130,87],[96,140]]){
+  const c=recorder();A.scene(c,'shaft-house',w,h,titleArt);
+  assert(c.calls.some(x=>x[0]==='drawImage'&&x[1]===titleArt.backdrop),'title composes the decoded shaft-house');
+  assert(c.calls.some(x=>x[0]==='drawImage'&&x[1]===titleArt.portrait),'title composes the separate upgrade-aware rig');
+}
+assert.strictEqual(JSON.stringify(titleArt),titleBefore,'title composition leaves the profile descriptors untouched');
 const biomes=[];for(let i=0;i<8;i++){const c=recorder();A.tile(c,{kind:'rock',biome:i,edges:15,variant:1},0,0,30);biomes.push(JSON.stringify(c.calls));}
 assert.strictEqual(new Set(biomes).size,8,'each stratum has its own material palette');
 const meta=DC.Meta.newProfile(),run=DC.Sim.newRun(DC.Meta.effects(meta),1337),twin=DC.Sim.newRun(DC.Meta.effects(meta),1337);
@@ -89,10 +101,10 @@ for(const edition of ['deepcore','deepcore-classic','deepcore-graphical']){
     assert(!built.includes('/* ==== js/render.js ==== */'));assert(built.includes('/* ==== js/atelier.js ==== */'));
     assert(built.includes('/* ==== js/pixels.js ==== */'),'pixel module bundled');
     assert(!/['"]assets\/bedrock\//.test(built),'no external bitmap paths');
-    assert.strictEqual((built.match(/data:image\/png;base64,/g)||[]).length,2,'both illustrations embedded');
+    assert.strictEqual((built.match(/data:image\/png;base64,/g)||[]).length,3,'portraits and shaft-house embedded');
     assert(built.includes('data:font/ttf;base64,'),'pixel font embedded');
     assert(built.includes('SIL OPEN FONT LICENSE'),'font license travels with the build');
   }
   else assert(!built.includes('/* ==== js/graphical.js ==== */'),'legacy edition excludes new renderer');
 }
-console.log('PASS graphical | '+Object.keys(PX.ART).length+' authored pixel subjects | '+ids.length+' total icon subjects | 2 RGBA portraits + pixel font embedded | 20 unique encounters | 8 biomes | all 9 upgrades on sprite AND bitmap rigs | no text-drawing path | no RNG/state mutations | fog redaction | safe profile migration | three offline builds');
+console.log('PASS graphical | '+Object.keys(PX.ART).length+' authored pixel subjects | '+ids.length+' total icon subjects | 2 RGBA portraits + shaft-house + pixel font embedded | 20 unique encounters | 8 biomes | all 9 upgrades on sprite AND bitmap rigs | no text-drawing path | no RNG/state mutations | fog redaction | safe profile migration | three offline builds');

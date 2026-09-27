@@ -23,10 +23,22 @@ to the graphical edition. The `ascii-native` branch remains untouched.
 An illustrated pixel-art mining game: charcoal hardware, dusty teal steel,
 amber controls, rust-red furnaces and violet crystals. The director's next
 correction rejected bevelled buttons, bland fonts and primitive vector icons.
-The title now pairs a Pixelify Sans wordmark with a generated drilling crawler;
-GRIT has a separate expressive pixel-style portrait. Flat square controls,
+The title pairs a Pixelify Sans wordmark with a generated underground shaft-house
+and a separately composed drilling crawler; GRIT has an expressive pixel-style
+portrait. Flat square controls,
 high-contrast meters and clear selected states replace gradients and bevels.
 All labels stay native text, not words baked into an image.
+
+The September 26 title pass treats the menu as a place: the crawler waits on
+its maintenance platform beneath a teal gantry, ochre crane and amber lamps.
+The rig still shows the player's actual upgrades, livery and rescued cat.
+An unboxed vertical command list replaces the landing-page button cluster;
+arrow keys and Home/End select, native Enter/Space activate, and Tab/hotkeys
+remain available. Pointer movement selects without stealing keyboard focus
+or rebuilding the scene. Context explains induction, permanent upgrades and
+the daily's ranked/practice status. Career counters and sound/backup/fullscreen
+controls remain available without dominating the artwork. Small windows use
+a shorter illustration band and compact menu; no title scrolling is required.
 
 Thirty original palette-grid sprites cover the eight resources, all ten build
 tools, the map rig, GRIT fallback, three permit emblems and seven equipment
@@ -81,7 +93,7 @@ CRT overlay, or glyph-rendered terrain is used by this edition.
   pixel icons. The large rig receives a decoded bitmap as an explicit input;
   a separately authored map sprite is also the loading fallback. All nine
   Foundry upgrades alter both rigs; livery changes the large rig's trim.
-- `assets/bedrock/`: generated RGBA drill and GRIT illustrations, with final
+- `assets/bedrock/`: generated RGBA drill/GRIT and an opaque shaft-house, with final
   prompts and provenance in its README. Generated with the built-in image
   tool, not manually painted pixel-by-pixel. The small sprites are code-authored.
 - `js/graphical.js`: independent Canvas world renderer plus semantic HTML UI.
@@ -94,6 +106,11 @@ CRT overlay, or glyph-rendered terrain is used by this edition.
   existing menu styles. It also owns the in-game pause presentation. Its
   run-only overrides leave title, contracts, Foundry and the other editions
   alone. It is embedded by the ordinary offline build.
+- `bedrock-menu.css`: the title-specific full-screen composition and responsive
+  native menu. `Atelier.scene('shaft-house')` receives decoded background/rig
+  images; it never loads assets or reads the profile itself. Missing/undecoded
+  artwork uses the existing rig landscape fallback. The third bitmap is
+  embedded in the same standalone build, with no runtime image service.
 - `Engine.command(key)`: graphical buttons enter the same route as keyboard
   commands. The existing simulation, gates, tutorial, awards and input actions
   remain authoritative. Canvas hits map back to the unchanged logical tiles.
@@ -173,12 +190,14 @@ on port 9344 (`DC_BROWSER_PORT` overrides it). It modifies only that disposable
 profile, exercises real inputs, and writes review screenshots to
 `/tmp/deepcore-bedrock-*.png`. Never point it at a personal browser session.
 
-Coverage includes original sprite palettes, RGBA portrait sources, embedded
+Coverage includes original sprite palettes, RGBA portrait/opaque scene sources, embedded
 font/image assets, flat button styles, all machine/resource subjects, twenty
 distinct encounter scenes, eight biome palettes, all nine rig upgrades, state
 and RNG purity, fog redaction, save migration, all game screens, real building
 and belt dragging, breach through the Core into the Mantle, camera controls,
-native fullscreen, tick-driven effects and reduced motion, profile import/backup, offline bundles,
+native fullscreen, title arrows/Tab/Enter/Space and pointer focus coexistence,
+five-command title bounds down to 320×568, daily practice context, tick-driven
+effects and reduced motion, profile import/backup, offline bundles,
 small screens and oversized-display cache budgets. Compare the canonical
 14-seed/two-policy balance outcome rows against the pre-change baseline.
 

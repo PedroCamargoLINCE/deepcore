@@ -777,6 +777,20 @@
   }
   function scene(c, id, w, h, o) {
     o = o || {};
+    if(id==='shaft-house'){
+      if(!o.backdrop){landscape(c,w,h,Object.assign({},o,{title:true}));return;}
+      // The source platform sits at 63% height. Compose the player's actual
+      // rig over it; no vehicle or upgrades are baked into the environment.
+      const bw=o.backdrop.naturalWidth||1672,bh=o.backdrop.naturalHeight||941;
+      const scale=Math.max(w/bw,h/bh),sw=bw*scale,sh=bh*scale;
+      const narrow=w/h<1.05, x=narrow?w-sw*.72:(w-sw)*.5,y=(h-sh)*.5;
+      c.imageSmoothingEnabled=false;
+      c.drawImage(o.backdrop,x,y,sw,sh);
+      const size=sh*(narrow?.40:.46),rx=x+sw*.70-size*.5,ry=y+sh*.63-size*.955;
+      portraitRig(c,rx,ry,size,size,o);
+      if(o.cat)sprite(c,'cat',rx+size*.55,ry+size*.28,size*.075,size*.075);
+      return;
+    }
     if (id === 'landscape' || id === 'rig' || id === 'wreck') {
       landscape(c, w, h, Object.assign({}, o, { wreck: id === 'wreck' }));
       return;

@@ -16,6 +16,7 @@ async function main(){
   const evaluate=async expression=>{const r=await send('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});assert(!r.exceptionDetails,r.exceptionDetails?.exception?.description||'browser evaluation failed');return r.result.value;};
   const waitFor=async(expression,message)=>{for(let i=0;i<100;i++){if(await evaluate(expression))return;await delay(50);}assert.fail(message);};
   const key=async k=>{await send('Input.dispatchKeyEvent',{type:'keyDown',key:k});await send('Input.dispatchKeyEvent',{type:'keyUp',key:k});await delay(40);};
+  const nativeKey=async(key,code,virtualKey)=>{for(const type of ['keyDown','keyUp'])await send('Input.dispatchKeyEvent',{type,key,code,windowsVirtualKeyCode:virtualKey,text:type==='keyDown'?(key==='Enter'?'\r':key===' '?' ':''):'',unmodifiedText:type==='keyDown'?(key==='Enter'?'\r':key===' '?' ':''):''});await delay(60);};
   const click=async selector=>{const p=await evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)return null;const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);assert(p,'click target '+selector);await send('Input.dispatchMouseEvent',{type:'mouseMoved',...p});await send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,...p});await send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,...p});await delay(60);};
   const shot=async name=>{await delay(60);const r=await send('Page.captureScreenshot',{format:'png'});fs.writeFileSync('/tmp/deepcore-bedrock-'+name+'.png',Buffer.from(r.data,'base64'));};
   const size=async(w,h,dpr=1)=>{await send('Emulation.setDeviceMetricsOverride',{width:w,height:h,deviceScaleFactor:dpr,mobile:false});await delay(160);await evaluate('DC.Render.resize()');};
@@ -37,15 +38,39 @@ async function main(){
   };
   try{
     await send('Runtime.enable');await send('Page.enable');
-    await send('Page.navigate',{url:base+'graphical.html'});await delay(650);
+    await send('Page.navigate',{url:base+'graphical.html?seed=1337'});await delay(650);
     await evaluate('document.fonts.ready.then(()=>true)');
-    await waitFor('DC.Render.debug().portraitReady','rig portrait decoded');
+    await waitFor('DC.Render.debug().portraitReady&&DC.Render.debug().titleBackdropReady','rig portrait and shaft-house decoded');
     await size(1440,960);
     await evaluate('DC.state.meta=DC.Meta.newProfile();DC.Render.frame(DC.state,performance.now())');
     assert.strictEqual(await evaluate('DC.state.screen'),'title');await shot('title');
     assert(await evaluate('document.fonts.check(\'16px "Pixelify Sans"\')'),'vendored pixel font loaded');
-    assert(await evaluate('getComputedStyle(document.querySelector(".hero h1")).fontFamily.includes("Pixelify Sans")'),'title uses the new font');
+    assert(await evaluate('getComputedStyle(document.querySelector(".title-mark")).fontFamily.includes("Pixelify Sans")'),'title uses the new font');
     assert(await evaluate('[...document.querySelectorAll("button")].filter(b=>b.getClientRects().length).every(b=>{const s=getComputedStyle(b);return s.backgroundImage==="none"&&s.boxShadow==="none"&&s.borderRadius==="0px"})'),'flat buttons: no gradients, bevels or rounded app chrome');
+    const titleProfile=await evaluate('JSON.stringify(DC.state.meta)');
+    assert.strictEqual(await evaluate('document.activeElement.tagName'),'BODY','title does not steal initial focus');
+    await key('ArrowDown');
+    assert.strictEqual(await evaluate('document.activeElement.dataset.key'),'t','arrow navigation works before the menu has focus');
+    await key('ArrowDown');
+    assert.strictEqual(await evaluate('document.activeElement.dataset.key'),'f','arrow navigation reaches the Foundry');
+    await nativeKey('Enter','Enter',13);
+    assert.strictEqual(await evaluate('DC.state.screen'),'foundry','native Enter activates the selected item, not a new run');
+    await key('Escape');await key('End');
+    assert.strictEqual(await evaluate('document.activeElement.dataset.key'),'h','fresh profile has four menu choices');
+    await nativeKey(' ','Space',32);
+    assert.strictEqual(await evaluate('DC.state.screen'),'help','native Space activates the selected manual');
+    await key('Escape');await key('Home');
+    await evaluate('window.titleCanvas=document.querySelector(".title-scene canvas");window.titleButton=document.activeElement');
+    const hover=await evaluate('(()=>{const r=document.querySelector("#title-menu [data-key=t]").getBoundingClientRect();return {x:r.x+40,y:r.y+r.height/2}})()');
+    await send('Input.dispatchMouseEvent',{type:'mouseMoved',...hover});await delay(100);
+    assert(await evaluate('document.querySelector(".menu-choice.current").dataset.key==="t"&&document.querySelector("#menu-brief").textContent.includes("One ranked attempt")'),'hover selection updates the daily brief');
+    assert(await evaluate('window.titleCanvas===document.querySelector(".title-scene canvas")&&window.titleButton===document.activeElement'),'hover keeps the existing scene and keyboard focus');
+    await key('Home');await key('ArrowUp');
+    assert.strictEqual(await evaluate('document.activeElement.dataset.key'),'h','arrows wrap without scrolling');
+    await key('Home');await nativeKey('Tab','Tab',9);
+    assert.strictEqual(await evaluate('document.activeElement.dataset.key'),'t','native Tab remains available');
+    await key('Home');
+    assert.strictEqual(await evaluate('JSON.stringify(DC.state.meta)'),titleProfile,'menu browsing changes no permanent progress');
     if(await evaluate('document.fullscreenEnabled')) {
       await click('#topbar [data-action="fullscreen"]');
       assert(await evaluate('!!document.fullscreenElement'),'native fullscreen enters from a real gesture');
@@ -161,7 +186,7 @@ async function main(){
     assert.strictEqual(await evaluate('document.querySelector("[data-action=details]").getAttribute("aria-expanded")'),'false','Escape closes details, not the run');
     assert.strictEqual(await evaluate('JSON.stringify([DC.state.run,DC.state.meta])'),detailPurity,'camera/details leave simulation and profile unchanged');
     // Direct frame calls cannot touch a run's RNG, even on victory/recap.
-    const purity=await evaluate(`(()=>{const s=DC.state,fn=s.run.rng,original=s.screen;s.run.rng=()=>{throw new Error('render spent sim RNG')};const before=JSON.stringify([s.run,s.meta]);try{for(const name of ['run','foundry','contract','help','trophies','ledger','logbook','victory','gameover','recap']){s.screen=name;DC.Render.frame(s,performance.now())}return before===JSON.stringify([s.run,s.meta])}finally{s.run.rng=fn;s.screen=original;DC.Render.frame(s,performance.now())}})()`);
+    const purity=await evaluate(`(()=>{const s=DC.state,fn=s.run.rng,original=s.screen;s.run.rng=()=>{throw new Error('render spent sim RNG')};const before=JSON.stringify([s.run,s.meta]);try{for(const name of ['title','run','foundry','contract','help','trophies','ledger','logbook','victory','gameover','recap']){s.screen=name;DC.Render.frame(s,performance.now())}return before===JSON.stringify([s.run,s.meta])}finally{s.run.rng=fn;s.screen=original;DC.Render.frame(s,performance.now())}})()`);
     assert(purity,'real renderer leaves gameplay and progression byte-identical');
     // Every screen must render with real DOM controls and no terminal layer.
     for(const name of ['contract','foundry','trophies','ledger','logbook','help','vignette','descend','victory','gameover','recap']){
@@ -227,6 +252,25 @@ async function main(){
     assert(await evaluate('[...document.querySelectorAll(".permit")].every(e=>e.getBoundingClientRect().right<=innerWidth)'),'all permits fit on mobile');
     await evaluate('DC.state.screen="title";DC.Render.frame(DC.state,performance.now())');await shot('title-mobile');
     assert(await evaluate('document.documentElement.scrollWidth<=innerWidth'),'title mobile fits');
+    for(const [w,h] of [[1920,1080],[1280,720],[800,600],[390,844],[360,640],[320,568]]){
+      await size(w,h);
+      assert(await evaluate(`(()=>{
+        const elements=[...document.querySelectorAll('#title-menu button,.title-mark,.menu-brief,.title-footer,.career-strip>span,#topbar button')];
+        const fits=elements.every(e=>{const r=e.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth+1&&r.top>=0&&r.bottom<=innerHeight+1});
+        const contexts=[...document.querySelectorAll('#title-menu button')].every(b=>{b.focus({preventScroll:true});return document.querySelector('.menu-brief').getBoundingClientRect().bottom<document.querySelector('.title-footer').getBoundingClientRect().top});
+        return fits&&contexts&&document.documentElement.scrollHeight<=innerHeight;
+      })()`),'all five title commands, context and progress fit without scrolling at '+w+'x'+h);
+      if(w===1280||w===320)await shot('title-'+w);
+    }
+    await size(1440,960);await key('End');
+    assert.strictEqual(await evaluate('document.activeElement.dataset.key'),'i','returning player can select the replay command');
+    await evaluate('window.titleMetaFixture=JSON.stringify(DC.state.meta);DC.state.meta.dailyHistory=[{date:DC.state.today,depth:7,timeSec:555}];DC.DATA.META_UPGRADES.forEach(u=>DC.state.meta.upgrades[u.id]=1);DC.Render.frame(DC.state,performance.now())');
+    await key('Home');await key('ArrowDown');
+    assert(await evaluate('document.querySelector(".menu-choice.current").innerText.includes("Practice")&&document.querySelector("#menu-brief").textContent.includes("stratum 7")&&document.querySelector("#menu-brief").textContent.includes("practice")'),'daily menu distinguishes ranked from practice and shows the real record');
+    assert(await evaluate('JSON.parse(document.querySelector(".title-scene canvas").dataset.options).upgrades.m_hull===1&&document.querySelector(".rig-manifest").textContent.includes("9 modifications")'),'shaft-house carries real permanent upgrades');
+    assert.strictEqual(await evaluate('[...document.querySelectorAll(".menu-cursor")].filter(e=>getComputedStyle(e).backgroundColor!=="rgba(0, 0, 0, 0)").length'),1,'a parked mouse cannot light a second selection cursor');
+    await shot('title-upgraded');
+    await evaluate('DC.state.meta=JSON.parse(window.titleMetaFixture);DC.Render.frame(DC.state,performance.now())');
     await size(1440,960);await click('#topbar [data-progress]');
     assert(await evaluate('document.querySelector(".profile-dialog").open'),'native profile dialog opens');
     await evaluate(`(()=>{const p=JSON.parse(JSON.stringify(DC.state.meta));p.cores=17;window.profileBeforeImport=JSON.stringify(DC.state.meta);const dt=new DataTransfer();dt.items.add(new File([JSON.stringify(p)],'progress.json',{type:'application/json'}));const input=document.querySelector('[data-import]');input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));})()`);await delay(80);
@@ -241,12 +285,12 @@ async function main(){
     await size(960,700);
     await send('Page.navigate',{url:base+'dist/deepcore-graphical.html'});await delay(500);assert.strictEqual(await evaluate('DC.Render.artMode()'),'bedrock');await shot('bundle');
     await evaluate('document.fonts.ready.then(()=>true)');
-    await waitFor('DC.Render.debug().portraitReady','standalone rig bitmap decoded');
+    await waitFor('DC.Render.debug().portraitReady&&DC.Render.debug().titleBackdropReady','standalone rig bitmap and shaft-house decoded');
     assert(await evaluate('document.fonts.check(\'16px "Pixelify Sans"\')'),'standalone font decoded');
     await key('i');
     await waitFor('!!document.querySelector("img[data-grit]")&&[...document.querySelectorAll("img[data-grit]")].every(i=>i.complete&&i.naturalWidth>0&&i.src.startsWith("data:image/png;base64,"))','standalone GRIT decoded from embedded source');
     assert.deepStrictEqual(errors,[],'no browser exceptions');
-    console.log('PASS graphical browser | all screens + 20 encounters | fresh induction | native fullscreen | real building / belt corners / rotate / pause | tick-driven feedback + reduced motion | breach -> timed pick -> Core -> Mantle | zoom and pan | renderer state/RNG purity | profile import + recoverable backup | responsive 1440 / 960 / 390 | 8K cache bounds | standalone file:// | screenshots /tmp/deepcore-bedrock-*.png');
+    console.log('PASS graphical browser | title arrows / native Tab+Enter+Space / hover focus / daily practice / five-command bounds 320–1920 | all screens + 20 encounters | fresh induction | native fullscreen | real building / belt corners / rotate / pause | tick-driven feedback + reduced motion | breach -> timed pick -> Core -> Mantle | zoom and pan | renderer state/RNG purity | profile import + recoverable backup | responsive 1440 / 960 / 390 | 8K cache bounds | standalone file:// | screenshots /tmp/deepcore-bedrock-*.png');
   }finally{ws.close();}
 }
 main().catch(e=>{console.error(e);process.exitCode=1;});

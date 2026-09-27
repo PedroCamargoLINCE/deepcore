@@ -8,6 +8,15 @@ workers, verifies, merges) or **THE LABORER** (one brief, one branch). Know whic
 
 ## Current visual direction — director override, 2026-09-09
 
+**Shaft-house title, 2026-09-26:** the director wanted the main menu brought up
+to the gameplay HUD's standard. Bedrock now opens inside a generated pixel-art
+maintenance bay, with the actual upgrade/livery-aware rig composed separately.
+`bedrock-menu.css` owns the full-viewport title, unboxed command list, selection
+cursor, contextual daily/induction notes and compact permanent-progress strip.
+Arrow keys, Home/End, native Tab/Enter/Space and original hotkeys all work.
+Selection is view-local and updates without rebuilding the scene. Keep the
+artwork local/embedded and text native; preserve the other editions and saves.
+
 **Equipment HUD, 2026-09-26:** keep pushing Bedrock away from a website.
 The mine now runs behind overlaid stock counters, a stratum badge and compact
 icon controls, not a branded header. Tools are an unboxed sprite rack. The

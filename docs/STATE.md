@@ -3,9 +3,32 @@
 Living orientation doc. Any new session should be able to read **this file plus
 the specs** and pick the work up cold — no prior conversation required.
 
-Last updated: 2026-09-26, Bedrock equipment HUD.
+Last updated: 2026-09-26, Bedrock shaft-house main menu.
 
 ## Current handoff — read this before the historical notes
+
+The director asked to bring the main menu up to the gameplay HUD's standard.
+Bedrock now opens in an original generated pixel-art shaft-house, with the
+upgrade/livery-aware rig placed on its service platform. The large native
+pixel wordmark and unboxed command list replace the landing-page layout.
+Arrow/Home/End navigation, native Tab/Enter/Space, mouse and original shortcuts
+coexist; selection updates in place without rebuilding the scene. A parked
+mouse cannot override keyboard selection or light a second cursor. Daily
+context distinguishes ranked/practice; induction replay appears for returning
+players. Permanent progress, mute, backup and fullscreen remain accessible.
+
+`bedrock-menu.css` owns title layout; `assets/bedrock/shaft-house.png` is the
+new unchanged source, with the final built-in image-generation prompt in the
+asset README. The standalone embeds it. Old unused title CSS was removed.
+All nine suites pass, all three editions build, and all 28 balance rows are
+byte-identical (`/tmp/deepcore-title-before-balance.txt` and
+`/tmp/deepcore-title-after-balance.txt`). Real Chromium covers native title
+inputs, context, upgraded artwork, five-command bounds at 320×568 through
+1920×1080, and offline decoding. Desktop/notebook/phone screenshots reviewed.
+The browser fixture now uses seed 1337 for repeatable induction framing.
+No simulation, save, Classic or Engraved changes. Gameplay HUD remains intact.
+
+### Previous equipment HUD (still current)
 
 The director asked to keep making Bedrock look less like a website. The latest
 pass removes the in-game branded header: the world runs behind a stratum badge,

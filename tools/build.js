@@ -64,8 +64,8 @@ let bundle = activeFiles
   .map((f) => '/* ==== ' + f + ' ==== */\n' + read(f))
   .join('\n');
 if (graphical) {
-  bundle = bundle.replace(/'assets\/bedrock\/(rig|grit)-pixel\.png'/g, (_,id) =>
-    "'data:image/png;base64," + fs.readFileSync(path.join(root,'assets/bedrock/'+id+'-pixel.png')).toString('base64') + "'");
+  bundle = bundle.replace(/'assets\/bedrock\/((?:rig|grit)-pixel|shaft-house)\.png'/g, (_,id) =>
+    "'data:image/png;base64," + fs.readFileSync(path.join(root,'assets/bedrock/'+id+'.png')).toString('base64') + "'");
   html = html.replace('</head>', '<!-- Pixelify Sans, Copyright 2021 The Pixelify Sans Project Authors.\n' +
     read('vendor/LICENSE-pixelify.txt').replace(/--/g,'—') + '\n-->\n</head>');
 }

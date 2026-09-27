@@ -105,6 +105,7 @@
   let htmlCache = {}, pointerBusy = false, pan = null, modelCache = {}, pauseOpen = false, pauseFocus = null;
   let reduced = false, frameCalls = 0, terrainBuilds = 0, mapBuilds = 0, lastRun = null, lastDepth = 0, lastCursor = '';
   let portraitImage=null,portraitReady=false,lastTool=null;
+  let titleBackdrop=null,titleBackdropReady=false,titleChoice='Enter';
   let detailOpen=false, cameraMode='work', fieldWidth=0, hudTop=76, lastLesson='';
   let observed = null, sparks = [], gains = {};
   // View-local event snapshots. Never inspect unrevealed terrain, spend RNG,
@@ -203,6 +204,18 @@
     if (DC.Engine)
       DC.Engine.command(key);
   }
+  function selectTitle(key) {
+    const items=Array.from(nodes.pages.querySelectorAll('#title-menu button'));
+    const selected=items.find(b=>b.dataset.key===key)||items[0];
+    if(!selected)return;
+    titleChoice=selected.dataset.key;
+    for(const b of items){
+      b.classList.toggle('current',b===selected);
+      if(b===selected)b.setAttribute('aria-describedby','menu-brief');
+      else b.removeAttribute('aria-describedby');
+    }
+    nodes.pages.querySelector('#menu-brief').textContent=selected.dataset.brief;
+  }
   function click(e) {
     const b = e.target.closest('button');
     if (!b || b.disabled)
@@ -275,6 +288,9 @@
     portraitImage=new root.Image();
     portraitImage.onload=()=>{portraitReady=true;drawScenes();};
     portraitImage.src='assets/bedrock/rig-pixel.png';
+    titleBackdrop=new root.Image();
+    titleBackdrop.onload=()=>{titleBackdropReady=true;drawScenes();};
+    titleBackdrop.src='assets/bedrock/shaft-house.png';
     for (const id of [
         'game',
         'topbar',
@@ -292,6 +308,16 @@
       ])
       nodes[id] = root.document.getElementById(id);
     nodes.game.addEventListener('click', click);
+    // Menu selection belongs to the view, not the save or simulation. Native
+    // buttons still own activation; arrows only move keyboard focus.
+    const chooseTitle=e=>{
+      const b=e.target.closest('#title-menu button');
+      if(b)selectTitle(b.dataset.key);
+    };
+    // Replacing profile-driven markup can generate pointerover under a parked
+    // mouse. Only real movement should override the keyboard's selection.
+    nodes.game.addEventListener('pointermove',chooseTitle);
+    nodes.game.addEventListener('focusin',chooseTitle);
     root.document.addEventListener('pointerdown', () => {
       pointerBusy = true;
     });
@@ -306,6 +332,24 @@
     root.addEventListener('blur', () => {
       pointerBusy = false;
       pan = null;
+    });
+    // Document scope includes the initially unfocused title. Never take arrows
+    // from a profile dialog or editable control. Selection updates in place so
+    // pointer movement cannot rebuild the scene or fight native keyboard focus.
+    root.document.addEventListener('keydown', e => {
+      if(lastState && lastState.screen==='title' && !e.ctrlKey && !e.metaKey && !e.altKey && ['ArrowDown','ArrowUp','Home','End'].includes(e.key)
+        && !root.document.querySelector('dialog[open]') && !e.target.closest('input,textarea,select,[contenteditable]')){
+        const items=Array.from(nodes.pages.querySelectorAll('#title-menu button'));
+        if(items.length){
+          let i=items.findIndex(b=>b.dataset.key===titleChoice);
+          if(e.key==='Home')i=0;
+          else if(e.key==='End')i=items.length-1;
+          else i=(Math.max(0,i)+(e.key==='ArrowDown'?1:-1)+items.length)%items.length;
+          selectTitle(items[i].dataset.key);
+          items[i].focus({preventScroll:true});
+          e.preventDefault();e.stopPropagation();return;
+        }
+      }
     });
     // Real buttons must keep native Tab/Space/Enter accessibility, without the
     // same key also activating a game-screen shortcut on the window handler.
@@ -847,20 +891,22 @@
         h,
         cv.dataset.scene,
         cv.dataset.options,
-        portraitReady
+        portraitReady,
+        titleBackdropReady
       ].join('|');
       if (cv._sceneKey === key)
         continue;
       cv.width = w;
       cv.height = h;
       const context=cv.getContext('2d');context.imageSmoothingEnabled=false;
-      A.scene(context, cv.dataset.scene, w, h, Object.assign(JSON.parse(cv.dataset.options || '{}'),{portrait:portraitReady?portraitImage:null}));
+      A.scene(context, cv.dataset.scene, w, h, Object.assign(JSON.parse(cv.dataset.options || '{}'),{portrait:portraitReady?portraitImage:null,backdrop:titleBackdropReady?titleBackdrop:null}));
       cv._sceneKey = key;
     }
   }
   function topbar(st) {
     const run = st.screen === 'run' && st.run, s = run && strata(run.depth);
     const fullscreen=root.document.fullscreenEnabled ? '<button type="button" data-action="fullscreen" aria-label="'+(root.document.fullscreenElement?'Exit full screen':'Full screen')+'" title="'+(root.document.fullscreenElement?'Exit full screen':'Full screen')+'">'+icon('fullscreen')+'</button>' : '';
+    if(st.screen==='title')return '<div class="title-utilities"><button type="button" data-key="m" aria-label="'+(st.meta.muted?'Unmute':'Mute')+' audio" title="Sound / M">'+icon(st.meta.muted?'muted':'sound')+'</button><button type="button" data-progress aria-label="Progress / backup" title="Progress / backup">'+icon('book')+'</button>'+fullscreen+'</div>';
     if(run){
       const control=(key,subject,label)=>'<button type="button" data-key="'+key+'" aria-label="'+label+'" title="'+label+'">'+icon(subject)+'</button>';
       return '<div class="shaft-marker"><b class="depth-badge"><small>STRATUM</small>'+String(run.depth).padStart(2,'0')+'</b><div><h3>'+esc(title(s.name).replace(/†/g,''))+'</h3><span>\u2212'+number(run.depth*D.DEPTH_M)+' m <i> / </i> '+time(run.totalT/D.TICK_HZ)+'</span></div></div>'+
@@ -1029,12 +1075,21 @@
   }
   function titlePage(st) {
     const m = st.meta, eligible = DC.Tutorial.eligible(m), hist = (m.dailyHistory || []).find(h => h.date === st.today);
-    return '<div class="hero"><div class="hero-copy"><div class="title-badge">Eight strata. One very hungry drill.</div><h1 aria-label="Deepcore">DEEP<span>CORE</span></h1><p class="intro">BUILD. FEED. GO DEEPER.</p><div class="actions">' + button('DIG IN!', 'Enter', 'primary') + button('Daily shaft', 't', 'secondary') + button('The Foundry', 'f', 'secondary') + (!eligible ? button('Replay induction', 'i', 'quiet') : '') + '</div><div class="hero-stats"><div>'+icon('crystal')+'<b>' + number(m.cores) + '</b><span>CORES</span></div><div>'+icon('down')+'<b>' + number(m.bestDepth) + '</b><span>BEST DEPTH</span></div><div>'+icon('trophy')+'<b>' + number(m.wins) + '</b><span>BREACHES</span></div></div><div class="edition-note">' + esc('Daily ' + st.today + ' \xB7 ' + (hist ? 'Stratum ' + hist.depth + ' in ' + time(hist.timeSec) : 'Same shaft. One ranked shot.')) + '<br><a href="index.html">Engraved & Classic editions</a></div></div>' + scene('landscape', {
+    const entries=[
+      {key:'Enter',name:'DIG IN',sub:'Begin a new shift',info:eligible?'Your first shift. GRIT will show you the ropes.':'A fresh shaft. Build the line. Feed the drill. Reach the Core.'},
+      {key:'t',name:'DAILY SHAFT',sub:hist?'Practice today\u2019s shaft':'One ranked shot',info:'Daily '+st.today+' · '+(hist?'Ranked: stratum '+hist.depth+' in '+time(hist.timeSec)+'. Replay is practice.':'Same seed for everyone. One ranked attempt today.')},
+      {key:'f',name:'THE FOUNDRY',sub:'Permanent rig upgrades',info:number(m.cores)+' cores banked. Improvements travel with you into every shaft.'},
+      {key:'h',name:'FIELD MANUAL',sub:'Machines, recipes & survival',info:'Ore into plates. Plates into gears. Gears into depth.'}
+    ];
+    if(!eligible)entries.push({key:'i',name:'REPLAY INDUCTION',sub:'A refresher with GRIT',info:'Eight practical lessons, on a real shaft. Skip whenever you like.'});
+    const installed=D.META_UPGRADES.filter(u=>m.upgrades[u.id]>0).length,lv=DC.Meta.liveries(m).find(v=>v.id===DC.Meta.livery(m));
+    return '<div class="title-screen">'+scene('shaft-house',{
       upgrades: m.upgrades,
       accent: livery(m),
-      cat: !!m.catFound,
-      title: true
-    }, 'hero-art') + '<div class="title-number">BEDROCK EDITION <span>KEEP ON DIGGING.</span></div></div>';
+      cat: !!m.catFound
+    },'title-scene')+'<div class="title-content"><div class="title-kicker">A VERY LONG WAY DOWN</div><h1 class="title-mark" aria-label="Deepcore">DEEP<span>CORE</span></h1><p class="title-tagline">Eight strata. One very hungry drill.</p><nav id="title-menu" aria-label="Main menu">'+entries.map(e=>'<button type="button" data-key="'+e.key+'" data-brief="'+esc(e.info)+'" class="menu-choice"><i class="menu-cursor" aria-hidden="true"></i><span><strong>'+e.name+'</strong><small>'+e.sub+'</small></span><kbd>'+ (e.key==='Enter'?'Enter':e.key.toUpperCase())+'</kbd></button>').join('')+'</nav><p id="menu-brief" class="menu-brief"></p></div>'+
+      '<div class="rig-manifest"><span class="eyebrow">DC / RIG DIVISION</span><strong>'+esc(installed?installed+' modifications fitted':'STOCK RIG · READY')+'</strong><span>'+esc(lv?title(lv.name):'Company amber')+'</span></div>'+
+      '<footer class="title-footer"><div class="career-strip" aria-label="Permanent progress"><span>'+icon('crystal')+'<b>'+number(m.cores)+'</b> cores</span><span>'+icon('down')+'<b>'+number(m.bestDepth)+'</b> deepest</span><span>'+icon('trophy')+'<b>'+number(m.wins)+'</b> breaches</span></div><div class="title-edition"><span>BEDROCK EDITION</span><a href="index.html">Engraved / Classic</a></div></footer></div>';
   }
   function contracts(st) {
     return '<div class="page paperwork">' + header('Personnel division / terms of engagement', 'Sign before you descend.', 'Choose your contract. The Company will retain the original.') + '<div class="permit-desk">' + D.CONTRACTS.map((c, i) => {
@@ -1303,8 +1358,10 @@
           victory: results,
           recap
         };
-        if (pages[st.screen])
-          put('pages', pages[st.screen](st));
+        if (pages[st.screen]) {
+          const replaced=put('pages', pages[st.screen](st));
+          if(replaced && st.screen==='title')selectTitle(titleChoice);
+        }
       }
       pause(st);
     }
@@ -1341,6 +1398,7 @@
       spritePixels: Array.from(spriteCache.values()).reduce((n, v) => n + v.width * v.height, 0),
       terrainPixels: surface ? surface.width * surface.height : 0,
       portraitReady,
+      titleBackdropReady,
       reduced
     })
   };
